@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    {% if request.user.is_assistant %}
+        <button id="refresh" data-url="{% url 'refresh-view' %}">Обновить данные</button>
+    {% endif %}
+    <ul>
+        {% for event in objects %}
+            <li>
+                <a
+                    {% if request.user.is_assistant %}
+                        href="{% url 'event-view' uid=event.uid %}"
+                    {% else %}
+                        href="{% url 'load-materials' uid=event.uid unti_id=request.user.unti_id %}"
+                    {% endif %}
+                >{{ event }}</a>
+            </li>
+        {% endfor %}
+    </ul>
+{% endblock %}
+
+{% block js %}
+    {{ block.super }}
+    {% if request.user.is_assistant %}
+        {% include 'refresh_script.html' %}
+    {% endif %}
+{% endblock %}

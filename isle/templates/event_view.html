@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block content %}
+    {% if request.user.is_assistant %}
+        <button id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
+    {% endif %}
+
+    <table>
+        {% for student in students %}
+            <tr>
+                <td>{{ student.get_full_name }}</td>
+                <td>{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
+                <td>{{ student.materials_num }}</td>
+                <td>
+                    {% if event.is_active %}
+                    <a href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+    </table>
+{% endblock %}
+
+{% block js %}
+    {{ block.super }}
+    {% if request.user.is_assistant %}
+        {% include 'refresh_script.html' %}
+    {% endif %}
+{% endblock %}

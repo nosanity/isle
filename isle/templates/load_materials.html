@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% load i18n static %}
+
+{% block content %}
+    {% for trace in traces %}
+        <h2>{{ trace.name }}</h2>
+        <form method="post" class="trace-form">
+            {% csrf_token %}
+            <input name="trace_name" type="hidden" value="{{ trace.name }}">
+            <div class="links-list">
+                {% for link in trace.links %}
+                    <p>
+                        <a href="{{ link.get_url }}">{{ link.get_url }}</a>&nbsp;
+                        <button name="material_id" value="{{ link.id }}" class="delete-material-btn">
+                            {% blocktrans %}Удалить{% endblocktrans %}
+                        </button>
+                    </p>
+                {% endfor %}
+            </div>
+
+            <div>
+                {% trans "URL:" %}<input type="url" name="url_field">
+                {% if allow_file_upload %}
+                    {% trans "Файл" %}<input type="file" name="file_field">
+                {% endif %}
+                <button name="add_btn" type="submit" class="add-material-btn" disabled="disabled">{% trans "Добавить" %}</button>
+            </div>
+        </form>
+    {% endfor %}
+
+    <div class="clearfix"></div>
+    <div>
+        <a href="{% url 'index' %}">{% blocktrans %}Назад{% endblocktrans %}</a>
+    </div>
+{% endblock %}
+
+{% block js %}
+    {{ block.super }}
+    <script type="text/javascript">
+        MAX_SIZE = {{ max_size }};
+    </script>
+    <script type="text/javascript" src="{% static 'js/file_upload.js' %}"></script>
+{% endblock %}
