@@ -7,16 +7,14 @@ from isle.models import Event
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
     actions = ['make_active', 'make_inactive']
-    list_display = ('uid', 'dt_start', 'dt_end', 'is_active')
+    list_display = ('uid', 'title', 'dt_start', 'dt_end', 'is_active')
     list_filter = ('is_active',)
+    readonly_fields = ('uid', 'dt_start', 'dt_end', 'data', 'title')
 
     def has_add_permission(self, request):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        return False
-
-    def has_change_permission(self, request, obj=None):
         return False
 
     def get_actions(self, request):
