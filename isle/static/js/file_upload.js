@@ -4,6 +4,7 @@ $(document).ready(function() {
         var formData = new FormData(this);
         formData.append('add_btn', '');
         var form = $(e.target);
+        if (!form_valid(form)) return;
         $.ajax({
             type: 'POST',
             data: formData,
@@ -26,6 +27,7 @@ $(document).ready(function() {
     $('body').delegate('button.delete-material-btn', 'click', function(e) {
         e.preventDefault();
         var btn = $(this);
+        if ($(':focus').attr('name') != 'material_id') return;
         var form = btn.parents('form.trace-form');
         var data = {
             trace_name: form.children('input[name=trace_name]').val(),
