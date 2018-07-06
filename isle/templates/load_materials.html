@@ -11,7 +11,7 @@
                 {% for link in trace.links %}
                     <li class="list-group-item">
                         <a href="{{ link.get_url }}">{{ link.get_url }}</a>&nbsp;
-                        <button name="material_id" value="{{ link.id }}" class="btn btn-danger">
+                        <button name="material_id" value="{{ link.id }}" class="btn btn-danger pull-right">
                             {% blocktrans %}Удалить{% endblocktrans %}
                         </button>
                     </li>

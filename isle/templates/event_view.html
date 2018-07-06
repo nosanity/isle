@@ -3,14 +3,14 @@
 
 {% block content %}
     {% if request.user.is_assistant %}
-        <button id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
+        <button class="btn btn-primary" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
     {% endif %}
 
     <table class="table">
         <thead class="thead-dark">
             <tr>
               <th scope="col">ФИО</th>
-              <th scope="col">Аватар</th>
+              <th scope="col">Фото</th>
               <th scope="col">Количество загруженных файлов</th>
               <th scope="col">Загрузка</th>
             </tr>
@@ -22,7 +22,7 @@
                 <td>{{ student.materials_num }}</td>
                 <td>
                     {% if event.is_active %}
-                    <a href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
+                    <a class="btn btn-primary" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
                     {% endif %}
                 </td>
             </tr>
