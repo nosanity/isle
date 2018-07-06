@@ -30,10 +30,10 @@ class Api:
     def refresh_token(self):
         try:
             r = requests.get(
-                settings.ILE_GET_TOKEN_URL,
+                '{}{}'.format(settings.ILE_BASE_URL, settings.ILE_TOKEN_PATH),
                 auth=settings.ILE_TOKEN_USER,
                 timeout=settings.CONNECTION_TIMEOUT,
-                verify=False
+                verify=settings.ILE_VERIFY_CERTIFICATE,
             )
             assert r.ok
             DEFAULT_CACHE.set(self.TOKEN_CACHE_KEY, r.json()['token'], timeout=int(r.json()['duration']))
@@ -58,11 +58,13 @@ class Api:
             if not do_refresh:
                 return val, False
         try:
+            if not self.token:
+                self.refresh_token()
             r = requests.get(
-                settings.ILE_EVENTS_URL,
+                '{}{}'.format(settings.ILE_BASE_URL, settings.ILE_SNAPSHOT_PATH),
                 headers={'Authorization': 'Bearer %s' % self.token},
                 timeout=settings.CONNECTION_TIMEOUT,
-                verify=False
+                verify=settings.ILE_VERIFY_CERTIFICATE,
             )
             if r.status_code == 401:
                 if retry < self.MAX_RETRIES:

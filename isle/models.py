@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import ugettext_lazy as _
 from jsonfield import JSONField
 
@@ -21,14 +22,18 @@ class Event(models.Model):
     is_active = models.BooleanField(default=False, verbose_name=_(u'Доступно для оцифровки'))
     dt_start = models.DateTimeField(verbose_name=_(u'Время начала'))
     dt_end = models.DateTimeField(verbose_name=_(u'Время окончания'))
+    title = models.CharField(max_length=1000, default='')
 
     class Meta:
         verbose_name = _(u'Событие')
         verbose_name_plural = _(u'События')
 
     def __str__(self):
-        if self.dt_end:
-            return '%s (%s)' % self.uid, self.dt_end.strftime('%H:%M %d.%m.%Y')
+        fmt = '%H:%M %d.%m.%Y'
+        if self.dt_start and self.dt_end:
+            start = timezone.localtime(self.dt_start)
+            end = timezone.localtime(self.dt_end)
+            return '%s (%s - %s)' % (self.title or self.uid, start.strftime(fmt), end.strftime(fmt))
         return self.uid
 
     def is_author(self, user):

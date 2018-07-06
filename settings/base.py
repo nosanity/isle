@@ -133,13 +133,17 @@ SSO_UNTI_URL = ''
 # key и secret для oauth авторизации
 SOCIAL_AUTH_UNTI_KEY = ''
 SOCIAL_AUTH_UNTI_SECRET = ''
-# урл, по которому надо получать токен в ILE
-ILE_GET_TOKEN_URL = 'https://ile.u2035dev.ru/api/token/'
 # таймаут для запросов в ILE
 CONNECTION_TIMEOUT = 20
 # логин и пароль пользователя в ILE
 ILE_TOKEN_USER = ('user', 'password')
-# урл ручки для получения всех нужных данных по эвентам и участникам в ILE
-ILE_EVENTS_URL = ''
+# базовый урл ILE
+ILE_BASE_URL = 'https://ile.u2035dev.ru'
+# урл для получения токена в ILE
+ILE_TOKEN_PATH = '/api/token/'
+# путь к апи для получения снэпшота
+ILE_SNAPSHOT_PATH = '/api/snapshot/'
+# нужно ли валидировать сертификат ILE
+ILE_VERIFY_CERTIFICATE = False
 
 from .local_settings import *
