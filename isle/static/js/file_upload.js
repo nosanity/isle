@@ -12,7 +12,9 @@ $(document).ready(function() {
             success: function(data) {
                 var url = data.url;
                 var m_id = data.material_id;
-                form.children('div.links-list').append($('<p><a href="' + url + '">' + url + '</a><button name="material_id" value="' + m_id + '" class="delete-material-btn" disabled="disabled">Удалить</button></p>'));
+                var items = form.children('ul.list-group').children('li');
+                var item = $(items[items.length - 1]);
+                item.before($('<li class="list-group-item"><a href="' + url + '">' + url + '</a>&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-danger delete-material-btn">Удалить</button></li>'));
                 form.find('input[name=url_field]').val('');
                 form.find('input[name=file_field]').val('');
                 activate_btn(form);
@@ -34,8 +36,7 @@ $(document).ready(function() {
             type: 'POST',
             data: data,
             success: function(data) {
-                console.log('finish2', data);
-                btn.parent('p').remove();
+                btn.parent('li').remove();
             },
             error: function (xhr, err) {alert('error')}
         })
