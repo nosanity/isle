@@ -2,11 +2,35 @@
 {% load i18n static %}
 
 {% block content %}
+    {% if team_upload %}
+        <table class="table">
+            <thead class="thead-dark">
+                <tr>
+                  <th scope="col">ФИО</th>
+                  <th scope="col">Фото</th>
+                  <th scope="col">Количество загруженных файлов</th>
+                  <th scope="col">Загрузка</th>
+                </tr>
+            </thead>
+            {% for student in students %}
+                <tr>
+                    <td>{{ student.get_full_name }}</td>
+                    <td>{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
+                    <td>{{ student.materials_num }}</td>
+                    <td>
+                        {% if event.is_active %}
+                        <a class="btn btn-primary" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </table>
+    {% endif %}
     {% for trace in traces %}
-        <h2>{{ trace.name }}</h2>
+        <h2>{{ trace.trace.name }}</h2>
         <form method="post" class="trace-form">
             {% csrf_token %}
-            <input name="trace_name" type="hidden" value="{{ trace.name }}">
+            <input name="trace_name" type="hidden" value="{{ trace.trace.id }}">
             <ul class="list-group list-group-flush">
                 {% for link in trace.links %}
                     <li class="list-group-item">
@@ -21,6 +45,9 @@
                 {% trans "URL:" %}<input type="url" name="url_field">
                 {% if allow_file_upload %}
                     {% trans "Файл" %}<input type="file" name="file_field">
+                {% endif %}
+                {% if team_upload %}
+                    <label>Описание</label><input maxlength="255" name="comment"></textarea>
                 {% endif %}
                 <button name="add_btn" type="submit" class="btn btn-primary add-material-btn" disabled="disabled">{% trans "Добавить" %}</button>
                 </li>

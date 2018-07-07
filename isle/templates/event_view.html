@@ -46,7 +46,7 @@
                     <td>{{ team.users.count }}</td>
                     <td>
                         {% if event.is_active %}
-                        <a class="btn btn-primary" href="#">{% trans "Загрузить" %}</a>
+                        <a class="btn btn-primary" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
                         {% endif %}
                     </td>
                 </tr>

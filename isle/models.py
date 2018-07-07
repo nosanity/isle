@@ -40,7 +40,7 @@ class Event(models.Model):
         return user.is_assistant
 
     def get_traces(self):
-        return list(self.trace_set.order_by('name').values_list('name', flat=True))
+        return self.trace_set.order_by('name')
 
 
 class Trace(models.Model):
@@ -69,16 +69,14 @@ class EventEntry(models.Model):
         return '%s - %s' % (self.event, self.user)
 
 
-class EventMaterial(models.Model):
+class AbstractMaterial(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
     url = models.URLField(blank=True)
     file = models.FileField(blank=True)
     trace = models.ForeignKey(Trace, on_delete=models.CASCADE)
 
     class Meta:
-        verbose_name = _(u'Материал')
-        verbose_name_plural = _(u'Материалы')
+        abstract = True
 
     def get_url(self):
         if self.url:
@@ -88,6 +86,14 @@ class EventMaterial(models.Model):
 
     def __str__(self):
         return '#%s %s' % (self.id, self.get_url())
+
+
+class EventMaterial(AbstractMaterial):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    class Meta:
+        verbose_name = _(u'Материал')
+        verbose_name_plural = _(u'Материалы')
 
 
 class Team(models.Model):
@@ -102,3 +108,12 @@ class Team(models.Model):
     class Meta:
         verbose_name = 'Команда'
         verbose_name_plural = 'Команды'
+
+
+class EventTeamMaterial(AbstractMaterial):
+    team = models.ForeignKey(Team, on_delete=models.CASCADE)
+    comment = models.CharField(default='', max_length=255)
+
+    class Meta:
+        verbose_name = _(u'Материал команды')
+        verbose_name_plural = _(u'Материалы команд')

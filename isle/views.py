@@ -12,7 +12,7 @@ from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.generic import TemplateView, View
 from isle.forms import CreateTeamForm
-from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team
+from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial
 from isle.utils import refresh_events_data
 
 
@@ -87,48 +87,34 @@ class EventView(GetEventMixin, TemplateView):
         }
 
 
-class LoadMaterials(GetEventMixin, TemplateView):
-    """
-    Просмотр/загрузка материалов по эвенту
-    """
+class BaseLoadMaterials(GetEventMixin, TemplateView):
     template_name = 'load_materials.html'
 
-    def dispatch(self, request, *args, **kwargs):
-        self.user  # проверка того, что пользователь с unti_id из url существует
-        # страницу может видеть ассистент или пользователь, указанный в урле
-        if self.request.user.unti_id == self.kwargs['unti_id'] or self.event.is_author(self.request.user):
-            return super().dispatch(request, *args, **kwargs)
-        return HttpResponseForbidden()
-
     def get_context_data(self, **kwargs):
-        return {
+        data = super().get_context_data(**kwargs)
+        data.update({
             'traces': self.get_traces_data(),
             'allow_file_upload': getattr(settings, 'ALLOW_FILE_UPLOAD', False),
             'max_size': settings.MAXIMUM_ALLOWED_FILE_SIZE,
-        }
-
-    @cached_property
-    def user(self):
-        return get_object_or_404(User, unti_id=self.kwargs['unti_id'])
+        })
+        return data
 
     def get_traces_data(self):
         traces = self.event.get_traces()
         result = []
         links = defaultdict(list)
-        for item in EventMaterial.objects.filter(event=self.event, user=self.user).select_related('trace'):
-            links[item.trace.name].append(item)
-        for name in traces:
-            result.append({'name': name, 'links': links.get(name, [])})
+        for item in self.get_materials():
+            links[item.trace_id].append(item)
+        for trace in traces:
+            result.append({'trace': trace, 'links': links.get(trace.id, [])})
         return result
 
     def post(self, request, *args, **kwargs):
-        # загрузка и удаление файлов доступны только для эвентов, доступных для оцифровки, и по
-        # пользователям, запись которых на этот эвент активна
-        if not self.event.is_active or not (self.request.user.is_assistant or
-                EventEntry.objects.filter(event=self.event, user=self.user, is_active=True).exists()):
-            return JsonResponse({}, status=403)
-        name = request.POST.get('trace_name')
-        if not name or name not in self.event.get_traces():
+        resp = self.check_post_allowed(request)
+        if resp is not None:
+            return resp
+        trace_id = request.POST.get('trace_name')
+        if not trace_id or not self.event.get_traces().filter(id=trace_id).exists():
             return JsonResponse({}, status=400)
         if 'add_btn' in request.POST:
             return self.add_item(request)
@@ -138,9 +124,38 @@ class LoadMaterials(GetEventMixin, TemplateView):
         material_id = request.POST.get('material_id')
         if not material_id or not material_id.isdigit():
             return JsonResponse({}, status=400)
-        trace = Trace.objects.filter(event=self.event, name=request.POST['trace_name']).first()
+        trace = Trace.objects.filter(events=self.event, id=request.POST['trace_name']).first()
         if not trace:
             return JsonResponse({}, status=400)
+        return self._delete_item(trace, material_id)
+
+
+class LoadMaterials(BaseLoadMaterials):
+    """
+    Просмотр/загрузка материалов по эвенту
+    """
+    def dispatch(self, request, *args, **kwargs):
+        self.user  # проверка того, что пользователь с unti_id из url существует
+        # страницу может видеть ассистент или пользователь, указанный в урле
+        if self.request.user.unti_id == self.kwargs['unti_id'] or self.event.is_author(self.request.user):
+            return super().dispatch(request, *args, **kwargs)
+        return HttpResponseForbidden()
+
+    def get_materials(self):
+        return EventMaterial.objects.filter(event=self.event, user=self.user)
+
+    @cached_property
+    def user(self):
+        return get_object_or_404(User, unti_id=self.kwargs['unti_id'])
+
+    def check_post_allowed(self, request):
+        # загрузка и удаление файлов доступны только для эвентов, доступных для оцифровки, и по
+        # пользователям, запись которых на этот эвент активна
+        if not self.event.is_active or not (self.request.user.is_assistant or
+                EventEntry.objects.filter(event=self.event, user=self.user, is_active=True).exists()):
+            return JsonResponse({}, status=403)
+
+    def _delete_item(self, trace, material_id):
         material = EventMaterial.objects.filter(
             event=self.event, user=self.user, trace=trace, id=material_id
         ).first()
@@ -152,7 +167,7 @@ class LoadMaterials(GetEventMixin, TemplateView):
     def add_item(self, request):
         if not EventEntry.objects.filter(event=self.event, user=self.user).exists():
             return JsonResponse({}, status=400)
-        trace = Trace.objects.filter(event=self.event, name=request.POST['trace_name']).first()
+        trace = Trace.objects.filter(events=self.event, id=request.POST['trace_name']).first()
         if not trace:
             return JsonResponse({}, status=400)
         data = dict(event=self.event, user=self.user, trace=trace)
@@ -169,6 +184,85 @@ class LoadMaterials(GetEventMixin, TemplateView):
 
     def make_file_path(self, fn):
         return os.path.join(self.event.uid, str(self.user.unti_id), fn)
+
+
+class LoadTeamMaterials(BaseLoadMaterials):
+    """
+    Просмотр/загрузка командных материалов по эвенту
+    """
+    extra_context = {'team_upload': True}
+
+    def dispatch(self, request, *args, **kwargs):
+        self.team  # проверка того, что команда с team_id из url существует
+        # страницу может видеть только ассистент
+        if self.event.is_author(self.request.user):
+            return super().dispatch(request, *args, **kwargs)
+        return HttpResponseForbidden()
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        users = self.team.users.order_by('last_name', 'first_name', 'second_name')
+        num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
+                   values_list('user_id').annotate(num=Sum('event_id')))
+        for u in users:
+            u.materials_num = num.get(u.id, 0)
+        data.update({'students': users, 'event': self.event})
+        return data
+
+    @cached_property
+    def team(self):
+        return get_object_or_404(Team, id=self.kwargs['team_id'])
+
+    def get_materials(self):
+        return EventTeamMaterial.objects.filter(event=self.event, team=self.team)
+
+    def post(self, request, *args, **kwargs):
+        # загрузка и удаление файлов доступны только для эвентов, доступных для оцифровки, и по
+        # командам, сформированным в данном эвенте
+        if not self.event.is_active or not (self.request.user.is_assistant or
+                Team.objects.filter(event=self.event, id=self.kwargs['team_id']).exists()):
+            return JsonResponse({}, status=403)
+        trace_id = request.POST.get('trace_name')
+        if not trace_id or not self.event.get_traces().filter(id=trace_id).exists():
+            return JsonResponse({}, status=400)
+        if 'add_btn' in request.POST:
+            return self.add_item(request)
+        return self.delete_item(request)
+
+    def check_post_allowed(self, request):
+        # загрузка и удаление файлов доступны только для эвентов, доступных для оцифровки, и по
+        # командам, сформированным в данном эвенте
+        if not self.event.is_active or not (self.request.user.is_assistant or
+                Team.objects.filter(event=self.event, id=self.kwargs['team_id']).exists()):
+            return JsonResponse({}, status=403)
+
+    def _delete_item(self, trace, material_id):
+        material = EventTeamMaterial.objects.filter(
+            event=self.event, team=self.team, trace=trace, id=material_id
+        ).first()
+        if not material:
+            return JsonResponse({}, status=400)
+        material.delete()
+        return JsonResponse({})
+
+    def add_item(self, request):
+        trace = Trace.objects.filter(events=self.event, id=request.POST['trace_name']).first()
+        if not trace:
+            return JsonResponse({}, status=400)
+        data = dict(event=self.event, team=self.team, trace=trace, comment=request.POST.get('comment', ''))
+        url = request.POST.get('url_field')
+        file_ = request.FILES.get('file_field')
+        if bool(file_) == bool(url):
+            return JsonResponse({}, status=400)
+        if url:
+            data['url'] = url
+        material = EventTeamMaterial.objects.create(**data)
+        if file_:
+            material.file.save(self.make_file_path(file_.name), file_)
+        return JsonResponse({'material_id': material.id, 'url': material.get_url()})
+
+    def make_file_path(self, fn):
+        return os.path.join(self.event.uid, str(self.team.team_name), fn)
 
 
 class RefreshDataView(View):
