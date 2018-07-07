@@ -3,7 +3,7 @@ from collections import defaultdict
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import logout as base_logout
-from django.db.models import Sum
+from django.db.models import Count
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
@@ -77,7 +77,7 @@ class EventView(GetEventMixin, TemplateView):
             return HttpResponseForbidden()
         users = get_event_participants(self.event)
         num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
-                   values_list('user_id').annotate(num=Sum('event_id')))
+                   values_list('user_id').annotate(num=Count('event_id')))
         for u in users:
             u.materials_num = num.get(u.id, 0)
         return {
@@ -222,7 +222,7 @@ class LoadTeamMaterials(BaseLoadMaterials):
         data = super().get_context_data(**kwargs)
         users = self.team.users.order_by('last_name', 'first_name', 'second_name')
         num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
-                   values_list('user_id').annotate(num=Sum('event_id')))
+                   values_list('user_id').annotate(num=Count('event_id')))
         for u in users:
             u.materials_num = num.get(u.id, 0)
         data.update({'students': users, 'event': self.event})
