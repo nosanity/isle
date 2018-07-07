@@ -6,11 +6,13 @@ from django.contrib.auth.views import logout as base_logout
 from django.db.models import Sum
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.generic import TemplateView, View
-from isle.models import Event, EventEntry, EventMaterial, User, Trace
+from isle.forms import CreateTeamForm
+from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team
 from isle.utils import refresh_events_data
 
 
@@ -59,6 +61,11 @@ class GetEventMixin:
         return super().dispatch(request, *args, **kwargs)
 
 
+def get_event_participants(event):
+    users = EventEntry.objects.filter(event=event).values_list('user_id')
+    return User.objects.filter(id__in=users).order_by('last_name', 'first_name', 'second_name')
+
+
 class EventView(GetEventMixin, TemplateView):
     """
     Просмотр статистики загрузок материалов по эвентам
@@ -66,8 +73,9 @@ class EventView(GetEventMixin, TemplateView):
     template_name = 'event_view.html'
 
     def get_context_data(self, **kwargs):
-        users = EventEntry.objects.filter(event=self.event).values_list('user_id')
-        users = User.objects.filter(id__in=users).order_by('last_name', 'first_name', 'second_name')
+        if not self.request.user.is_assistant:
+            return HttpResponseForbidden()
+        users = get_event_participants(self.event)
         num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
                    values_list('user_id').annotate(num=Sum('event_id')))
         for u in users:
@@ -175,3 +183,27 @@ class RefreshDataView(View):
             else:
                 success = refresh_events_data(force=True)
         return JsonResponse({'success': bool(success)})
+
+
+class CreateTeamView(GetEventMixin, TemplateView):
+    template_name = 'create_team.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated and not request.user.is_assistant:
+            return HttpResponseForbidden()
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        users = self.get_available_users()
+        return {'students': users, 'event': self.event}
+
+    def get_available_users(self):
+        return get_event_participants(self.event).exclude(
+            id__in=Team.objects.filter(event=self.event).values_list('users', flat=True))
+
+    def post(self, request, uid=None):
+        form = CreateTeamForm(data=request.POST, event=self.event, users_qs=self.get_available_users())
+        if not form.is_valid():
+            return JsonResponse({}, status=400)
+        form.save()
+        return JsonResponse({'redirect': reverse('event-view', kwargs={'uid': self.event.uid})})

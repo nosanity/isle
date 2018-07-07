@@ -54,14 +54,15 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
                             logging.error('User with unti_id %s not found' % ptcpt['user_id'])
                             continue
                         EventEntry.objects.get_or_create(user_id=user_id, event_id=e.id)
-        delete_events = existing_uids - fetched_events
-        # если произошли изменения в списке будущих эвентов
-        dt = timezone.now() + timezone.timedelta(days=1)
-        delete_qs = Event.objects.filter(uid__in=delete_events, dt_start__gt=dt)
-        delete_events = delete_qs.values_list('uid', flat=True)
-        if delete_events:
-            logging.warning('Event(s) with uuid: {} were deleted'.format(', '.join(delete_events)))
-            delete_qs.delete()
+        if not refresh_for_events:
+            delete_events = existing_uids - fetched_events
+            # если произошли изменения в списке будущих эвентов
+            dt = timezone.now() + timezone.timedelta(days=1)
+            delete_qs = Event.objects.filter(uid__in=delete_events, dt_start__gt=dt)
+            delete_events = delete_qs.values_list('uid', flat=True)
+            if delete_events:
+                logging.warning('Event(s) with uuid: {} were deleted'.format(', '.join(delete_events)))
+                delete_qs.delete()
         return True
     except Exception:
         logging.exception('Failed to handle events data')

@@ -88,3 +88,17 @@ class EventMaterial(models.Model):
 
     def __str__(self):
         return '#%s %s' % (self.id, self.get_url())
+
+
+class Team(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, verbose_name='Событие')
+    users = models.ManyToManyField(User, verbose_name='Студенты')
+    name = models.CharField(max_length=500, verbose_name='Название команды')
+
+    @property
+    def team_name(self):
+        return 'team_{}'.format(self.id)
+
+    class Meta:
+        verbose_name = 'Команда'
+        verbose_name_plural = 'Команды'
