@@ -29,6 +29,30 @@
             </tr>
         {% endfor %}
     </table>
+
+    {% if teams %}
+        <h3>Команды</h3>
+        <table class="table">
+            <thead class="thead-dark">
+                <tr>
+                  <th scope="col">Название команды</th>
+                  <th scope="col">Количество участников</th>
+                  <th scope="col">Загрузка</th>
+                </tr>
+            </thead>
+            {% for team in teams %}
+                <tr>
+                    <td>{{ team.name }}</td>
+                    <td>{{ team.users.count }}</td>
+                    <td>
+                        {% if event.is_active %}
+                        <a class="btn btn-primary" href="#">{% trans "Загрузить" %}</a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </table>
+    {% endif %}
 {% endblock %}
 
 {% block js %}

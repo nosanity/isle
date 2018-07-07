@@ -83,6 +83,7 @@ class EventView(GetEventMixin, TemplateView):
         return {
             'students': users,
             'event': self.event,
+            'teams': Team.objects.filter(event=self.event).order_by('name'),
         }
 
 
