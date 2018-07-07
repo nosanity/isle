@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.generic import TemplateView, View
-from isle.models import Event, EventEntry, EventMaterial, User
+from isle.models import Event, EventEntry, EventMaterial, User, Trace
 from isle.utils import refresh_events_data
 
 
@@ -26,14 +26,13 @@ class Index(TemplateView):
     template_name = 'index.html'
 
     def get_context_data(self, **kwargs):
-        self.fetch_events()
         return {'objects': self.get_events()}
 
     def get_events(self):
         if self.request.user.is_assistant:
             events = Event.objects.all()
         else:
-            events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user, is_active=True).
+            events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user).
                                           values_list('event_id', flat=True))
         events = events.order_by('-dt_end')
         inactive_events, active_events, current_events = [], [], []
@@ -48,9 +47,6 @@ class Index(TemplateView):
                 active_events.append(e)
         current_events.reverse()
         return current_events + active_events + inactive_events
-
-    def fetch_events(self):
-        refresh_events_data()
 
 
 class GetEventMixin:
@@ -81,9 +77,6 @@ class EventView(GetEventMixin, TemplateView):
             'event': self.event,
         }
 
-    def fetch_users(self):
-        refresh_events_data(refresh_participants=True, refresh_for_events=[self.event.uid])
-
 
 class LoadMaterials(GetEventMixin, TemplateView):
     """
@@ -113,8 +106,8 @@ class LoadMaterials(GetEventMixin, TemplateView):
         traces = self.event.get_traces()
         result = []
         links = defaultdict(list)
-        for item in EventMaterial.objects.filter(event=self.event, user=self.user):
-            links[item.trace].append(item)
+        for item in EventMaterial.objects.filter(event=self.event, user=self.user).select_related('trace'):
+            links[item.trace.name].append(item)
         for name in traces:
             result.append({'name': name, 'links': links.get(name, [])})
         return result
@@ -136,8 +129,11 @@ class LoadMaterials(GetEventMixin, TemplateView):
         material_id = request.POST.get('material_id')
         if not material_id or not material_id.isdigit():
             return JsonResponse({}, status=400)
+        trace = Trace.objects.filter(event=self.event, name=request.POST['trace_name']).first()
+        if not trace:
+            return JsonResponse({}, status=400)
         material = EventMaterial.objects.filter(
-            event=self.event, user=self.user, trace=request.POST['trace_name'], id=material_id
+            event=self.event, user=self.user, trace=trace, id=material_id
         ).first()
         if not material:
             return JsonResponse({}, status=400)
@@ -147,7 +143,10 @@ class LoadMaterials(GetEventMixin, TemplateView):
     def add_item(self, request):
         if not EventEntry.objects.filter(event=self.event, user=self.user).exists():
             return JsonResponse({}, status=400)
-        data = dict(event=self.event, user=self.user, trace=request.POST['trace_name'])
+        trace = Trace.objects.filter(event=self.event, name=request.POST['trace_name']).first()
+        if not trace:
+            return JsonResponse({}, status=400)
+        data = dict(event=self.event, user=self.user, trace=trace)
         url = request.POST.get('url_field')
         file_ = request.FILES.get('file_field')
         if bool(file_) == bool(url):

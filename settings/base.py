@@ -138,12 +138,14 @@ CONNECTION_TIMEOUT = 20
 # логин и пароль пользователя в ILE
 ILE_TOKEN_USER = ('user', 'password')
 # базовый урл ILE
-ILE_BASE_URL = 'https://ile.u2035dev.ru'
+ILE_BASE_URL = 'https://ile2.u2035dev.ru'
 # урл для получения токена в ILE
 ILE_TOKEN_PATH = '/api/token/'
 # путь к апи для получения снэпшота
 ILE_SNAPSHOT_PATH = '/api/snapshot/'
 # нужно ли валидировать сертификат ILE
 ILE_VERIFY_CERTIFICATE = False
+# урл для получения трейсов из LABS
+LABS_TRACES_API_URL = 'https://labs.u2035dev.ru/api/v1/tracetype?app_token=7at0hbdmabmtfl0y'
 
 from .local_settings import *

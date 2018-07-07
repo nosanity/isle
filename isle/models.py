@@ -9,7 +9,7 @@ class User(AbstractUser):
     second_name = models.CharField(max_length=50)
     icon = JSONField()
     is_assistant = models.BooleanField(default=False)
-    unti_id = models.PositiveIntegerField(null=True)
+    unti_id = models.PositiveIntegerField(null=True, db_index=True)
 
     class Meta:
         verbose_name = _(u'Пользователь')
@@ -22,7 +22,7 @@ class Event(models.Model):
     is_active = models.BooleanField(default=False, verbose_name=_(u'Доступно для оцифровки'))
     dt_start = models.DateTimeField(verbose_name=_(u'Время начала'))
     dt_end = models.DateTimeField(verbose_name=_(u'Время окончания'))
-    title = models.CharField(max_length=1000, default='')
+    title = models.CharField(max_length=1000, default='', verbose_name='Название')
 
     class Meta:
         verbose_name = _(u'Событие')
@@ -40,14 +40,24 @@ class Event(models.Model):
         return user.is_assistant
 
     def get_traces(self):
-        data = self.data or {}
-        return sorted(data.get('traces', []))
+        return list(self.trace_set.order_by('name').values_list('name', flat=True))
+
+
+class Trace(models.Model):
+    """
+    Модель результата эвента. Удаление результата не предполагается, может только меняться
+    список эвентов, к которым он относится.
+    """
+    events = models.ManyToManyField(Event)
+    ext_id = models.PositiveIntegerField(db_index=True)
+    trace_type = models.CharField(max_length=255, db_index=True)
+    name = models.TextField(default='')
 
 
 class EventEntry(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    is_active = models.BooleanField()
+    is_active = models.BooleanField(default=False)
     timestamp = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -64,7 +74,7 @@ class EventMaterial(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     url = models.URLField(blank=True)
     file = models.FileField(blank=True)
-    trace = models.CharField(max_length=1000)
+    trace = models.ForeignKey(Trace, on_delete=models.CASCADE)
 
     class Meta:
         verbose_name = _(u'Материал')
