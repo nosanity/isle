@@ -15,6 +15,9 @@ class User(AbstractUser):
         verbose_name = _(u'Пользователь')
         verbose_name_plural = _(u'Пользователи')
 
+    def __str__(self):
+        return '%s %s' % (self.unti_id, self.get_full_name())
+
 
 class Event(models.Model):
     uid = models.CharField(max_length=255, unique=True, verbose_name=_(u'UID события'))
@@ -108,6 +111,9 @@ class Team(models.Model):
     class Meta:
         verbose_name = 'Команда'
         verbose_name_plural = 'Команды'
+
+    def __str__(self):
+        return self.name
 
 
 class EventTeamMaterial(AbstractMaterial):
