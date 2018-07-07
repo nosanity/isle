@@ -117,3 +117,11 @@ class EventTeamMaterial(AbstractMaterial):
     class Meta:
         verbose_name = _(u'Материал команды')
         verbose_name_plural = _(u'Материалы команд')
+
+
+class EventOnlyMaterial(AbstractMaterial):
+    comment = models.CharField(default='', max_length=255)
+
+    class Meta:
+        verbose_name = _(u'Материал мероприятия')
+        verbose_name_plural = _(u'Материалы мероприятий')

@@ -5,6 +5,7 @@
     {% if request.user.is_assistant %}
         <button class="btn btn-primary" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
         <a class="btn btn-primary" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
+        <a class="btn btn-primary" href="{% url 'load-event-materials' uid=event.uid %}">Загрузка материалов мероприятия</a>
     {% endif %}
 
     <table class="table">

@@ -46,7 +46,7 @@
                 {% if allow_file_upload %}
                     {% trans "Файл" %}<input type="file" name="file_field">
                 {% endif %}
-                {% if team_upload %}
+                {% if with_comment_input %}
                     <label>Описание</label><input maxlength="255" name="comment"></textarea>
                 {% endif %}
                 <button name="add_btn" type="submit" class="btn btn-primary add-material-btn" disabled="disabled">{% trans "Добавить" %}</button>

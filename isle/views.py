@@ -12,7 +12,7 @@ from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.generic import TemplateView, View
 from isle.forms import CreateTeamForm
-from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial
+from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial
 from isle.utils import refresh_events_data
 
 
@@ -89,6 +89,7 @@ class EventView(GetEventMixin, TemplateView):
 
 class BaseLoadMaterials(GetEventMixin, TemplateView):
     template_name = 'load_materials.html'
+    material_model = None
 
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
@@ -120,6 +121,9 @@ class BaseLoadMaterials(GetEventMixin, TemplateView):
             return self.add_item(request)
         return self.delete_item(request)
 
+    def check_post_allowed(self, request):
+        pass
+
     def delete_item(self, request):
         material_id = request.POST.get('material_id')
         if not material_id or not material_id.isdigit():
@@ -129,11 +133,35 @@ class BaseLoadMaterials(GetEventMixin, TemplateView):
             return JsonResponse({}, status=400)
         return self._delete_item(trace, material_id)
 
+    def add_item(self, request):
+        trace = Trace.objects.filter(events=self.event, id=request.POST['trace_name']).first()
+        if not trace:
+            return JsonResponse({}, status=400)
+        data = self.get_material_fields(trace, request)
+        url = request.POST.get('url_field')
+        file_ = request.FILES.get('file_field')
+        if bool(file_) == bool(url):
+            return JsonResponse({}, status=400)
+        if url:
+            data['url'] = url
+        material = self.material_model.objects.create(**data)
+        if file_:
+            material.file.save(self.make_file_path(file_.name), file_)
+        return JsonResponse({'material_id': material.id, 'url': material.get_url()})
+
+    def get_material_fields(self, trace, request):
+        return {}
+
+    def make_file_path(self, fn):
+        return fn
+
 
 class LoadMaterials(BaseLoadMaterials):
     """
     Просмотр/загрузка материалов по эвенту
     """
+    material_model = EventMaterial
+
     def dispatch(self, request, *args, **kwargs):
         self.user  # проверка того, что пользователь с unti_id из url существует
         # страницу может видеть ассистент или пользователь, указанный в урле
@@ -167,20 +195,10 @@ class LoadMaterials(BaseLoadMaterials):
     def add_item(self, request):
         if not EventEntry.objects.filter(event=self.event, user=self.user).exists():
             return JsonResponse({}, status=400)
-        trace = Trace.objects.filter(events=self.event, id=request.POST['trace_name']).first()
-        if not trace:
-            return JsonResponse({}, status=400)
-        data = dict(event=self.event, user=self.user, trace=trace)
-        url = request.POST.get('url_field')
-        file_ = request.FILES.get('file_field')
-        if bool(file_) == bool(url):
-            return JsonResponse({}, status=400)
-        if url:
-            data['url'] = url
-        material = EventMaterial.objects.create(**data)
-        if file_:
-            material.file.save(self.make_file_path(file_.name), file_)
-        return JsonResponse({'material_id': material.id, 'url': material.get_url()})
+        return super().add_item(request)
+
+    def get_material_fields(self, trace, request):
+        return dict(event=self.event, user=self.user, trace=trace)
 
     def make_file_path(self, fn):
         return os.path.join(self.event.uid, str(self.user.unti_id), fn)
@@ -190,7 +208,8 @@ class LoadTeamMaterials(BaseLoadMaterials):
     """
     Просмотр/загрузка командных материалов по эвенту
     """
-    extra_context = {'team_upload': True}
+    extra_context = {'with_comment_input': True, 'team_upload': True}
+    material_model = EventTeamMaterial
 
     def dispatch(self, request, *args, **kwargs):
         self.team  # проверка того, что команда с team_id из url существует
@@ -245,24 +264,43 @@ class LoadTeamMaterials(BaseLoadMaterials):
         material.delete()
         return JsonResponse({})
 
-    def add_item(self, request):
-        trace = Trace.objects.filter(events=self.event, id=request.POST['trace_name']).first()
-        if not trace:
-            return JsonResponse({}, status=400)
-        data = dict(event=self.event, team=self.team, trace=trace, comment=request.POST.get('comment', ''))
-        url = request.POST.get('url_field')
-        file_ = request.FILES.get('file_field')
-        if bool(file_) == bool(url):
-            return JsonResponse({}, status=400)
-        if url:
-            data['url'] = url
-        material = EventTeamMaterial.objects.create(**data)
-        if file_:
-            material.file.save(self.make_file_path(file_.name), file_)
-        return JsonResponse({'material_id': material.id, 'url': material.get_url()})
-
     def make_file_path(self, fn):
         return os.path.join(self.event.uid, str(self.team.team_name), fn)
+
+    def get_material_fields(self, trace, request):
+        return dict(event=self.event, team=self.team, trace=trace, comment=request.POST.get('comment', ''))
+
+
+class LoadEventMaterials(BaseLoadMaterials):
+    """
+    Загрузка материалов мероприятия
+    """
+    material_model = EventOnlyMaterial
+    extra_context = {'with_comment_input': True}
+
+    def get_materials(self):
+        return EventOnlyMaterial.objects.filter(event=self.event)
+
+    def dispatch(self, request, *args, **kwargs):
+        # страница доступна только ассистентам
+        if request.user.is_authenticated and request.user.is_assistant:
+            return super().dispatch(request, *args, **kwargs)
+        return HttpResponseForbidden()
+
+    def _delete_item(self, trace, material_id):
+        material = EventOnlyMaterial.objects.filter(
+            event=self.event, trace=trace, id=material_id
+        ).first()
+        if not material:
+            return JsonResponse({}, status=400)
+        material.delete()
+        return JsonResponse({})
+
+    def make_file_path(self, fn):
+        return os.path.join(self.event.uid, fn)
+
+    def get_material_fields(self, trace, request):
+        return dict(event=self.event, trace=trace, comment=request.POST.get('comment', ''))
 
 
 class RefreshDataView(View):
