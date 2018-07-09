@@ -64,7 +64,7 @@ class Event(models.Model):
         traces = self.trace_set.order_by('name')
         if not traces and self.event_type is not None:
             return Trace.objects.filter(event_type=self.event_type).order_by('name')
-        return []
+        return Trace.objects.none()
 
 
 class Trace(models.Model):
