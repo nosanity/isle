@@ -14,25 +14,20 @@
         </thead>
         {% for event in objects %}
             <tr>
-                <td>{{ event.title }}</td>
+                <td>
+                    <a
+                        {% if request.user.is_assistant %}
+                            href="{% url 'event-view' uid=event.uid %}"
+                        {% else %}
+                            href="{% url 'load-materials' uid=event.uid unti_id=request.user.unti_id %}"
+                        {% endif %}
+                    >{{ event.title }}</a>
+                </td>
                 <td>{{ event.dt_start|date:"d.m.Y (H:i)" }}</td>
                 <td>{{ event.dt_end|date:"d.m.Y (H:i)" }}</td>
             </tr>
         {% endfor %}
     </table>
-    <ul class="list-group list-group-flush">
-        {% for event in objects %}
-            <li class="list-group-item">
-                <a
-                    {% if request.user.is_assistant %}
-                        href="{% url 'event-view' uid=event.uid %}"
-                    {% else %}
-                        href="{% url 'load-materials' uid=event.uid unti_id=request.user.unti_id %}"
-                    {% endif %}
-                >{{ event }}</a>
-            </li>
-        {% endfor %}
-    </ul>
 {% endblock %}
 
 {% block js %}
