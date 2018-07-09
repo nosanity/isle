@@ -42,14 +42,17 @@
                 {% endfor %}
 
                 <li class="list-group-item">
-                {% trans "URL:" %}<input type="url" name="url_field">
                 {% if allow_file_upload %}
-                    {% trans "Файл" %}<input type="file" name="file_field">
+                    {% trans "Файл" %}
+		    <label class="btn btn-default btn-file">
+			 {% trans "Выбрать" %} <input type="file" name="file_field" style="display: none;">
+		    </label>
                 {% endif %}
+                {% trans "URL: (если не загружаете файл)" %}<input type="url" name="url_field">
                 {% if with_comment_input %}
                     <label>Описание</label><input maxlength="255" name="comment"></textarea>
                 {% endif %}
-                <button name="add_btn" type="submit" class="btn btn-primary add-material-btn" disabled="disabled">{% trans "Добавить" %}</button>
+                    <button name="add_btn" type="submit" class="btn btn-primary add-material-btn" disabled="disabled">{% trans "Добавить" %}</button>
                 </li>
             </ul>
         </form>

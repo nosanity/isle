@@ -20,8 +20,8 @@ class RemoveDeleteActionMixin:
 @admin.register(Event)
 class EventAdmin(RemoveDeleteActionMixin, admin.ModelAdmin):
     actions = ['make_active', 'make_inactive']
-    list_display = ('uid', 'title', 'dt_start', 'dt_end', 'is_active')
-    list_filter = ('is_active',)
+    list_display = ('uid', 'title', 'dt_start', 'dt_end', 'event_type', 'is_active')
+    list_filter = ('is_active', 'event_type',)
     readonly_fields = ('uid', 'dt_start', 'dt_end', 'data', 'title', 'event_type')
 
     def has_add_permission(self, request):
