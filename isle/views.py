@@ -128,13 +128,13 @@ class BaseLoadMaterials(GetEventMixin, TemplateView):
         material_id = request.POST.get('material_id')
         if not material_id or not material_id.isdigit():
             return JsonResponse({}, status=400)
-        trace = Trace.objects.filter(events=self.event, id=request.POST['trace_name']).first()
+        trace = Trace.objects.filter(id=request.POST['trace_name']).first()
         if not trace:
             return JsonResponse({}, status=400)
         return self._delete_item(trace, material_id)
 
     def add_item(self, request):
-        trace = Trace.objects.filter(events=self.event, id=request.POST['trace_name']).first()
+        trace = Trace.objects.filter(id=request.POST['trace_name']).first()
         if not trace:
             return JsonResponse({}, status=400)
         data = self.get_material_fields(trace, request)

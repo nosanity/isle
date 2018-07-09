@@ -4,7 +4,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 import requests
 from isle.api import Api, ApiError
-from isle.models import Event, EventEntry, User, Trace
+from isle.models import Event, EventEntry, User, Trace, EventType
 
 
 def refresh_events_data(force=False, refresh_participants=False, refresh_for_events=()):
@@ -19,6 +19,7 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
     if not updated:
         return True
     try:
+        event_types = {}
         existing_uids = set(Event.objects.values_list('uid', flat=True))
         fetched_events = set()
         unti_id_to_user_id = dict(User.objects.values_list('unti_id', 'id'))
@@ -26,6 +27,16 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
         for activity in activities:
             title = activity.get('title', '')
             runs = activity.get('runs') or []
+            event_type = None
+            activity_type = activity.get('activity_type')
+            if activity_type and activity_type.get('id'):
+                event_type = event_types.get(int(activity_type['id']))
+                if not event_type:
+                    event_type = EventType.objects.update_or_create(
+                        ext_id=int(activity_type['id']),
+                        defaults={'title': activity_type.get('title'),
+                                  'description': activity_type.get('description') or ''}
+                    )[0]
             for run in runs:
                 events = run.get('events') or []
                 assignments = run.get('assignments') or []
@@ -44,7 +55,7 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
                         dt_start = parse_datetime(timeslot['time_start'])
                         dt_end = parse_datetime(timeslot['time_end'])
                     e = Event.objects.update_or_create(uid=uid, defaults={
-                        'dt_start': dt_start, 'dt_end': dt_end, 'title': title})[0]
+                        'dt_start': dt_start, 'dt_end': dt_end, 'title': title, 'event_type': event_type})[0]
                     fetched_events.add(e.uid)
                     if not refresh_participants:
                         continue

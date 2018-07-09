@@ -19,6 +19,22 @@ class User(AbstractUser):
         return '%s %s' % (self.unti_id, self.get_full_name())
 
 
+class EventType(models.Model):
+    ext_id = models.PositiveIntegerField(unique=True, verbose_name='Внешний id')
+    title = models.CharField(max_length=500, verbose_name='Название')
+    description = models.TextField(verbose_name='Описание', blank=True, default='')
+    trace_data = JSONField(blank=True, help_text='JSON в виде списка из объектов с ключами trace_type и name. '
+                                                 'Например, [{"trace_type": "Презентация", "name": '
+                                                 '"Презентация продукта"}]')
+
+    class Meta:
+        verbose_name = 'Тип мероприятия'
+        verbose_name_plural = 'Типы мероприятия'
+
+    def __str__(self):
+        return self.title
+
+
 class Event(models.Model):
     uid = models.CharField(max_length=255, unique=True, verbose_name=_(u'UID события'))
     data = JSONField()
@@ -26,6 +42,8 @@ class Event(models.Model):
     dt_start = models.DateTimeField(verbose_name=_(u'Время начала'))
     dt_end = models.DateTimeField(verbose_name=_(u'Время окончания'))
     title = models.CharField(max_length=1000, default='', verbose_name='Название')
+    event_type = models.ForeignKey(EventType, on_delete=models.SET_NULL, verbose_name='Тип мероприятия',
+                                   blank=True, null=True, default=None)
 
     class Meta:
         verbose_name = _(u'Событие')
@@ -43,7 +61,9 @@ class Event(models.Model):
         return user.is_assistant
 
     def get_traces(self):
-        return self.trace_set.order_by('name')
+        traces = self.trace_set.order_by('name')
+        if not traces and self.event_type is not None:
+            return Trace.objects.filter(event_type=self.event_type).order_by('name')
 
 
 class Trace(models.Model):
@@ -51,10 +71,19 @@ class Trace(models.Model):
     Модель результата эвента. Удаление результата не предполагается, может только меняться
     список эвентов, к которым он относится.
     """
-    events = models.ManyToManyField(Event)
-    ext_id = models.PositiveIntegerField(db_index=True)
-    trace_type = models.CharField(max_length=255, db_index=True)
-    name = models.TextField(default='')
+    events = models.ManyToManyField(Event, blank=True, verbose_name='События')
+    ext_id = models.PositiveIntegerField(db_index=True, null=True, blank=True)
+    trace_type = models.CharField(max_length=255, db_index=True, verbose_name='Тип')
+    name = models.TextField(default='', verbose_name='Название')
+    event_type = models.ForeignKey(EventType, on_delete=models.SET_NULL, verbose_name='Тип мероприятия',
+                                   blank=True, null=True, default=None)
+
+    class Meta:
+        verbose_name = 'Результат'
+        verbose_name_plural = 'Результаты'
+
+    def __str__(self):
+        return self.name
 
 
 class EventEntry(models.Model):
