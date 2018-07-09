@@ -4,6 +4,22 @@
     {% if request.user.is_assistant %}
         <button class="btn btn-primary" id="refresh" data-url="{% url 'refresh-view' %}">Обновить данные</button>
     {% endif %}
+    <table class="table">
+        <thead class="thead-dark">
+            <tr>
+              <th scope="col">Название мероприятия</th>
+              <th scope="col">Дата и время начала</th>
+              <th scope="col">Дата и время окончания</th>
+            </tr>
+        </thead>
+        {% for event in objects %}
+            <tr>
+                <td>{{ event.title }}</td>
+                <td>{{ event.dt_start|date:"d.m.Y (H:i)" }}</td>
+                <td>{{ event.dt_end|date:"d.m.Y (H:i)" }}</td>
+            </tr>
+        {% endfor %}
+    </table>
     <ul class="list-group list-group-flush">
         {% for event in objects %}
             <li class="list-group-item">
