@@ -3,6 +3,7 @@ from collections import defaultdict
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import logout as base_logout
+from django.core.exceptions import PermissionDenied
 from django.db.models import Count
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404
@@ -89,7 +90,7 @@ class EventView(GetEventMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         if not self.request.user.is_assistant:
-            return HttpResponseForbidden()
+            raise PermissionDenied
         users = get_event_participants(self.event)
         num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
                    values_list('user_id').annotate(num=Count('event_id')))
