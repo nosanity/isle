@@ -58,7 +58,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'settings.wsgi.application'
+WSGI_APPLICATION = 'wsgi.application'
 
 
 # Database
@@ -121,7 +121,7 @@ LOGIN_URL = '/login/unti/'
 # название тега, по которому приложение понимает, что пользователь ассистент
 ASSISTANT_TAG_NAME = 'assistant'
 # максимальный размер загружаемых файлов
-MAXIMUM_ALLOWED_FILE_SIZE = 5
+MAXIMUM_ALLOWED_FILE_SIZE = 100
 # значение в секундах, +- от текущего времени когда событие считается новым
 CURRENT_EVENT_DELTA = 60 * 60
 # на сколько кешировать данные, получаемые по апи

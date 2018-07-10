@@ -7,9 +7,12 @@
     <table class="table">
         <thead class="thead-dark">
             <tr>
-              <th scope="col">Название мероприятия</th>
-              <th scope="col">Дата и время начала</th>
-              <th scope="col">Дата и время окончания</th>
+                <th scope="col">Название мероприятия</th>
+                <th scope="col">Дата и время начала</th>
+                <th scope="col">Дата и время окончания</th>
+                {% if request.user.is_assistant %}
+                    <th scope="col">Количество участников</th>
+                {% endif %}
             </tr>
         </thead>
         {% for event in objects %}
@@ -25,6 +28,9 @@
                 </td>
                 <td>{{ event.dt_start|date:"d.m.Y (H:i)" }}</td>
                 <td>{{ event.dt_end|date:"d.m.Y (H:i)" }}</td>
+                {% if request.user.is_assistant %}
+                    <td>{{ event.entry_count }}</td>
+                {% endif %}
             </tr>
         {% endfor %}
     </table>

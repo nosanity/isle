@@ -66,6 +66,10 @@ class Event(models.Model):
             return Trace.objects.filter(event_type=self.event_type).order_by('name')
         return Trace.objects.none()
 
+    @property
+    def entry_count(self):
+        return EventEntry.objects.filter(event=self).count()
+
 
 class Trace(models.Model):
     """
