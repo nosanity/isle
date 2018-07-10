@@ -80,3 +80,40 @@ class Api:
         except requests.RequestException:
             logging.exception('ILE connection failure')
             raise ApiError
+
+    def make_request(self, url, method='get', retry=0):
+        try:
+            if not self.token:
+                self.refresh_token()
+            r = requests.request(
+                method,
+                url,
+                headers={'Authorization': 'Bearer %s' % self.token},
+                timeout=settings.CONNECTION_TIMEOUT,
+                verify=settings.ILE_VERIFY_CERTIFICATE,
+            )
+            if r.status_code == 401:
+                if retry < self.MAX_RETRIES:
+                    return self.make_request(url, method=method, retry=retry + 1)
+                else:
+                    raise ApiError
+            assert r.ok
+            return r.json()
+        except AssertionError:
+            logging.error('ILE returned code %s, reason: %s' % (r.status_code, r.reason))
+            raise ApiError
+        except requests.RequestException:
+            logging.exception('ILE connection failure')
+            raise ApiError
+
+    def get_check_ins_data(self, event_id):
+        return self.make_request(
+            '{}/api/check_in/list/?_I=check_in.user&event_id={}'.format(settings.ILE_BASE_URL, event_id)
+        )
+
+    def set_check_in(self, event_id, unti_id, confirmed):
+        return self.make_request(
+            '{}/api/user/check_in/confirm/?unti_id={}&event_id={}&confirmed={}'.format(
+                settings.ILE_BASE_URL, unti_id, event_id, int(bool(confirmed))),
+            method='post'
+        )

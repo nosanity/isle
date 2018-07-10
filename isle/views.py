@@ -14,7 +14,7 @@ from django.utils.functional import cached_property
 from django.views.generic import TemplateView, View
 from isle.forms import CreateTeamForm
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial
-from isle.utils import refresh_events_data, get_allowed_event_type_ids
+from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in
 
 
 def logout(request):
@@ -356,3 +356,31 @@ class CreateTeamView(GetEventMixin, TemplateView):
             return JsonResponse({}, status=400)
         form.save()
         return JsonResponse({'redirect': reverse('event-view', kwargs={'uid': self.event.uid})})
+
+
+class RefreshCheckInView(GetEventMixin, View):
+    """
+    Обновление чекинов всех пользователей определенного мероприятия из ILE
+    или обновление чекина одного пользователя в ILE
+    """
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated and request.user.is_assistant:
+            return super().dispatch(request, *args, **kwargs)
+        return HttpResponseForbidden()
+
+    def get(self, request, uid=None):
+        if not self.event.ile_id:
+            return JsonResponse({'success': False})
+        return JsonResponse({'success': bool(update_check_ins_for_event(self.event))})
+
+    def post(self, request, uid=None):
+        if not self.event.ile_id:
+            return JsonResponse({'success': False})
+        user_id = request.POST.get('user_id')
+        if not user_id or 'status' not in request.POST:
+            return JsonResponse({}, status=400)
+        user = User.objects.filter(id=user_id).first()
+        if not user or not EventEntry.objects.filter(event=self.event, user=user).exists():
+            return JsonResponse({}, status=400)
+        status = request.POST['status'] in ['true', '1', True]
+        return JsonResponse({'success': set_check_in(self.event, user, status)})

@@ -3,8 +3,10 @@
 
 {% block content %}
     <h2>{{ event.title }}</h2>
+    {% csrf_token %}
     {% if request.user.is_assistant %}
         <button class="btn btn-primary" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
+        <button class="btn btn-primary" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
         <a class="btn btn-primary" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
         <a class="btn btn-primary" href="{% url 'load-event-materials' uid=event.uid %}">Загрузка материалов мероприятия</a>
     {% endif %}
@@ -15,6 +17,7 @@
               <th scope="col">ФИО</th>
               <th scope="col">Фото</th>
               <th scope="col">Количество загруженных файлов</th>
+               <th scope="col">Чекин</th>
               <th scope="col">Загрузка</th>
             </tr>
         </thead>
@@ -23,6 +26,7 @@
                 <td>{{ student.get_full_name }}</td>
                 <td>{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
                 <td>{{ student.materials_num }}</td>
+                <td><input type="checkbox" data-user="{{ student.id }}" class="check-in" {% if student.checked_in %}checked{% endif %}></td>
                 <td>
                     {% if event.is_active %}
                     <a class="btn btn-primary" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
@@ -62,4 +66,45 @@
     {% if request.user.is_assistant %}
         {% include 'refresh_script.html' %}
     {% endif %}
+    <script type="text/javascript">
+        $(document).ready(function() {
+            $('#refresh-check-ins').click(function(e) {
+                e.preventDefault();
+                var btn = $(this);
+                btn.attr('disabled', 'disabled').prop('disabled', true);
+                $.ajax({
+                    url: btn.data('url'),
+                    type: 'GET',
+                    success: function(data) {
+                        if (data.success) {
+                            window.location.reload();
+                        }
+                    },
+                    complete: function(xhr, status) {
+                        btn.removeAttr('disabled', 'disabled').prop('disabled', false);
+                    }
+                })
+            });
+
+            $('input.check-in').change(function() {
+                var checked = this.checked;
+                var box = this;
+                var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), user_id: $(this).data('user'), status: checked};
+                $.ajax({
+                    url: "{% url 'refresh-checkin-view' uid=event.uid %}",
+                    method: 'POST',
+                    data: data,
+                    success: function(data) {
+                        if (!data.success) {
+                            box.checked = !checked;
+                        }
+                    },
+                    error: function() {
+                        alert('error');
+                        box.checked = !checked;
+                    }
+                })
+            });
+        });
+    </script>
 {% endblock %}

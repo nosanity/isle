@@ -44,6 +44,7 @@ class Event(models.Model):
     title = models.CharField(max_length=1000, default='', verbose_name='Название')
     event_type = models.ForeignKey(EventType, on_delete=models.SET_NULL, verbose_name='Тип мероприятия',
                                    blank=True, null=True, default=None)
+    ile_id = models.PositiveIntegerField(default=None, verbose_name='id в ILE')
 
     class Meta:
         verbose_name = _(u'Событие')

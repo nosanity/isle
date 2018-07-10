@@ -68,6 +68,7 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
                         dt_start = parse_datetime(timeslot['time_start'])
                         dt_end = parse_datetime(timeslot['time_end'])
                     e = Event.objects.update_or_create(uid=uid, defaults={
+                        'ile_id': event.get('id'),
                         'dt_start': dt_start, 'dt_end': dt_end, 'title': title, 'event_type': event_type})[0]
                     fetched_events.add(e.uid)
                     if not refresh_participants:
@@ -78,6 +79,13 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
                             logging.error('User with unti_id %s not found' % ptcpt)
                             continue
                         EventEntry.objects.get_or_create(user_id=user_id, event_id=e.id)
+                    check_ins = event.get('check_ins') or []
+                    for check_in in check_ins:
+                        user_id = unti_id_to_user_id.get(check_in['user']['unti_id'])
+                        if not user_id:
+                            continue
+                        EventEntry.objects.filter(event_id=e.id, user_id=user_id).update(
+                            is_active=check_in['is_confirmed'])
         if not refresh_for_events:
             delete_events = existing_uids - fetched_events
             # если произошли изменения в списке будущих эвентов
@@ -111,3 +119,31 @@ def update_events_traces():
             t.events.set(trace_events)
     except Exception:
         logging.exception('failed to update traces')
+
+
+def update_check_ins_for_event(event):
+    try:
+        data = Api().get_check_ins_data(event.ile_id)
+        unti_id_to_user_id = dict(User.objects.values_list('unti_id', 'id'))
+        active, inactive = [], []
+        for check_in in data:
+            user_id = unti_id_to_user_id.get(check_in['user']['unti_id'])
+            if not user_id:
+                continue
+            if check_in['is_confirmed']:
+                active.append(user_id)
+            else:
+                inactive.append(user_id)
+        EventEntry.objects.filter(event_id=event.id, user_id__in=active).update(is_active=True)
+        EventEntry.objects.filter(event_id=event.id, user_id__in=inactive).update(is_active=False)
+        return True
+    except ApiError:
+        return False
+
+
+def set_check_in(event, user, confirmed):
+    try:
+        Api().set_check_in(event.ile_id, user.unti_id, confirmed)
+        return True
+    except ApiError:
+        return False

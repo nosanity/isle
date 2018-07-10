@@ -7,6 +7,7 @@ urlpatterns = [
     path('logout/', views.logout, name='logout'),
     path('refresh/', views.RefreshDataView.as_view(), name='refresh-view'),
     path('refresh/<str:uid>', views.RefreshDataView.as_view(), name='refresh-event-view'),
+    path('refresh-checkin/<str:uid>', views.RefreshCheckInView.as_view(), name='refresh-checkin-view'),
     path('create-team/<str:uid>/', views.CreateTeamView.as_view(), name='create-team'),
     path('load-team/<str:uid>/<int:team_id>/', views.LoadTeamMaterials.as_view(), name='load-team-materials'),
     path('load-event/<str:uid>/', views.LoadEventMaterials.as_view(), name='load-event-materials'),
