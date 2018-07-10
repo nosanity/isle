@@ -33,13 +33,10 @@
                     </ul>
                 </nav>
             </header>
-            {# firefox fix #}
-            <div class="clearfix"></div>
-            <div class="content">
+            <main>
                 {% block content %}{% endblock %}
-            </div>
+            </main>
         </div>
-
         {% block js %}
             <script type="text/javascript" src="{% static 'js/jquery.min.js' %}"></script>
             <script type="text/javascript" src="{% static 'js/bootstrap.min.js' %}"></script>

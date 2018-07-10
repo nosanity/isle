@@ -2,9 +2,31 @@
 @import "../node_modules/bootstrap/scss/variables";
 @import "../node_modules/bootstrap/scss/mixins";
 
+header{
+  margin-bottom: 20px;
+}
+.form-inline
+{
+  button, input, label{
+    &:not(:last-child){
+      margin-right: 5px;
+    }
+  }
+}
+
+.margin-bottom
+{
+  margin-bottom: 20px;
+}
+
 .navbar-brand
 {
   img{
     height: 50px;
   }
+}
+
+.nowrap
+{
+  white-space: nowrap;
 }
