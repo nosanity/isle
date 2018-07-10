@@ -5,20 +5,22 @@
     <h2>{{ event.title }}</h2>
     {% csrf_token %}
     {% if request.user.is_assistant %}
-        <button class="btn btn-primary" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
-        <button class="btn btn-primary" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
-        <a class="btn btn-primary" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
-        <a class="btn btn-primary" href="{% url 'load-event-materials' uid=event.uid %}">Загрузка материалов мероприятия</a>
+        <div class="margin-bottom">
+            <button class="btn btn-primary" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
+            <button class="btn btn-primary" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
+            <a class="btn btn-primary" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
+            <a class="btn btn-primary" href="{% url 'load-event-materials' uid=event.uid %}">Загрузка материалов мероприятия</a>
+        </div>
     {% endif %}
 
-    <table class="table">
-        <thead class="thead-dark">
+    <table class="table table-hover table-bordered table-striped">
+        <thead class="thead-light">
             <tr>
-              <th scope="col">ФИО</th>
-              <th scope="col">Фото</th>
-              <th scope="col">Количество загруженных файлов</th>
-               <th scope="col">Чекин</th>
-              <th scope="col">Загрузка</th>
+                <th scope="col">ФИО</th>
+                <th scope="col">Фото</th>
+                <th scope="col">Количество загруженных файлов</th>
+                <th scope="col">Чекин</th>
+                <th scope="col">Загрузка</th>
             </tr>
         </thead>
         {% for student in students %}
@@ -29,7 +31,7 @@
                 <td><input type="checkbox" data-user="{{ student.id }}" class="check-in" {% if student.checked_in %}checked{% endif %}></td>
                 <td>
                     {% if event.is_active %}
-                    <a class="btn btn-primary" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
+                    <a class="btn btn-primary btn-sm" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
                     {% endif %}
                 </td>
             </tr>
@@ -38,8 +40,8 @@
 
     {% if teams %}
         <h3>Команды</h3>
-        <table class="table">
-            <thead class="thead-dark">
+        <table class="table table-hover table-bordered table-striped">
+            <thead class="thead-light">
                 <tr>
                   <th scope="col">Название команды</th>
                   <th scope="col">Количество участников</th>
@@ -52,7 +54,7 @@
                     <td>{{ team.users.count }}</td>
                     <td>
                         {% if event.is_active %}
-                        <a class="btn btn-primary" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
+                        <a class="btn btn-primary btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
                         {% endif %}
                     </td>
                 </tr>

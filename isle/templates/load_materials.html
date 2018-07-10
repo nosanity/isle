@@ -3,8 +3,8 @@
 
 {% block content %}
     {% if team_upload %}
-        <table class="table">
-            <thead class="thead-dark">
+        <table class="table table-hover table-bordered table-striped margin-top">
+            <thead class="thead-light">
                 <tr>
                   <th scope="col">ФИО</th>
                   <th scope="col">Фото</th>
@@ -19,7 +19,7 @@
                     <td>{{ student.materials_num }}</td>
                     <td>
                         {% if event.is_active %}
-                        <a class="btn btn-primary" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
+                        <a class="btn btn-primary btn-sm" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
                         {% endif %}
                     </td>
                 </tr>
@@ -35,33 +35,33 @@
                 {% for link in trace.links %}
                     <li class="list-group-item">
                         <a href="{{ link.get_url }}">{{ link.get_url }}</a>&nbsp;
-                        <button name="material_id" value="{{ link.id }}" class="btn btn-danger pull-right delete-material-btn">
+                        <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
                             {% blocktrans %}Удалить{% endblocktrans %}
                         </button>
                     </li>
                 {% endfor %}
-
-                <li class="list-group-item">
-                {% if allow_file_upload %}
-                    {% trans "Файл" %}
-		    <label class="btn btn-default btn-file">
-			 {% trans "Выбрать" %} <input type="file" name="file_field" style="display: none;">
-		    </label>
-                {% endif %}
-                {% trans "URL: (если не загружаете файл)" %}<input type="url" name="url_field">
-                {% if with_comment_input %}
-                    <label>Описание</label><input maxlength="255" name="comment"></textarea>
-                {% endif %}
-                    <button name="add_btn" type="submit" class="btn btn-primary add-material-btn" disabled="disabled">{% trans "Добавить" %}</button>
-                <br>
-                <span id="file-name"></span>
+                <li class="list-group-item form-inline">
+                    {% if allow_file_upload %}
+                        {% trans "Файл" %}
+                        <label class="btn btn-default btn-file border">
+                            {% trans "Выбрать" %}
+                            <input type="file" name="file_field" style="display: none;" class="form-control">
+                        </label>
+                    {% endif %}
+                    <label for="url">{% trans "URL: (если не загружаете файл)" %}</label>
+                    <input type="url" name="url_field" class="form-control" id="url">
+                    {% if with_comment_input %}
+                        <label for="description">Описание</label>
+                        <input id="description" maxlength="255" name="comment" class="form-control"></textarea>
+                    {% endif %}
+                        <button name="add_btn" type="submit" class="btn btn-primary add-material-btn" disabled="disabled">{% trans "Добавить" %}</button>
+                    <br>
+                    <span class="file-name" id="file-name"></span>
                 </li>
             </ul>
         </form>
     {% endfor %}
-
-    <div class="clearfix"></div>
-    <button class="btn btn-default" onclick="window.history.back()">
+    <button class="btn btn-default margin-top" onclick="window.history.back()">
         {% blocktrans %}Назад{% endblocktrans %}
     </button>
 {% endblock %}
