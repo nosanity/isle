@@ -61,8 +61,8 @@
     {% endfor %}
 
     <div class="clearfix"></div>
-    <button class="btn btn-default">
-        <a href="{% url 'index' %}">{% blocktrans %}Назад{% endblocktrans %}</a>
+    <button class="btn btn-default" onclick="window.history.back()">
+        {% blocktrans %}Назад{% endblocktrans %}
     </button>
 {% endblock %}
 
