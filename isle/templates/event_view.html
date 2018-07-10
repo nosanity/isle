@@ -2,6 +2,7 @@
 {% load i18n %}
 
 {% block content %}
+    <h2>{{ event.title }}</h2>
     {% if request.user.is_assistant %}
         <button class="btn btn-primary" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
         <a class="btn btn-primary" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>

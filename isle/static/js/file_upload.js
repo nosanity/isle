@@ -57,6 +57,7 @@ $(document).ready(function() {
     });
     $('body').delegate('input[name=file_field]', 'change', function(e) {
         activate_btn($(this).parents('form.trace-form'));
+        $('#file-name').html($(this)[0].files[0].name);
     });
 
     function form_valid(form) {
