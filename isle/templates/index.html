@@ -4,9 +4,12 @@
     {% if request.user.is_assistant %}
         <button class="btn btn-primary" id="refresh" data-url="{% url 'refresh-view' %}">Обновить данные</button>
     {% endif %}
+    <div class="clearfix"></div>
+    <label>Дата:</label><input type="date" id="choose-date">&nbsp;<button id="btn-date-refresh">Обновить</button>
     <table class="table">
         <thead class="thead-dark">
             <tr>
+                <th scope="col">Id</th>
                 <th scope="col">Название мероприятия</th>
                 <th scope="col">Дата и время начала</th>
                 <th scope="col">Дата и время окончания</th>
@@ -17,6 +20,7 @@
         </thead>
         {% for event in objects %}
             <tr>
+                <td>{{ event.id }}</td>
                 <td>
                     <a
                         {% if request.user.is_assistant %}
@@ -41,4 +45,15 @@
     {% if request.user.is_assistant %}
         {% include 'refresh_script.html' %}
     {% endif %}
+    <script type="text/javascript">
+        $(document).ready(function() {
+            $('#choose-date').val('{{ date }}');
+
+            $('#btn-date-refresh').click(function(e) {
+                e.preventDefault();
+                var url = window.location.protocol + '//' + window.location.host + '?date=' + $('#choose-date').val();
+                window.location.replace(url);
+            })
+        })
+    </script>
 {% endblock %}

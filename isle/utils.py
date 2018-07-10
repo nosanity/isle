@@ -1,10 +1,22 @@
 import logging
 from django.conf import settings
+from django.core.cache import caches
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 import requests
 from isle.api import Api, ApiError
 from isle.models import Event, EventEntry, User, Trace, EventType
+
+DEFAULT_CACHE = caches['default']
+EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
+
+
+def get_allowed_event_type_ids():
+    ids = DEFAULT_CACHE.get(EVENT_TYPES_CACHE_KEY)
+    if ids is None:
+        ids = [i.id for i in EventType.objects.all() if i.title.lower() in settings.VISIBLE_EVENT_TYPES]
+        DEFAULT_CACHE.set(EVENT_TYPES_CACHE_KEY, ids)
+    return ids
 
 
 def refresh_events_data(force=False, refresh_participants=False, refresh_for_events=()):
@@ -19,6 +31,7 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
     if not updated:
         return True
     try:
+        DEFAULT_CACHE.delete(EVENT_TYPES_CACHE_KEY)
         event_types = {}
         existing_uids = set(Event.objects.values_list('uid', flat=True))
         fetched_events = set()
@@ -62,7 +75,7 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
                     for ptcpt in participant_ids:
                         user_id = unti_id_to_user_id.get(ptcpt)
                         if not user_id:
-                            logging.error('User with unti_id %s not found' % ptcpt['user_id'])
+                            logging.error('User with unti_id %s not found' % ptcpt)
                             continue
                         EventEntry.objects.get_or_create(user_id=user_id, event_id=e.id)
         if not refresh_for_events:

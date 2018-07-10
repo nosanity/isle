@@ -13,7 +13,7 @@ def update_user(strategy, details, user=None, backend=None, *args, **kwargs):
         user.second_name = data.get('secondname', '') or ''
         user.icon = data.get('image') or {}
         tags = data.get('tags') or []
-        user.is_assistant = settings.ASSISTANT_TAG_NAME in tags
+        user.is_assistant = any(i in tags for i in settings.ASSISTANT_TAGS_NAME)
         user.unti_id = data.get('unti_id')
         user.save()
 

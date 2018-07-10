@@ -13,7 +13,7 @@ from django.utils.functional import cached_property
 from django.views.generic import TemplateView, View
 from isle.forms import CreateTeamForm
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial
-from isle.utils import refresh_events_data
+from isle.utils import refresh_events_data, get_allowed_event_type_ids
 
 
 def logout(request):
@@ -26,9 +26,17 @@ class Index(TemplateView):
     все эвенты (доступные пользователю)
     """
     template_name = 'index.html'
+    DATE_FORMAT = '%Y-%m-%d'
 
     def get_context_data(self, **kwargs):
-        return {'objects': self.get_events()}
+        return {'objects': self.get_events(), 'date': self.get_date().strftime(self.DATE_FORMAT)}
+
+    def get_date(self):
+        try:
+            date = timezone.datetime.strptime(self.request.GET.get('date'), self.DATE_FORMAT).date()
+        except:
+            date = timezone.localtime(timezone.now()).date()
+        return date
 
     def get_events(self):
         if self.request.user.is_assistant:
@@ -36,6 +44,13 @@ class Index(TemplateView):
         else:
             events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user).
                                           values_list('event_id', flat=True))
+        if settings.VISIBLE_EVENT_TYPES:
+            events = events.filter(event_type_id__in=get_allowed_event_type_ids())
+        date = self.get_date()
+        if date:
+            min_dt = timezone.make_aware(timezone.datetime.combine(date, timezone.datetime.min.time()))
+            max_dt = min_dt + timezone.timedelta(days=1)
+            events = events.filter(dt_start__gte=min_dt, dt_start__lt=max_dt)
         events = events.order_by('-dt_end')
         inactive_events, active_events, current_events = [], [], []
         delta = settings.CURRENT_EVENT_DELTA
