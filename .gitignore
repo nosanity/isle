@@ -63,3 +63,8 @@ target/
 celerybeat-schedule
 
 settings/local_settings.py
+
+isle/assets/node_modules/
+package-lock.json
+.DS_Store
+/media/
