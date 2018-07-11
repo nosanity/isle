@@ -64,7 +64,10 @@ class Event(models.Model):
     def get_traces(self):
         traces = self.trace_set.order_by('name')
         if not traces and self.event_type is not None:
-            return Trace.objects.filter(event_type=self.event_type).order_by('name')
+            events = self.event_type.trace_data or []
+            order = {j['name']: i for i, j in enumerate(events)}
+            traces = Trace.objects.filter(event_type=self.event_type)
+            return sorted(traces, key=lambda x: order.get(x.name, 0))
         return Trace.objects.none()
 
     @property

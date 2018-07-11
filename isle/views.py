@@ -130,8 +130,11 @@ class BaseLoadMaterials(GetEventMixin, TemplateView):
         resp = self.check_post_allowed(request)
         if resp is not None:
             return resp
-        trace_id = request.POST.get('trace_name')
-        if not trace_id or not self.event.get_traces().filter(id=trace_id).exists():
+        try:
+            trace_id = int(request.POST.get('trace_name'))
+        except (ValueError, TypeError):
+            return JsonResponse({}, status=400)
+        if not trace_id or not trace_id in [i.id for i in self.event.get_traces()]:
             return JsonResponse({}, status=400)
         if 'add_btn' in request.POST:
             return self.add_item(request)
@@ -257,8 +260,11 @@ class LoadTeamMaterials(BaseLoadMaterials):
         if not self.event.is_active or not (self.request.user.is_assistant or
                 Team.objects.filter(event=self.event, id=self.kwargs['team_id']).exists()):
             return JsonResponse({}, status=403)
-        trace_id = request.POST.get('trace_name')
-        if not trace_id or not self.event.get_traces().filter(id=trace_id).exists():
+        try:
+            trace_id = int(request.POST.get('trace_name'))
+        except (ValueError, TypeError):
+            return JsonResponse({}, status=400)
+        if not trace_id or not trace_id in [i.id for i in self.event.get_traces()]:
             return JsonResponse({}, status=400)
         if 'add_btn' in request.POST:
             return self.add_item(request)
