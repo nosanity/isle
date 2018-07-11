@@ -1,11 +1,12 @@
 {% extends 'base.html' %}
 
 {% block content %}
-    <form method="post" id="team-form">
+    <form method="post" id="team-form" class="form-inline">
         {% csrf_token %}
-        <label>Название команды:</label>&nbsp;<input type="text" name="name">
-        <table class="table">
-            <thead class="thead-dark">
+        <label>Название команды</label>
+        <input type="text" name="name" class="form-control">
+        <table class="table table-hover table-bordered table-striped margin-top">
+            <thead class="thead-light">
                 <tr>
                   <th scope="col">ФИО</th>
                   <th scope="col">Фото</th>
