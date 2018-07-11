@@ -15,10 +15,11 @@ $(document).ready(function() {
                 var m_id = data.material_id;
                 var items = form.children('ul.list-group').children('li');
                 var item = $(items[items.length - 1]);
-                item.before($('<li class="list-group-item"><a href="' + url + '">' + url + '</a>&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-danger pull-right delete-material-btn">Удалить</button></li>'));
+                item.before($('<li class="list-group-item"><a href="' + url + '">' + url + '</a>&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button></li>'));
                 form.find('input[name=url_field]').val('');
                 form.find('input[name=file_field]').val('');
                 form.find('input[name=comment]').val('');
+                form.find('span.file-name').html('');
                 activate_btn(form);
             },
             error: function (xhr, err) {alert('error')}
@@ -57,7 +58,7 @@ $(document).ready(function() {
     });
     $('body').delegate('input[name=file_field]', 'change', function(e) {
         activate_btn($(this).parents('form.trace-form'));
-        $('#file-name').html($(this)[0].files[0].name);
+        $(this).parents('li').find('span.file-name').html($(this)[0].files[0].name);
     });
 
     function form_valid(form) {
