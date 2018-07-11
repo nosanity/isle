@@ -38,6 +38,12 @@
         {% endfor %}
     </table>
 
+    {% if not students %}
+	<div class="alert alert-danger" role="alert">
+             Нет записей на данное мероприятие
+	</div>
+    {% endif %}
+
     {% if teams %}
         <h3>Команды</h3>
         <table class="table table-hover table-bordered table-striped">
