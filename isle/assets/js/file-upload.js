@@ -5,11 +5,28 @@ $(document).ready(function() {
         formData.append('add_btn', '');
         var form = $(e.target);
         if (!form_valid(form)) return;
+        var progress_wrapper = form.find('div.progress');
+        progress_wrapper.show();
+        var progress = progress_wrapper.children('.progress-bar');
+        progress.css('width', '0%');
         $.ajax({
             type: 'POST',
             data: formData,
             processData: false,
             contentType: false,
+            xhr: function() {
+                var xhr = new window.XMLHttpRequest();
+
+                xhr.upload.addEventListener("progress", function(evt) {
+                  if (evt.lengthComputable) {
+                    var percentComplete = evt.loaded / evt.total;
+                    percentComplete = parseInt(percentComplete * 100);
+                    progress.css('width', percentComplete + '%');
+                  }
+                }, false);
+
+                return xhr;
+            },
             success: function(data) {
                 var url = data.url;
                 var m_id = data.material_id;
@@ -22,12 +39,17 @@ $(document).ready(function() {
                 form.find('span.file-name').html('');
                 activate_btn(form);
             },
+            complete: function() {
+                progress_wrapper.hide();
+            },
             error: function (xhr, err) {alert('error')}
         })
     });
 
     $('body').delegate('button.delete-material-btn', 'click', function(e) {
         e.preventDefault();
+        var c = confirm('Вы действительно хотите удалить этот файл?');
+        if (!c) return;
         var btn = $(this);
         if ($(':focus').attr('name') != 'material_id') return;
         var form = btn.parents('form.trace-form');
