@@ -1,5 +1,10 @@
 $(document).ready(function() {
-    $('form.trace-form').submit(function(e) {
+    var forms = $('form.trace-form');
+    for (var i = 0; i < forms.length; i++){
+        $(forms[i]).areYouSure();
+    }
+
+    forms.submit(function(e) {
         e.preventDefault();
         var formData = new FormData(this);
         formData.append('add_btn', '');
@@ -9,6 +14,9 @@ $(document).ready(function() {
         progress_wrapper.show();
         var progress = progress_wrapper.children('.progress-bar');
         progress.css('width', '0%');
+        // имитация "грязного" поля для areYouSure
+        form.append('<input name="dirty-input" type="hidden" val="1" data-ays-orig="">');
+        form.trigger('checkform.areYouSure');
         $.ajax({
             type: 'POST',
             data: formData,
@@ -41,6 +49,8 @@ $(document).ready(function() {
             },
             complete: function() {
                 progress_wrapper.hide();
+                form.find('input[name=dirty-input]').remove();
+                form.trigger('checkform.areYouSure');
             },
             error: function (xhr, err) {alert('error')}
         })
@@ -80,7 +90,8 @@ $(document).ready(function() {
     });
     $('body').delegate('input[name=file_field]', 'change', function(e) {
         activate_btn($(this).parents('form.trace-form'));
-        $(this).parents('li').find('span.file-name').html($(this)[0].files[0].name);
+        if ($(this)[0].files[0])
+            $(this).parents('li').find('span.file-name').html($(this)[0].files[0].name);
     });
 
     function form_valid(form) {
