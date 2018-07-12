@@ -30,7 +30,14 @@ class Index(TemplateView):
     DATE_FORMAT = '%Y-%m-%d'
 
     def get_context_data(self, **kwargs):
-        return {'objects': self.get_events(), 'date': self.get_date().strftime(self.DATE_FORMAT)}
+        date = self.get_date()
+        objects = self.get_events()
+        return {
+                'objects': self.get_events(),
+                'date': date.strftime(self.DATE_FORMAT),
+                'total_elements': EventMaterial.objects.count() + EventTeamMaterial.objects.count() + EventOnlyMaterial.objects.count(),
+                'today_elements': EventMaterial.objects.filter(event__in=objects).count() + EventTeamMaterial.objects.filter(event__in=objects).count() + EventOnlyMaterial.objects.filter(event__in=objects).count(),
+                }
 
     def get_date(self):
         try:

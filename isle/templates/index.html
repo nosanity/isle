@@ -6,6 +6,7 @@
         <button class="btn btn-primary" id="btn-date-refresh">Фильтровать</button>
         {% if request.user.is_assistant %}
             <button class="btn btn-info float-right" id="refresh" data-url="{% url 'refresh-view' %}">Обновить данные</button>
+	    <div>&nbsp;Элементов по мероприятиям за день: {{ today_elements }};&nbsp;&nbsp;Всего элементов: {{ total_elements }} </div>
         {% endif %}
     </form>
     <table class="table table-striped table-bordered table-hover">
