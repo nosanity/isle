@@ -101,8 +101,10 @@ class EventView(GetEventMixin, TemplateView):
         users = get_event_participants(self.event)
         num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
                    values_list('user_id').annotate(num=Count('event_id')))
+        check_ins = set(EventEntry.objects.filter(event=self.event, is_active=True).values_list('user_id', flat=True))
         for u in users:
             u.materials_num = num.get(u.id, 0)
+            u.checked_in = u.id in check_ins
         return {
             'students': users,
             'event': self.event,
@@ -382,12 +384,12 @@ class RefreshCheckInView(GetEventMixin, View):
         return HttpResponseForbidden()
 
     def get(self, request, uid=None):
-        if not self.event.ile_id:
+        if not self.event.ext_id:
             return JsonResponse({'success': False})
         return JsonResponse({'success': bool(update_check_ins_for_event(self.event))})
 
     def post(self, request, uid=None):
-        if not self.event.ile_id:
+        if not self.event.ext_id:
             return JsonResponse({'success': False})
         user_id = request.POST.get('user_id')
         if not user_id or 'status' not in request.POST:
@@ -396,4 +398,7 @@ class RefreshCheckInView(GetEventMixin, View):
         if not user or not EventEntry.objects.filter(event=self.event, user=user).exists():
             return JsonResponse({}, status=400)
         status = request.POST['status'] in ['true', '1', True]
-        return JsonResponse({'success': set_check_in(self.event, user, status)})
+        result = set_check_in(self.event, user, status)
+        if result:
+            EventEntry.objects.filter(event=self.event, user=user).update(is_active=True)
+        return JsonResponse({'success': result})

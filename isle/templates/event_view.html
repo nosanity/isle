@@ -95,6 +95,10 @@
             });
 
             $('input.check-in').change(function() {
+                if (!this.checked) {
+                    this.checked = !this.checked;
+                    return;
+                }
                 var checked = this.checked;
                 var box = this;
                 var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), user_id: $(this).data('user'), status: checked};
