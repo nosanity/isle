@@ -74,6 +74,10 @@ class Event(models.Model):
     def entry_count(self):
         return EventEntry.objects.filter(event=self).count()
 
+    @property
+    def trace_count(self):
+        return EventMaterial.objects.filter(event=self).count() + EventTeamMaterial.objects.filter(event=self).count() + EventOnlyMaterial.objects.filter(event=self).count()
+
 
 class Trace(models.Model):
     """
