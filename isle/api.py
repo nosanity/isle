@@ -11,6 +11,10 @@ class ApiError(Exception):
     pass
 
 
+class ApiNotFound(ApiError):
+    pass
+
+
 class Api:
     """
     класс, реализующий запрос к ручке ILE с поддержкой получения и хранения токена, а также
@@ -71,6 +75,8 @@ class Api:
                     return self.get_events_data(force=force, retry=retry + 1)
                 else:
                     raise ApiError
+            elif r.status_code == 404:
+                raise ApiNotFound
             assert r.ok
             DEFAULT_CACHE.set(self.EVENTS_DATA_CACHE_KEY, r.json(), timeout=settings.API_DATA_CACHE_TIME)
             return r.json(), True
@@ -81,7 +87,23 @@ class Api:
             logging.exception('ILE connection failure')
             raise ApiError
 
-    def make_request(self, url, method='get', retry=0):
+    def get_paginated_activities(self, page):
+        return self.make_request(
+            '{}/api/activity/list/'.format(settings.ILE_BASE_URL),
+            params={
+                '_I': ['activity.runs',
+                       'run.assignments',
+                       'assignment.user',
+                       'run.events',
+                       'event.time_slot',
+                       'event.check_ins',
+                       'check_in.user'],
+                '_per_page': getattr(settings, 'ACTIVITIES_PER_PAGE', 20),
+                '_page': page
+            }
+        )
+
+    def make_request(self, url, method='get', retry=0, **kwargs):
         try:
             if not self.token:
                 self.refresh_token()
@@ -91,6 +113,7 @@ class Api:
                 headers={'Authorization': 'Bearer %s' % self.token},
                 timeout=settings.CONNECTION_TIMEOUT,
                 verify=settings.ILE_VERIFY_CERTIFICATE,
+                **kwargs
             )
             if r.status_code == 401:
                 if retry < self.MAX_RETRIES:
@@ -100,7 +123,7 @@ class Api:
             assert r.ok
             return r.json()
         except AssertionError:
-            logging.error('ILE returned code %s, reason: %s' % (r.status_code, r.reason))
+            logging.error('ILE returned code %s, reason: %s' % (r.status_code, r.content))
             raise ApiError
         except requests.RequestException:
             logging.exception('ILE connection failure')

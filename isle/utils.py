@@ -4,7 +4,7 @@ from django.core.cache import caches
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 import requests
-from isle.api import Api, ApiError
+from isle.api import Api, ApiError, ApiNotFound
 from isle.models import Event, EventEntry, User, Trace, EventType
 
 DEFAULT_CACHE = caches['default']
@@ -37,11 +37,16 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
         fetched_events = set()
         unti_id_to_user_id = dict(User.objects.values_list('unti_id', 'id'))
         activities = data.get('activities') or []
+        filter_dict = lambda d, excl: {k: d.get(k) for k in d if k not in excl}
+        ACTIVITY_EXCLUDE_KEYS = ['runs', 'activity_type', 'rates']
+        RUN_EXCLUDE_KEYS = ['bets', 'assignments', 'events']
+        EVENT_EXCLUDE_KEYS = ['check_ins', 'time_slot']
         for activity in activities:
             title = activity.get('title', '')
             runs = activity.get('runs') or []
             event_type = None
             activity_type = activity.get('activity_type')
+            activity_json = filter_dict(activity, ACTIVITY_EXCLUDE_KEYS)
             if activity_type and activity_type.get('id'):
                 event_type = event_types.get(int(activity_type['id']))
                 if not event_type:
@@ -51,6 +56,7 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
                                   'description': activity_type.get('description') or ''}
                     )[0]
             for run in runs:
+                run_json = filter_dict(run, RUN_EXCLUDE_KEYS)
                 events = run.get('events') or []
                 assignments = run.get('assignments') or []
                 participant_ids = []
@@ -59,6 +65,7 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
                     if unti_id:
                         participant_ids.append(int(unti_id))
                 for event in events:
+                    event_json = filter_dict(event, EVENT_EXCLUDE_KEYS)
                     uid = event['uuid']
                     if refresh_for_events and uid not in refresh_for_events:
                         continue
@@ -70,6 +77,7 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
                     e = Event.objects.update_or_create(uid=uid, defaults={
                         'ile_id': event.get('id'),
                         'ext_id': event.get('ext_id'),
+                        'data': {'event': event_json, 'run': run_json, 'activity': activity_json},
                         'dt_start': dt_start, 'dt_end': dt_end, 'title': title, 'event_type': event_type})[0]
                     fetched_events.add(e.uid)
                     if not refresh_participants:
@@ -101,6 +109,94 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
         return True
     except Exception:
         logging.exception('Failed to handle events data')
+
+
+def parse_activities(data, unti_id_to_user_id, fetched_events, event_types):
+    activities = data or []
+    filter_dict = lambda d, excl: {k: d.get(k) for k in d if k not in excl}
+    ACTIVITY_EXCLUDE_KEYS = ['runs', 'activity_type', 'rates']
+    RUN_EXCLUDE_KEYS = ['bets', 'assignments', 'events']
+    EVENT_EXCLUDE_KEYS = ['check_ins', 'time_slot']
+    for activity in activities:
+        title = activity.get('title', '')
+        runs = activity.get('runs') or []
+        event_type = None
+        activity_type = activity.get('activity_type')
+        activity_json = filter_dict(activity, ACTIVITY_EXCLUDE_KEYS)
+        if activity_type and activity_type.get('id'):
+            event_type = event_types.get(int(activity_type['id']))
+            if not event_type:
+                event_type = EventType.objects.update_or_create(
+                    ext_id=int(activity_type['id']),
+                    defaults={'title': activity_type.get('title'),
+                              'description': activity_type.get('description') or ''}
+                )[0]
+        for run in runs:
+            run_json = filter_dict(run, RUN_EXCLUDE_KEYS)
+            events = run.get('events') or []
+            assignments = run.get('assignments') or []
+            participant_ids = []
+            for assignment in assignments:
+                unti_id = (assignment.get('user') or {}).get('unti_id')
+                if unti_id:
+                    participant_ids.append(int(unti_id))
+            for event in events:
+                event_json = filter_dict(event, EVENT_EXCLUDE_KEYS)
+                uid = event['uuid']
+                timeslot = event.get('time_slot')
+                dt_start, dt_end = None, None
+                if timeslot:
+                    dt_start = parse_datetime(timeslot['time_start'])
+                    dt_end = parse_datetime(timeslot['time_end'])
+                e = Event.objects.update_or_create(uid=uid, defaults={
+                    'ile_id': event.get('id'),
+                    'ext_id': event.get('ext_id'),
+                    'data': {'event': event_json, 'run': run_json, 'activity': activity_json},
+                    'dt_start': dt_start, 'dt_end': dt_end, 'title': title, 'event_type': event_type})[0]
+                fetched_events.add(e.uid)
+                for ptcpt in participant_ids:
+                    user_id = unti_id_to_user_id.get(ptcpt)
+                    if not user_id:
+                        logging.error('User with unti_id %s not found' % ptcpt)
+                        continue
+                    EventEntry.objects.get_or_create(user_id=user_id, event_id=e.id)
+                check_ins = event.get('check_ins') or []
+                checked_users = []
+                for check_in in check_ins:
+                    user_id = unti_id_to_user_id.get(int(check_in['user']['unti_id']))
+                    if not user_id:
+                        continue
+                    checked_users.append(user_id)
+                EventEntry.objects.filter(event=e).update(is_active=False)
+                EventEntry.objects.filter(event_id=e.id, user_id__in=checked_users).update(is_active=True)
+
+
+def refresh_events_data_v2():
+    page = 1
+    existing_uids = set(Event.objects.values_list('uid', flat=True))
+    unti_id_to_user_id = dict(User.objects.values_list('unti_id', 'id'))
+    fetched_events = set()
+    event_types = {}
+    while True:
+        try:
+            data = Api().get_paginated_activities(page)
+            parse_activities(data, unti_id_to_user_id, fetched_events, event_types)
+            page += 1
+        except ApiNotFound:
+            delete_events = existing_uids - fetched_events
+            # если произошли изменения в списке будущих эвентов
+            dt = timezone.now() + timezone.timedelta(days=1)
+            delete_qs = Event.objects.filter(uid__in=delete_events, dt_start__gt=dt)
+            delete_events = delete_qs.values_list('uid', flat=True)
+            if delete_events:
+                logging.warning('Event(s) with uuid: {} were deleted'.format(', '.join(delete_events)))
+                delete_qs.delete()
+            return True
+        except ApiError:
+            return False
+        except Exception:
+            logging.exception('Failed to handle events data')
+            return False
 
 
 def update_events_traces():
