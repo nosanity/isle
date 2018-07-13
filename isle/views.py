@@ -176,7 +176,8 @@ class BaseLoadMaterials(GetEventMixin, TemplateView):
         material = self.material_model.objects.create(**data)
         if file_:
             material.file.save(self.make_file_path(file_.name), file_)
-        return JsonResponse({'material_id': material.id, 'url': material.get_url()})
+        return JsonResponse({'material_id': material.id, 'url': material.get_url(),
+                             'name': material.get_name()})
 
     def get_material_fields(self, trace, request):
         return {}

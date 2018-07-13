@@ -1,3 +1,5 @@
+import os
+import urllib
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
@@ -129,6 +131,11 @@ class AbstractMaterial(models.Model):
             return self.url
         elif self.file:
             return self.file.url
+
+    def get_name(self):
+        if self.file:
+            return urllib.parse.unquote(os.path.basename(self.file.url))
+        return self.url
 
     def __str__(self):
         return '#%s %s' % (self.id, self.get_url())

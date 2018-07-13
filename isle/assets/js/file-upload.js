@@ -62,9 +62,10 @@ $(document).ready(function() {
             success: function(data) {
                 var url = data.url;
                 var m_id = data.material_id;
+                var name = data.name;
                 var items = form.children('ul.list-group').children('li');
                 var item = $(items[items.length - 1]);
-                item.before($('<li class="list-group-item"><a href="' + url + '">' + url + '</a>&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button></li>'));
+                item.before($('<li class="list-group-item"><a href="' + url + '">' + name + '</a>&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button></li>'));
             },
             complete: function() {
                 $('div.upload-row[data-row-number="' + num + '"]').remove();
