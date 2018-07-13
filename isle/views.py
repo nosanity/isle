@@ -122,6 +122,7 @@ class BaseLoadMaterials(GetEventMixin, TemplateView):
             'traces': self.get_traces_data(),
             'allow_file_upload': getattr(settings, 'ALLOW_FILE_UPLOAD', False),
             'max_size': settings.MAXIMUM_ALLOWED_FILE_SIZE,
+            'max_uploads': settings.MAX_PARALLEL_UPLOADS,
         })
         return data
 

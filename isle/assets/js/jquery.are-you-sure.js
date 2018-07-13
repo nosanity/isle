@@ -89,12 +89,10 @@
       }
 
       $fields = $form.find(settings.fieldSelector);
-        console.log('fields', $fields);
 
       if (settings.addRemoveFieldsMarksDirty) {              
         // Check if field count has changed
         var origCount = $form.data("ays-orig-field-count");
-          console.log('count', origCount, $fields.length);
         if (origCount != $fields.length) {
           setDirtyStatus($form, true);
           return;

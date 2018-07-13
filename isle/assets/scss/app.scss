@@ -48,3 +48,16 @@ nav.navbar
 {
   white-space: nowrap;
 }
+
+.uploads
+{
+  margin-top: 10px;
+  .upload-row
+  {
+    margin: 5px 0;
+  }
+  .progress
+  {
+    max-width: 60%;
+  }
+}

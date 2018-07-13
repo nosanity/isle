@@ -79,7 +79,12 @@ module.exports = function (grunt) {
 			file_upload     : {
 				src  : 'js/file-upload.js',
 				dest : '<%= pkg.webpath %>/js/file-upload.min.js'
-			}
+			},
+            are_you_sure: {
+                src  : 'js/jquery.are-you-sure.js',
+                dest : '<%= pkg.webpath %>/js/jquery.are-you-sure.min.js'
+            }
+
 		},
 		watch  : {
 			app       : {
