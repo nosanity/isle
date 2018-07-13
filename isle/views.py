@@ -32,12 +32,20 @@ class Index(TemplateView):
     def get_context_data(self, **kwargs):
         date = self.get_date()
         objects = self.get_events()
-        return {
-                'objects': self.get_events(),
+        ctx = {
+                'objects': objects,
                 'date': date.strftime(self.DATE_FORMAT),
                 'total_elements': EventMaterial.objects.count() + EventTeamMaterial.objects.count() + EventOnlyMaterial.objects.count(),
                 'today_elements': EventMaterial.objects.filter(event__in=objects).count() + EventTeamMaterial.objects.filter(event__in=objects).count() + EventOnlyMaterial.objects.filter(event__in=objects).count(),
-                }
+        }
+        if self.request.user.is_assistant:
+            enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
+            check_ins = dict(EventEntry.objects.filter(is_active=True).values_list('event_id')
+                             .annotate(cnt=Count('user_id')))
+            for obj in objects:
+                obj.prop_enrollments = enrollments.get(obj.id, 0)
+                obj.prop_checkins = check_ins.get(obj.id, 0)
+        return ctx
 
     def get_date(self):
         try:

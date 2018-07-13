@@ -17,8 +17,8 @@
                 <th>Дата и время начала</th>
                 <th>Дата и время окончания</th>
                 {% if request.user.is_assistant %}
-                    <th>Количество участников</th>
-		    <th>Загружено элементов</th>
+                    <th>Количество участников/чекинов</th>
+		            <th>Загружено элементов</th>
                 {% endif %}
             </tr>
         </thead>
@@ -41,8 +41,8 @@
                     <span class="nowrap">{{ event.dt_end|date:"d E, H:i" }}</span>
                 </td>
                 {% if request.user.is_assistant %}
-                    <td class="text-center">{{ event.entry_count }}</td>
-		    <td class="text-center">{{ event.trace_count }}</td>
+                    <td class="text-center">{{ event.prop_enrollments }} / {{ event.prop_checkins }}</td>
+		            <td class="text-center">{{ event.trace_count }}</td>
                 {% endif %}
             </tr>
         {% endfor %}
