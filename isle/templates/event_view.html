@@ -3,6 +3,10 @@
 
 {% block content %}
     <h2>{{ event.title }}</h2>
+    <h4>
+        {{ event.dt_start|date:'d E, H:i' }} - {{ event.dt_end|date:'H:i' }}
+        ID: {{ event.ext_id }}, Run_ID: {{ event.data.run.ext_id }}, Activity_ID: {{ event.data.activity.ext_id }}
+    </h4>
     {% csrf_token %}
     {% if request.user.is_assistant %}
         <div class="margin-bottom">
