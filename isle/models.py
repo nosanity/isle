@@ -107,6 +107,8 @@ class EventEntry(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     is_active = models.BooleanField(default=False)
     timestamp = models.DateTimeField(auto_now=True)
+    added_by_assistant = models.BooleanField(default=False, verbose_name='Добавлен вручную')
+    check_in_pushed = models.BooleanField(default=False, verbose_name='Чекин проставлен в ILE')
 
     class Meta:
         verbose_name = _(u'Запись пользователя')

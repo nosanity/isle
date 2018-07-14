@@ -14,6 +14,7 @@
             <button class="btn btn-primary" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
             <a class="btn btn-primary" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
             <a class="btn btn-primary" href="{% url 'load-event-materials' uid=event.uid %}">Загрузка материалов мероприятия</a>
+            <a class="btn btn-primary" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
         </div>
     {% endif %}
 

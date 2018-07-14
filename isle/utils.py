@@ -95,7 +95,7 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
                         if not user_id:
                             continue
                         checked_users.append(user_id)
-                    EventEntry.objects.filter(event=e).update(is_active=False)
+                    EventEntry.objects.filter(event=e, added_by_assistant=False).update(is_active=False)
                     EventEntry.objects.filter(event_id=e.id, user_id__in=checked_users).update(is_active=True)
         if not refresh_for_events:
             delete_events = existing_uids - fetched_events
@@ -167,7 +167,7 @@ def parse_activities(data, unti_id_to_user_id, fetched_events, event_types):
                     if not user_id:
                         continue
                     checked_users.append(user_id)
-                EventEntry.objects.filter(event=e).update(is_active=False)
+                EventEntry.objects.filter(event=e, added_by_assistant=False).update(is_active=False)
                 EventEntry.objects.filter(event_id=e.id, user_id__in=checked_users).update(is_active=True)
 
 
@@ -230,7 +230,7 @@ def update_check_ins_for_event(event):
             if not user_id:
                 continue
             checked.append(user_id)
-        EventEntry.objects.filter(event_id=event.id).update(is_active=False)
+        EventEntry.objects.filter(event_id=event.id, added_by_assistant=False).update(is_active=False)
         EventEntry.objects.filter(event_id=event.id, user_id__in=checked).update(is_active=True)
         return True
     except ApiError:

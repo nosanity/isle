@@ -1,18 +1,21 @@
+import functools
 import os
+from itertools import permutations, combinations
 from collections import defaultdict
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import logout as base_logout
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import HttpResponseForbidden, JsonResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.generic import TemplateView, View
-from isle.forms import CreateTeamForm
+from dal import autocomplete
+from isle.forms import CreateTeamForm, AddUserForm
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in
 
@@ -412,3 +415,66 @@ class RefreshCheckInView(GetEventMixin, View):
         if result:
             EventEntry.objects.filter(event=self.event, user=user).update(is_active=True)
         return JsonResponse({'success': result})
+
+
+class AddUserToEvent(GetEventMixin, TemplateView):
+    """
+    Добавить пользователя на мероприятие вручную
+    """
+    template_name = 'add_user.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated and request.user.is_assistant:
+            return super().dispatch(request, *args, **kwargs)
+        return HttpResponseForbidden()
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        data.update({'event': self.event, 'form': AddUserForm(event=self.event)})
+        return data
+
+    def post(self, request, uid=None):
+        form = AddUserForm(data=request.POST, event=self.event)
+        if form.is_valid():
+            user = form.cleaned_data['user']
+            success = set_check_in(self.event, user, True)
+            EventEntry.objects.update_or_create(
+                user=user, event=self.event,
+                defaults={'added_by_assistant': True, 'is_active': True, 'check_in_pushed': success}
+            )
+            return redirect('event-view', uid=self.event.uid)
+        else:
+            return render(request, self.template_name, {'event': self.event, 'form': form})
+
+
+class UserAutocomplete(autocomplete.Select2QuerySetView):
+    def get_queryset(self):
+        event_id = self.forwarded.get('event_id')
+        if not self.request.user.is_authenticated or not self.request.user.is_assistant or not event_id:
+            return User.objects.none()
+        qs = User.objects.filter(is_assistant=False).exclude(
+            id__in=EventEntry.objects.filter(event_id=event_id).values_list('user_id', flat=True)
+        )
+        if self.q:
+            if len(self.q.split()) == 1:
+                qs = qs.filter(
+                    Q(email__icontains=self.q) | Q(username__icontains=self.q) |
+                    Q(last_name__icontains=self.q) | Q(first_name__icontains=self.q) |
+                    Q(second_name__icontains=self.q)
+                )
+            else:
+                filters = []
+                q_parts = self.q.split()
+                fields = ['last_name', 'first_name', 'second_name']
+                for p_len in range(1, min(len(fields), len(q_parts)) + 1):
+                    indexes = filter(lambda c: c[0] == 0, combinations(range(len(q_parts)), p_len))
+                    ranges = (zip(idxs, idxs[1:] + (None,)) for idxs in indexes)
+                    parts_combs = [[" ".join(q_parts[i:j]) for i, j in r] for r in ranges]
+                    for p in permutations(fields, p_len):
+                        filters.append(functools.reduce(lambda x, y: x | y,
+                                              (Q(**{k: v for k, v in zip(p, parts)}) for parts in parts_combs)))
+                qs = qs.filter(functools.reduce(lambda x, y: x | y, filters))
+        return qs
+
+    def get_result_label(self, result):
+        return '%s (%s)' % (result.get_full_name(), result.email)
