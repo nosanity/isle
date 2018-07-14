@@ -13,6 +13,7 @@ urlpatterns = [
     path('load-event/<str:uid>/', views.LoadEventMaterials.as_view(), name='load-event-materials'),
     path('add-user/<str:uid>/', views.AddUserToEvent.as_view(), name='add-user'),
     path('autocomplete/user/', views.UserAutocomplete.as_view(), name='user-autocomplete'),
+    path('api/attendance/', views.AttendanceApi.as_view()),
     path('<str:uid>/', views.EventView.as_view(), name='event-view'),
     path('<str:uid>/<int:unti_id>/', views.LoadMaterials.as_view(), name='load-materials'),
 ]

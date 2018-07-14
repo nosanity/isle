@@ -119,6 +119,26 @@ class EventEntry(models.Model):
         return '%s - %s' % (self.event, self.user)
 
 
+class Attendance(models.Model):
+    SYSTEM_UPLOADS = 'uploads'
+    SYSTEM_CHAT_BOT = 'chat_bot'
+    SYSTEMS = (
+        (SYSTEM_UPLOADS, SYSTEM_UPLOADS),
+        (SYSTEM_CHAT_BOT, SYSTEM_CHAT_BOT)
+    )
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    created_on = models.DateTimeField(auto_now_add=True)
+    updated_on = models.DateTimeField(auto_now=True)
+    confirmed_by_user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='confirmed_by_user', null=True)
+    confirmed_by_system = models.CharField(max_length=255, choices=SYSTEMS)
+    is_confirmed = models.BooleanField()
+
+    class Meta:
+        unique_together = ('event', 'user')
+
+
 class AbstractMaterial(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
     url = models.URLField(blank=True)

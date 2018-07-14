@@ -1,4 +1,5 @@
 import functools
+import logging
 import os
 from itertools import permutations, combinations
 from collections import defaultdict
@@ -15,8 +16,15 @@ from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.generic import TemplateView, View
 from dal import autocomplete
+from rest_framework import status
+from rest_framework.generics import ListAPIView
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import BasePermission
+from rest_framework.response import Response
 from isle.forms import CreateTeamForm, AddUserForm
-from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial
+from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
+    Attendance
+from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in
 
 
@@ -414,6 +422,16 @@ class RefreshCheckInView(GetEventMixin, View):
         result = set_check_in(self.event, user, status)
         if result:
             EventEntry.objects.filter(event=self.event, user=user).update(is_active=True)
+            Attendance.objects.update_or_create(
+                event=self.event, user=user,
+                defaults={
+                    'confirmed_by_user': request.user,
+                    'is_confirmed': True,
+                    'confirmed_by_system': Attendance.SYSTEM_UPLOADS,
+                }
+            )
+            logging.info('User %s has checked in user %s on event %s' %
+                         (request.user.username, user.username, self.event.id))
         return JsonResponse({'success': result})
 
 
@@ -442,6 +460,15 @@ class AddUserToEvent(GetEventMixin, TemplateView):
                 user=user, event=self.event,
                 defaults={'added_by_assistant': True, 'is_active': True, 'check_in_pushed': success}
             )
+            Attendance.objects.update_or_create(
+                event=self.event, user=user,
+                defaults={
+                    'confirmed_by_user': request.user,
+                    'is_confirmed': True,
+                    'confirmed_by_system': Attendance.SYSTEM_UPLOADS,
+                }
+            )
+            logging.info('User %s added user %s to event %s' % (request.user.username, user.username, self.event.id))
             return redirect('event-view', uid=self.event.uid)
         else:
             return render(request, self.template_name, {'event': self.event, 'form': form})
@@ -478,3 +505,107 @@ class UserAutocomplete(autocomplete.Select2QuerySetView):
 
     def get_result_label(self, result):
         return '%s (%s)' % (result.get_full_name(), result.email)
+
+
+class Paginator(PageNumberPagination):
+    page_size = 20
+
+
+class ApiPermission(BasePermission):
+    def has_permission(self, request, view):
+        if request.method == 'OPTIONS':
+            return True
+        api_key = getattr(settings, 'API_KEY', '')
+        key = request.META.get('HTTP_X_API_KEY')
+        if key and api_key and key == api_key:
+            return True
+        return False
+
+
+class AttendanceApi(ListAPIView):
+    """
+    **Описание**
+
+        Получение списка присутствовавших на мероприятии или добавление/обновление объекта присутствия.
+        В запросе должен присутствовать хедер X-API-KEY
+
+    **Пример get-запроса**
+
+        GET /api/attendance/
+
+    **Пример ответа**
+
+        * {
+            "count": 3, // общее количество объектов
+            "next": null, // полный url следующей страницы (если есть)
+            "previous": null, // полный url предыдущей страницы (если есть)
+            "results": [
+                {
+                    "unti_id": 125, // id пользователя в UNTI SSO
+                    "event_id": 2448, // id мероприятия в LABS
+                    "created_on": "2018-07-15T07:14:04+10:00", // дата создания объекта
+                    "updated_on": "2018-07-15T07:14:04+10:00", // дата обновления объекта
+                    "is_confirmed": true, // присутствие подтверждено
+                    "confirmed_by_user": 1, // id пользователя подтвердившего присутствие в UNTI SSO
+                    "confirmed_by_system": "uploads", // кем подтверждено uploads или chat_bot
+                    "run_id": 1405, // id прогона в LABS
+                    "activity_id": 439 // id активити в LABS
+                },
+                ...
+          }
+
+    **Пример post-запроса**
+
+    POST /api/attendance/{
+            "is_confirmed": true,
+            "user_id": 1,
+            "event_id": 1,
+        }
+
+    **Параметры post-запроса**
+
+        * is_confirmed: подтверждено или нет, boolean
+        * user_id: id пользователя в UNTI SSO, integer
+        * event_id: id мероприятия в LABS, integer
+
+    **Пример ответа**
+
+         * код 200, словарь с параметрами объекта как при get-запросе, если запрос прошел успешно
+         * код 400, если не хватает параметров в запросе
+         * код 403, если не указан хедер X-API-KEY или ключ неверен
+         * код 404, если не найден пользователь или мероприятие из запроса
+
+    """
+
+    serializer_class = AttendanceSerializer
+    pagination_class = Paginator
+    permission_classes = (ApiPermission, )
+
+    def get_queryset(self):
+        return Attendance.objects.order_by('id')
+
+    def post(self, request):
+        is_confirmed = request.data.get('is_confirmed')
+        user_id = request.data.get('user_id')
+        event_id = request.data.get('event_id')
+        if is_confirmed is None or not user_id or not event_id:
+            return Response({'error': 'request should contain is_confirmed, user_id and event_id parameters'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = User.objects.get(unti_id=user_id)
+        except (User.DoesNotExist, TypeError):
+            return Response({'error': 'user does not exist'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            event = Event.objects.get(ext_id=event_id)
+        except (Event.DoesNotExist, TypeError):
+            return Response({'error': 'event does not exist'}, status=status.HTTP_404_NOT_FOUND)
+        a = Attendance.objects.update_or_create(
+            user=user, event=event,
+            defaults={
+                'confirmed_by_user': None,
+                'confirmed_by_system': Attendance.SYSTEM_CHAT_BOT,
+                'is_confirmed': is_confirmed,
+            }
+        )[0]
+        logging.info('AttendanceApi request: %s' % request.data)
+        return Response(self.serializer_class(instance=a).data)

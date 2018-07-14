@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'isle',
     'social_core',
     'social_django',
+    'rest_framework',
 ]
 
 MIDDLEWARE = [
