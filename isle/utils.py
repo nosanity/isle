@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from django.conf import settings
 from django.core.cache import caches
 from django.utils import timezone
@@ -70,11 +71,15 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
                     if refresh_for_events and uid not in refresh_for_events:
                         continue
                     timeslot = event.get('time_slot')
-                    dt_start, dt_end = None, None
+                    is_active = False if event.get('is_delete') else True
+                    dt_start, dt_end = datetime.now(), datetime.now()
                     if timeslot:
-                        dt_start = parse_datetime(timeslot['time_start'])
-                        dt_end = parse_datetime(timeslot['time_end'])
+                        dt_start = parse_datetime(timeslot['time_start']) or datetime.now()
+                        dt_end = parse_datetime(timeslot['time_end']) or datetime.now()
+                    else:
+                        print(uid, title)
                     e = Event.objects.update_or_create(uid=uid, defaults={
+                        'is_active': is_active,
                         'ile_id': event.get('id'),
                         'ext_id': event.get('ext_id'),
                         'data': {'event': event_json, 'run': run_json, 'activity': activity_json},
@@ -99,6 +104,7 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
                     EventEntry.objects.filter(event_id=e.id, user_id__in=checked_users).update(is_active=True)
         if not refresh_for_events:
             delete_events = existing_uids - fetched_events
+            Event.objects.filter(uid__in=delete_events).update(is_active=False)
             # если произошли изменения в списке будущих эвентов
             dt = timezone.now() + timezone.timedelta(days=1)
             delete_qs = Event.objects.filter(uid__in=delete_events, dt_start__gt=dt)
@@ -144,11 +150,13 @@ def parse_activities(data, unti_id_to_user_id, fetched_events, event_types):
                 event_json = filter_dict(event, EVENT_EXCLUDE_KEYS)
                 uid = event['uuid']
                 timeslot = event.get('time_slot')
+                is_active = False if event.get('is_delete') else True
                 dt_start, dt_end = None, None
                 if timeslot:
                     dt_start = parse_datetime(timeslot['time_start'])
                     dt_end = parse_datetime(timeslot['time_end'])
                 e = Event.objects.update_or_create(uid=uid, defaults={
+                    'is_active': is_active,
                     'ile_id': event.get('id'),
                     'ext_id': event.get('ext_id'),
                     'data': {'event': event_json, 'run': run_json, 'activity': activity_json},

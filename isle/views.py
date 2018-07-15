@@ -68,7 +68,7 @@ class Index(TemplateView):
 
     def get_events(self):
         if self.request.user.is_assistant:
-            events = Event.objects.all()
+            events = Event.objects.filter(is_active=True)
         else:
             events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user).
                                           values_list('event_id', flat=True))
@@ -145,6 +145,7 @@ class BaseLoadMaterials(GetEventMixin, TemplateView):
             'allow_file_upload': getattr(settings, 'ALLOW_FILE_UPLOAD', False),
             'max_size': settings.MAXIMUM_ALLOWED_FILE_SIZE,
             'max_uploads': settings.MAX_PARALLEL_UPLOADS,
+            'event': self.event,
         })
         return data
 

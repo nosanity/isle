@@ -3,6 +3,11 @@
 
 {% block content %}
     <h2> {{ event.title }} </h2>
+    {% if event.uid and request.user.is_assistant %}
+        <a href="{% url 'event-view' uid=event.uid %}">
+            <button class="btn btn-light float-right">К странице мероприятия</button>
+        </a>
+    {% endif %}
     {% if team_upload %}
         <h4> Команда: '{{ team_name }}' </h4>
         <table class="table table-hover table-bordered table-striped margin-top">
@@ -64,6 +69,11 @@
             </ul>
         </form>
     {% endfor %}
+    {% if event.uid and request.user.is_assistant %}
+        <a href="{% url 'event-view' uid=event.uid %}">
+            <button class="btn btn-light margin-top">К странице мероприятия</button>
+        </a>
+    {% endif %}
     <button class="btn btn-default margin-top" onclick="window.history.back()">
         {% blocktrans %}Назад{% endblocktrans %}
     </button>

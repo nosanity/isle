@@ -51,6 +51,13 @@
             </tr>
         {% endfor %}
     </table>
+    {% if not objects %}
+        {% if request.user.is_assistant %}
+            <div class="alert alert-danger" role="alert">В выбранный день нет активных мероприятий</div>
+	{% else %}
+            <div class="alert alert-danger" role="alert">Вы не записаны на мероприятия в выбранный день</div>
+	{% endif %}
+    {% endif %}
 {% endblock %}
 
 {% block js %}

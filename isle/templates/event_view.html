@@ -33,7 +33,7 @@
                 <td>{{ student.get_full_name }}</td>
                 <td>{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
                 <td>{{ student.materials_num }}</td>
-                <td><input type="checkbox" data-user="{{ student.id }}" class="check-in" {% if student.checked_in %}checked{% endif %}></td>
+                <td><input type="checkbox" data-user="{{ student.id }}" class="check-in" {% if student.checked_in %}checked disabled{% endif %}></td>
                 <td>
                     {% if event.is_active %}
                     <a class="btn btn-primary btn-sm" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
