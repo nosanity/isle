@@ -109,6 +109,7 @@ def get_event_participants(event):
     return User.objects.filter(id__in=users).order_by('last_name', 'first_name', 'second_name')
 
 
+@method_decorator(login_required, name='dispatch')
 class EventView(GetEventMixin, TemplateView):
     """
     Просмотр статистики загрузок материалов по эвентам
@@ -132,6 +133,7 @@ class EventView(GetEventMixin, TemplateView):
         }
 
 
+@method_decorator(login_required, name='dispatch')
 class BaseLoadMaterials(GetEventMixin, TemplateView):
     template_name = 'load_materials.html'
     material_model = None
@@ -254,6 +256,7 @@ class LoadMaterials(BaseLoadMaterials):
         return os.path.join(self.event.uid, str(self.user.unti_id), fn)
 
 
+@method_decorator(login_required, name='dispatch')
 class LoadTeamMaterials(BaseLoadMaterials):
     """
     Просмотр/загрузка командных материалов по эвенту
@@ -275,7 +278,7 @@ class LoadTeamMaterials(BaseLoadMaterials):
                    values_list('user_id').annotate(num=Count('event_id')))
         for u in users:
             u.materials_num = num.get(u.id, 0)
-        data.update({'students': users, 'event': self.event})
+        data.update({'students': users, 'event': self.event, 'team_name': getattr(self.team, 'name', '')})
         return data
 
     @cached_property
@@ -324,6 +327,7 @@ class LoadTeamMaterials(BaseLoadMaterials):
         return dict(event=self.event, team=self.team, trace=trace, comment=request.POST.get('comment', ''))
 
 
+@method_decorator(login_required, name='dispatch')
 class LoadEventMaterials(BaseLoadMaterials):
     """
     Загрузка материалов мероприятия
@@ -371,6 +375,7 @@ class RefreshDataView(View):
         return JsonResponse({'success': bool(success)})
 
 
+@method_decorator(login_required, name='dispatch')
 class CreateTeamView(GetEventMixin, TemplateView):
     template_name = 'create_team.html'
 
