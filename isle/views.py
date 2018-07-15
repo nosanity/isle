@@ -29,6 +29,10 @@ from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in
 
 
+def login(request):
+    return render(request, 'login.html')
+
+
 def logout(request):
     return base_logout(request, next_page='index')
 
