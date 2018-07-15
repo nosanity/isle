@@ -118,7 +118,9 @@ AUTHENTICATION_BACKENDS = (
     'isle.auth.UNTIBackend',
     'django.contrib.auth.backends.ModelBackend'
 )
-LOGIN_URL = '/login/unti/'
+LOGIN_URL = '/login/'
+
+AWS_S3_FILE_OVERWRITE = False
 
 ### константы, которые можно переписать ###
 # название тега, по которому приложение понимает, что пользователь ассистент
@@ -160,3 +162,4 @@ ILE_VERIFY_CERTIFICATE = False
 LABS_TRACES_API_URL = 'https://labs.u2035dev.ru/api/v1/tracetype?app_token=7at0hbdmabmtfl0y'
 
 from .local_settings import *
+
