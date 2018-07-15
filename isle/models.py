@@ -142,7 +142,7 @@ class Attendance(models.Model):
 class AbstractMaterial(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
     url = models.URLField(blank=True)
-    file = models.FileField(blank=True)
+    file = models.FileField(blank=True, max_length=300)
     trace = models.ForeignKey(Trace, on_delete=models.CASCADE)
 
     class Meta:
