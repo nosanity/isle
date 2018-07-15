@@ -21,6 +21,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
+from social_django.models import UserSocialAuth
 from isle.forms import CreateTeamForm, AddUserForm
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance
@@ -481,7 +482,7 @@ class UserAutocomplete(autocomplete.Select2QuerySetView):
             return User.objects.none()
         qs = User.objects.filter(is_assistant=False).exclude(
             id__in=EventEntry.objects.filter(event_id=event_id).values_list('user_id', flat=True)
-        )
+        ).filter(id__in=UserSocialAuth.objects.all().values_list('user__id', flat=True))
         if self.q:
             if len(self.q.split()) == 1:
                 qs = qs.filter(
