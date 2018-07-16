@@ -8,15 +8,16 @@
         ID: {{ event.ext_id }}, Run_ID: {{ event.data.run.ext_id }}, Activity_ID: {{ event.data.activity.ext_id }}
     </h6>
     {% csrf_token %}
-    {% if request.user.is_assistant %}
-        <div class="margin-bottom">
+    <div class="margin-bottom">
+        {% if request.user.is_assistant %}
             <button class="btn btn-primary" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
             <button class="btn btn-primary" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
             <a class="btn btn-primary" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
             <a class="btn btn-primary" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
-            <a class="btn btn-success float-right" href="{% url 'load-event-materials' uid=event.uid %}">Материалы мероприятия</a>
-        </div>
-    {% endif %}
+        {% endif %}
+        <a class="btn btn-success float-right" href="{% url 'load-event-materials' uid=event.uid %}">
+            Материалы мероприятия{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
+    </div>
 
     <table class="table table-hover table-bordered table-striped">
         <thead class="thead-light">
@@ -30,13 +31,20 @@
         </thead>
         {% for student in students %}
             <tr>
-                <td>{{ student.get_full_name }}</td>
+                <td>
+                    <a href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{{ student.get_full_name }}</a>
+                </td>
                 <td>{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
                 <td>{{ student.materials_num }}</td>
-                <td><input type="checkbox" data-user="{{ student.id }}" class="check-in" {% if student.checked_in %}checked disabled{% endif %}></td>
+                <td><input type="checkbox" data-user="{{ student.id }}" class="check-in"
+                           {% if student.checked_in %}checked{% endif %}
+                        {% if student.checked_in or not request.user.is_assistant %} disabled{% endif %}>
+                </td>
                 <td>
                     {% if event.is_active %}
+                    {% if student.unti_id == request.user.unti_id or request.user.is_assistant %}
                     <a class="btn btn-primary btn-sm" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
+                    {% endif %}
                     {% endif %}
                 </td>
             </tr>
@@ -61,10 +69,12 @@
             </thead>
             {% for team in teams %}
                 <tr>
-                    <td>{{ team.name }}</td>
+                    <td>
+                        <a href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{{ team.name }}</a>
+                    </td>
                     <td>{{ team.users.count }}</td>
                     <td>
-                        {% if event.is_active %}
+                        {% if event.is_active and request.user.is_assistant %}
                         <a class="btn btn-primary btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
                         {% endif %}
                     </td>
@@ -78,7 +88,7 @@
     {{ block.super }}
     {% if request.user.is_assistant %}
         {% include 'refresh_script.html' %}
-    {% endif %}
+
     <script type="text/javascript">
         $(document).ready(function() {
             $('#refresh-check-ins').click(function(e) {
@@ -124,4 +134,5 @@
             });
         });
     </script>
+    {% endif %}
 {% endblock %}

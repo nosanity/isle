@@ -30,13 +30,7 @@
                 <td>{{ event.data.run.ext_id }}</td>
                 <td>{{ event.data.activity.ext_id }}</td>
                 <td>
-                    <a
-                        {% if request.user.is_assistant %}
-                            href="{% url 'event-view' uid=event.uid %}"
-                        {% else %}
-                            href="{% url 'load-materials' uid=event.uid unti_id=request.user.unti_id %}"
-                        {% endif %}
-                    >{{ event.title }}</a>
+                    <a href="{% url 'event-view' uid=event.uid %}">{{ event.title }}</a>
                 </td>
                 <td>
                     <span class="nowrap">{{ event.dt_start|date:"d E, H:i" }}</span>

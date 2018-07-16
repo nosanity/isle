@@ -3,6 +3,7 @@ import urllib
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+from django.utils.functional import cached_property
 from django.utils.translation import ugettext_lazy as _
 from jsonfield import JSONField
 
@@ -80,6 +81,10 @@ class Event(models.Model):
     @property
     def trace_count(self):
         return EventMaterial.objects.filter(event=self).count() + EventTeamMaterial.objects.filter(event=self).count() + EventOnlyMaterial.objects.filter(event=self).count()
+
+    @cached_property
+    def event_only_material_count(self):
+        return EventOnlyMaterial.objects.filter(event=self).count()
 
 
 class Trace(models.Model):
@@ -165,6 +170,7 @@ class AbstractMaterial(models.Model):
 
 class EventMaterial(AbstractMaterial):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
+    is_public = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = _(u'Материал')

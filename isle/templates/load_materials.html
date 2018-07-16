@@ -26,7 +26,9 @@
                     <td>{{ student.materials_num }}</td>
                     <td>
                         {% if event.is_active %}
+                        {% if student.unti_id == request.user.unti_id or request.user.is_assistant %}
                         <a class="btn btn-primary btn-sm" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
+                        {% endif %}
                         {% endif %}
                     </td>
                 </tr>
@@ -42,11 +44,14 @@
                 {% for link in trace.links %}
                     <li class="list-group-item">
                         <a href="{{ link.get_url }}">{{ link.get_name }}</a>&nbsp;
+                        {% if can_upload %}
                         <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
                             {% blocktrans %}Удалить{% endblocktrans %}
                         </button>
+                        {% endif %}
                     </li>
                 {% endfor %}
+                {% if can_upload %}
                 <li class="list-group-item form-inline">
                     {% if allow_file_upload %}
                         {% trans "Файл" %}
@@ -66,25 +71,23 @@
                     <div class="uploads">
                     </div>
                 </li>
+                {% endif %}
             </ul>
         </form>
     {% endfor %}
-    {% if event.uid and request.user.is_assistant %}
-        <a href="{% url 'event-view' uid=event.uid %}">
-            <button class="btn btn-light margin-top">К странице мероприятия</button>
-        </a>
-    {% endif %}
-    <button class="btn btn-default margin-top" onclick="window.history.back()">
-        {% blocktrans %}Назад{% endblocktrans %}
-    </button>
+    <a href="{% url 'event-view' uid=event.uid %}">
+        <button class="btn btn-light margin-top">К странице мероприятия</button>
+    </a>
 {% endblock %}
 
 {% block js %}
     {{ block.super }}
+    {% if can_upload %}
     <script type="text/javascript">
         MAX_SIZE = {{ max_size }};
         MAX_PARALLEL_UPLOADS = {{ max_uploads }};
     </script>
     <script type="text/javascript" src="{% static 'js/jquery.are-you-sure.min.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/file-upload.min.js' %}"></script>
+    {% endif %}
 {% endblock %}
