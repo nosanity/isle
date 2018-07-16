@@ -636,7 +636,8 @@ class UpdateAttendanceView(GetEventMixin, View):
         if not user_id or 'status' not in request.POST:
             return JsonResponse({}, status=400)
         user = User.objects.filter(id=user_id).first()
-        print(request.POST.get('status'))
+        if not request.user.is_assistant:
+            return JsonResponse({}, status=400)
         is_confirmed = request.POST.get('status') == 'true'
         Attendance.objects.update_or_create(
             event=self.event, user=user,
