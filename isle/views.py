@@ -123,9 +123,11 @@ class EventView(GetEventMixin, TemplateView):
         num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
                    values_list('user_id').annotate(num=Count('event_id')))
         check_ins = set(EventEntry.objects.filter(event=self.event, is_active=True).values_list('user_id', flat=True))
+        attends = set(Attendance.objects.filter(event=self.event, is_confirmed=True).values_list('user_id', flat=True))
         for u in users:
             u.materials_num = num.get(u.id, 0)
             u.checked_in = u.id in check_ins
+            u.attend = u.id in attends
         return {
             'students': users,
             'event': self.event,
@@ -616,3 +618,26 @@ class AttendanceApi(ListAPIView):
         )[0]
         logging.info('AttendanceApi request: %s' % request.data)
         return Response(self.serializer_class(instance=a).data)
+
+
+class UpdateAttendanceView(GetEventMixin, View):
+    def post(self, request, uid=None):
+        user_id = request.POST.get('user_id')
+        if not user_id or 'status' not in request.POST:
+            return JsonResponse({}, status=400)
+        user = User.objects.filter(id=user_id).first()
+        print(request.POST.get('status'))
+        is_confirmed = request.POST.get('status') == 'true'
+        Attendance.objects.update_or_create(
+            event=self.event, user=user,
+            defaults={
+                'confirmed_by_user': request.user,
+                'is_confirmed': is_confirmed,
+                'confirmed_by_system': Attendance.SYSTEM_UPLOADS,
+            }
+        )
+        logging.info('User %s has checked in user %s on event %s' %
+                     (request.user.username, user.username, self.event.id))
+        print('User %s has changed attendance for user %s on event %s to %s' %
+                     (request.user.username, user.username, self.event.id, is_confirmed))
+        return JsonResponse({'success': True})

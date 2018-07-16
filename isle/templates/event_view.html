@@ -25,6 +25,7 @@
                 <th scope="col">Фото</th>
                 <th scope="col">Количество загруженных файлов</th>
                 <th scope="col">Чекин</th>
+                <th scope="col">Присутствие</th>
                 <th scope="col">Загрузка</th>
             </tr>
         </thead>
@@ -34,6 +35,7 @@
                 <td>{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
                 <td>{{ student.materials_num }}</td>
                 <td><input type="checkbox" data-user="{{ student.id }}" class="check-in" {% if student.checked_in %}checked disabled{% endif %}></td>
+                <td><input type="checkbox" data-user="{{ student.id }}" class="attendance" {% if student.attend %}checked {% endif %}></td>
                 <td>
                     {% if event.is_active %}
                     <a class="btn btn-primary btn-sm" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
@@ -122,6 +124,27 @@
                     }
                 })
             });
+
+            $('input.attendance').change(function() {
+                var checked = this.checked;
+                var box = this;
+                var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), user_id: $(this).data('user'), status: checked};
+                $.ajax({
+                    url: "{% url 'update-attendance-view' uid=event.uid %}",
+                    method: 'POST',
+                    data: data,
+                    success: function(data) {
+                        if (!data.success) {
+                            box.checked = !checked;
+                        }
+                    },
+                    error: function() {
+                        alert('error');
+                        box.checked = !checked;
+                    }
+                })
+            });
+
         });
     </script>
 {% endblock %}
