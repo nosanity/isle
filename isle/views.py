@@ -8,7 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import logout as base_logout
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
-from django.http import HttpResponseForbidden, JsonResponse
+from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -27,6 +27,10 @@ from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, Eve
     Attendance
 from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in
+
+
+def login(request):
+    return render(request, 'login.html', {'next': request.GET.get('next', reverse('index'))})
 
 
 def logout(request):
@@ -104,26 +108,39 @@ class GetEventMixin:
         return super().dispatch(request, *args, **kwargs)
 
 
+class GetEventMixinWithAccessCheck(GetEventMixin):
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return HttpResponseRedirect('{}?next={}'.format(reverse('login'), request.get_full_path()))
+        if request.user.is_assistant or EventEntry.objects.filter(user=request.user, event=self.event).exists():
+            return super().dispatch(request, *args, **kwargs)
+        return render(request, 'to_xle.html', {
+            'link': getattr(settings, 'XLE_URL', 'https://xle.2035.university/feedback'),
+            'event': self.event,
+        })
+
+
 def get_event_participants(event):
     users = EventEntry.objects.filter(event=event).values_list('user_id')
     return User.objects.filter(id__in=users).order_by('last_name', 'first_name', 'second_name')
 
 
-@method_decorator(login_required, name='dispatch')
-class EventView(GetEventMixin, TemplateView):
+class EventView(GetEventMixinWithAccessCheck, TemplateView):
     """
     Просмотр статистики загрузок материалов по эвентам
     """
     template_name = 'event_view.html'
 
     def get_context_data(self, **kwargs):
-        if not self.request.user.is_assistant:
-            raise PermissionDenied
         users = get_event_participants(self.event)
-        num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
-                   values_list('user_id').annotate(num=Count('event_id')))
         check_ins = set(EventEntry.objects.filter(event=self.event, is_active=True).values_list('user_id', flat=True))
         attends = set(Attendance.objects.filter(event=self.event, is_confirmed=True).values_list('user_id', flat=True))
+        if not self.request.user.is_assistant:
+            num = dict(EventMaterial.objects.filter(event=self.event, user__in=users, is_public=True).
+                       values_list('user_id').annotate(num=Count('event_id')))
+        else:
+            num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
+                       values_list('user_id').annotate(num=Count('event_id')))
         for u in users:
             u.materials_num = num.get(u.id, 0)
             u.checked_in = u.id in check_ins
@@ -135,8 +152,7 @@ class EventView(GetEventMixin, TemplateView):
         }
 
 
-@method_decorator(login_required, name='dispatch')
-class BaseLoadMaterials(GetEventMixin, TemplateView):
+class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
     template_name = 'load_materials.html'
     material_model = None
 
@@ -148,8 +164,12 @@ class BaseLoadMaterials(GetEventMixin, TemplateView):
             'max_size': settings.MAXIMUM_ALLOWED_FILE_SIZE,
             'max_uploads': settings.MAX_PARALLEL_UPLOADS,
             'event': self.event,
+            'can_upload': self.can_upload(),
         })
         return data
+
+    def can_upload(self):
+        return self.request.user.is_assistant
 
     def get_traces_data(self):
         traces = self.event.get_traces()
@@ -176,7 +196,8 @@ class BaseLoadMaterials(GetEventMixin, TemplateView):
         return self.delete_item(request)
 
     def check_post_allowed(self, request):
-        pass
+        if not self.event.is_active or not self.can_upload():
+            return JsonResponse({}, status=403)
 
     def delete_item(self, request):
         material_id = request.POST.get('material_id')
@@ -217,26 +238,17 @@ class LoadMaterials(BaseLoadMaterials):
     """
     material_model = EventMaterial
 
-    def dispatch(self, request, *args, **kwargs):
-        self.user  # проверка того, что пользователь с unti_id из url существует
-        # страницу может видеть ассистент или пользователь, указанный в урле
-        if self.request.user.unti_id == self.kwargs['unti_id'] or self.event.is_author(self.request.user):
-            return super().dispatch(request, *args, **kwargs)
-        return HttpResponseForbidden()
+    def can_upload(self):
+        return self.request.user.is_assistant or int(self.kwargs['unti_id']) == self.request.user.unti_id
 
     def get_materials(self):
-        return EventMaterial.objects.filter(event=self.event, user=self.user)
+        if self.can_upload():
+            return EventMaterial.objects.filter(event=self.event, user=self.user)
+        return EventMaterial.objects.filter(event=self.event, user=self.user, is_public=True)
 
     @cached_property
     def user(self):
         return get_object_or_404(User, unti_id=self.kwargs['unti_id'])
-
-    def check_post_allowed(self, request):
-        # загрузка и удаление файлов доступны только для эвентов, доступных для оцифровки, и по
-        # пользователям, запись которых на этот эвент активна
-        if not self.event.is_active or not (self.request.user.is_assistant or
-                EventEntry.objects.filter(event=self.event, user=self.user, is_active=True).exists()):
-            return JsonResponse({}, status=403)
 
     def _delete_item(self, trace, material_id):
         material = EventMaterial.objects.filter(
@@ -259,20 +271,12 @@ class LoadMaterials(BaseLoadMaterials):
         return os.path.join(self.event.uid, str(self.user.unti_id), fn)
 
 
-@method_decorator(login_required, name='dispatch')
 class LoadTeamMaterials(BaseLoadMaterials):
     """
     Просмотр/загрузка командных материалов по эвенту
     """
     extra_context = {'with_comment_input': True, 'team_upload': True}
     material_model = EventTeamMaterial
-
-    def dispatch(self, request, *args, **kwargs):
-        self.team  # проверка того, что команда с team_id из url существует
-        # страницу может видеть только ассистент
-        if self.event.is_author(self.request.user):
-            return super().dispatch(request, *args, **kwargs)
-        return HttpResponseForbidden()
 
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
@@ -310,8 +314,8 @@ class LoadTeamMaterials(BaseLoadMaterials):
     def check_post_allowed(self, request):
         # загрузка и удаление файлов доступны только для эвентов, доступных для оцифровки, и по
         # командам, сформированным в данном эвенте
-        if not self.event.is_active or not (self.request.user.is_assistant or
-                Team.objects.filter(event=self.event, id=self.kwargs['team_id']).exists()):
+        if not super().check_post_allowed(request) or not \
+                Team.objects.filter(event=self.event, id=self.kwargs['team_id']).exists():
             return JsonResponse({}, status=403)
 
     def _delete_item(self, trace, material_id):
@@ -330,7 +334,6 @@ class LoadTeamMaterials(BaseLoadMaterials):
         return dict(event=self.event, team=self.team, trace=trace, comment=request.POST.get('comment', ''))
 
 
-@method_decorator(login_required, name='dispatch')
 class LoadEventMaterials(BaseLoadMaterials):
     """
     Загрузка материалов мероприятия
@@ -340,12 +343,6 @@ class LoadEventMaterials(BaseLoadMaterials):
 
     def get_materials(self):
         return EventOnlyMaterial.objects.filter(event=self.event)
-
-    def dispatch(self, request, *args, **kwargs):
-        # страница доступна только ассистентам
-        if request.user.is_authenticated and request.user.is_assistant:
-            return super().dispatch(request, *args, **kwargs)
-        return HttpResponseForbidden()
 
     def _delete_item(self, trace, material_id):
         material = EventOnlyMaterial.objects.filter(
@@ -569,6 +566,7 @@ class AttendanceApi(ListAPIView):
             "is_confirmed": true,
             "user_id": 1,
             "event_id": 1,
+            "confirmed_by_user": 1,
         }
 
     **Параметры post-запроса**
@@ -576,6 +574,8 @@ class AttendanceApi(ListAPIView):
         * is_confirmed: подтверждено или нет, boolean
         * user_id: id пользователя в UNTI SSO, integer
         * event_id: id мероприятия в LABS, integer
+        * confirmed_by_user: id пользователя в UNTI SSO, который подтвердил присутствие, integer или null,
+          необязательный параметр
 
     **Пример ответа**
 
@@ -591,12 +591,17 @@ class AttendanceApi(ListAPIView):
     permission_classes = (ApiPermission, )
 
     def get_queryset(self):
-        return Attendance.objects.order_by('id')
+        qs = Attendance.objects.order_by('id')
+        unti_id = self.request.query_params.get('unti_id')
+        if unti_id and unti_id.isdigit():
+            qs = qs.filter(user__unti_id=unti_id)
+        return qs
 
     def post(self, request):
         is_confirmed = request.data.get('is_confirmed')
         user_id = request.data.get('user_id')
         event_id = request.data.get('event_id')
+        confirmed_by = request.data.get('confirmed_by_user')
         if is_confirmed is None or not user_id or not event_id:
             return Response({'error': 'request should contain is_confirmed, user_id and event_id parameters'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -608,10 +613,15 @@ class AttendanceApi(ListAPIView):
             event = Event.objects.get(ext_id=event_id)
         except (Event.DoesNotExist, TypeError):
             return Response({'error': 'event does not exist'}, status=status.HTTP_404_NOT_FOUND)
+        if confirmed_by is not None:
+            try:
+                confirmed_by = User.objects.get(unti_id=confirmed_by)
+            except (ValueError, TypeError, User.DoesNotExist):
+                return Response({'error': 'user does not exist'}, status=status.HTTP_404_NOT_FOUND)
         a = Attendance.objects.update_or_create(
             user=user, event=event,
             defaults={
-                'confirmed_by_user': None,
+                'confirmed_by_user': confirmed_by,
                 'confirmed_by_system': Attendance.SYSTEM_CHAT_BOT,
                 'is_confirmed': is_confirmed,
             }

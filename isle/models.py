@@ -3,6 +3,7 @@ import urllib
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+from django.utils.functional import cached_property
 from django.utils.translation import ugettext_lazy as _
 from jsonfield import JSONField
 
@@ -81,6 +82,10 @@ class Event(models.Model):
     def trace_count(self):
         return EventMaterial.objects.filter(event=self).count() + EventTeamMaterial.objects.filter(event=self).count() + EventOnlyMaterial.objects.filter(event=self).count()
 
+    @cached_property
+    def event_only_material_count(self):
+        return EventOnlyMaterial.objects.filter(event=self).count()
+
 
 class Trace(models.Model):
     """
@@ -142,7 +147,7 @@ class Attendance(models.Model):
 class AbstractMaterial(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
     url = models.URLField(blank=True)
-    file = models.FileField(blank=True)
+    file = models.FileField(blank=True, max_length=300)
     trace = models.ForeignKey(Trace, on_delete=models.CASCADE)
 
     class Meta:
@@ -165,6 +170,7 @@ class AbstractMaterial(models.Model):
 
 class EventMaterial(AbstractMaterial):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
+    is_public = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = _(u'Материал')

@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="card-header text-center">
+В этом приложении вы можете загружать цифровой след для себя и своих подопечных
+</div>
+<div class="card-body text-center">
+    <a href="/login/unti/?next={{ next }}">
+        <button class="btn btn-primary" > Войти </button>
+    </a>
+</div>
+{% endblock %}
