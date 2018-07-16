@@ -142,7 +142,7 @@ class BaseLoadMaterials(GetEventMixin, TemplateView):
         data = super().get_context_data(**kwargs)
         data.update({
             'traces': self.get_traces_data(),
-            'allow_file_upload': getattr(settings, 'ALLOW_FILE_UPLOAD', False),
+            'allow_file_upload': getattr(settings, 'ALLOW_FILE_UPLOAD', True),
             'max_size': settings.MAXIMUM_ALLOWED_FILE_SIZE,
             'max_uploads': settings.MAX_PARALLEL_UPLOADS,
             'event': self.event,
@@ -200,7 +200,7 @@ class BaseLoadMaterials(GetEventMixin, TemplateView):
         if file_:
             material.file.save(self.make_file_path(file_.name), file_)
         return JsonResponse({'material_id': material.id, 'url': material.get_url(),
-                             'name': material.get_name()})
+                             'name': material.get_name(), 'comment': getattr(material, 'comment', '')})
 
     def get_material_fields(self, trace, request):
         return {}

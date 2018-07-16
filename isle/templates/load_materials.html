@@ -42,6 +42,7 @@
                 {% for link in trace.links %}
                     <li class="list-group-item">
                         <a href="{{ link.get_url }}">{{ link.get_name }}</a>&nbsp;
+                        <span>{{ link.comment }}</span>
                         <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
                             {% blocktrans %}Удалить{% endblocktrans %}
                         </button>
@@ -52,7 +53,7 @@
                         {% trans "Файл" %}
                         <label class="btn btn-default btn-file border">
                             {% trans "Выбрать" %}
-                            <input type="file" name="file_field" style="display: none;" class="form-control">
+                            <input type="file" multiple name="file_field" style="display: none;" class="form-control">
                         </label>
                     {% endif %}
                     <label for="url">{% trans "URL: (если не загружаете файл)" %}</label>
@@ -86,5 +87,5 @@
         MAX_PARALLEL_UPLOADS = {{ max_uploads }};
     </script>
     <script type="text/javascript" src="{% static 'js/jquery.are-you-sure.min.js' %}"></script>
-    <script type="text/javascript" src="{% static 'js/file-upload.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'js/file-upload.js' %}"></script>
 {% endblock %}
