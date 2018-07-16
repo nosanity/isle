@@ -564,6 +564,7 @@ class AttendanceApi(ListAPIView):
             "is_confirmed": true,
             "user_id": 1,
             "event_id": 1,
+            "confirmed_by_user": 1,
         }
 
     **Параметры post-запроса**
@@ -571,6 +572,8 @@ class AttendanceApi(ListAPIView):
         * is_confirmed: подтверждено или нет, boolean
         * user_id: id пользователя в UNTI SSO, integer
         * event_id: id мероприятия в LABS, integer
+        * confirmed_by_user: id пользователя в UNTI SSO, который подтвердил присутствие, integer или null,
+          необязательный параметр
 
     **Пример ответа**
 
@@ -586,12 +589,17 @@ class AttendanceApi(ListAPIView):
     permission_classes = (ApiPermission, )
 
     def get_queryset(self):
-        return Attendance.objects.order_by('id')
+        qs = Attendance.objects.order_by('id')
+        unti_id = self.request.query_params.get('unti_id')
+        if unti_id and unti_id.isdigit():
+            qs = qs.filter(user__unti_id=unti_id)
+        return qs
 
     def post(self, request):
         is_confirmed = request.data.get('is_confirmed')
         user_id = request.data.get('user_id')
         event_id = request.data.get('event_id')
+        confirmed_by = request.data.get('confirmed_by_user')
         if is_confirmed is None or not user_id or not event_id:
             return Response({'error': 'request should contain is_confirmed, user_id and event_id parameters'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -603,10 +611,15 @@ class AttendanceApi(ListAPIView):
             event = Event.objects.get(ext_id=event_id)
         except (Event.DoesNotExist, TypeError):
             return Response({'error': 'event does not exist'}, status=status.HTTP_404_NOT_FOUND)
+        if confirmed_by is not None:
+            try:
+                confirmed_by = User.objects.get(unti_id=confirmed_by)
+            except (ValueError, TypeError, User.DoesNotExist):
+                return Response({'error': 'user does not exist'}, status=status.HTTP_404_NOT_FOUND)
         a = Attendance.objects.update_or_create(
             user=user, event=event,
             defaults={
-                'confirmed_by_user': None,
+                'confirmed_by_user': confirmed_by,
                 'confirmed_by_system': Attendance.SYSTEM_CHAT_BOT,
                 'is_confirmed': is_confirmed,
             }
