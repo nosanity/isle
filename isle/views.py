@@ -149,7 +149,10 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
     template_name = 'event_view.html'
 
     def get_context_data(self, **kwargs):
-        users = get_event_participants(self.event)
+        users = list(get_event_participants(self.event))
+        user_entry = [i for i in users if i.id == self.request.user.id]
+        if user_entry:
+            users = user_entry + [i for i in users if i.id != self.request.user.id]
         check_ins = set(EventEntry.objects.filter(event=self.event, is_active=True).values_list('user_id', flat=True))
         attends = set(Attendance.objects.filter(event=self.event, is_confirmed=True).values_list('user_id', flat=True))
         if not self.request.user.is_assistant:
