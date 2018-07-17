@@ -92,7 +92,7 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
                         if not user_id:
                             logging.error('User with unti_id %s not found' % ptcpt)
                             continue
-                        EventEntry.objects.get_or_create(user_id=user_id, event_id=e.id)
+                        EventEntry.all_objects.get_or_create(user_id=user_id, event_id=e.id)
                     check_ins = event.get('check_ins') or []
                     checked_users = []
                     for check_in in check_ins:
@@ -100,8 +100,8 @@ def refresh_events_data(force=False, refresh_participants=False, refresh_for_eve
                         if not user_id:
                             continue
                         checked_users.append(user_id)
-                    EventEntry.objects.filter(event=e, added_by_assistant=False).update(is_active=False)
-                    EventEntry.objects.filter(event_id=e.id, user_id__in=checked_users).update(is_active=True)
+                    EventEntry.all_objects.filter(event=e, added_by_assistant=False).update(is_active=False)
+                    EventEntry.all_objects.filter(event_id=e.id, user_id__in=checked_users).update(is_active=True)
         if not refresh_for_events:
             delete_events = existing_uids - fetched_events
             Event.objects.filter(uid__in=delete_events).update(is_active=False)
@@ -167,7 +167,7 @@ def parse_activities(data, unti_id_to_user_id, fetched_events, event_types):
                     if not user_id:
                         logging.error('User with unti_id %s not found' % ptcpt)
                         continue
-                    EventEntry.objects.get_or_create(user_id=user_id, event_id=e.id)
+                    EventEntry.all_objects.get_or_create(user_id=user_id, event_id=e.id)
                 check_ins = event.get('check_ins') or []
                 checked_users = []
                 for check_in in check_ins:
@@ -175,8 +175,8 @@ def parse_activities(data, unti_id_to_user_id, fetched_events, event_types):
                     if not user_id:
                         continue
                     checked_users.append(user_id)
-                EventEntry.objects.filter(event=e, added_by_assistant=False).update(is_active=False)
-                EventEntry.objects.filter(event_id=e.id, user_id__in=checked_users).update(is_active=True)
+                EventEntry.all_objects.filter(event=e, added_by_assistant=False).update(is_active=False)
+                EventEntry.all_objects.filter(event_id=e.id, user_id__in=checked_users).update(is_active=True)
 
 
 def refresh_events_data_v2():
@@ -238,8 +238,8 @@ def update_check_ins_for_event(event):
             if not user_id:
                 continue
             checked.append(user_id)
-        EventEntry.objects.filter(event_id=event.id, added_by_assistant=False).update(is_active=False)
-        EventEntry.objects.filter(event_id=event.id, user_id__in=checked).update(is_active=True)
+        EventEntry.all_objects.filter(event_id=event.id, added_by_assistant=False).update(is_active=False)
+        EventEntry.all_objects.filter(event_id=event.id, user_id__in=checked).update(is_active=True)
         return True
     except ApiError:
         return False

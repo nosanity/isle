@@ -158,10 +158,13 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
         else:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
                        values_list('user_id').annotate(num=Count('event_id')))
+        can_delete = set(EventEntry.objects.filter(event=self.event, added_by_assistant=True).
+                         values_list('user_id', flat=True))
         for u in users:
             u.materials_num = num.get(u.id, 0)
             u.checked_in = u.id in check_ins
             u.attend = u.id in attends
+            u.can_delete = u.id in can_delete
         return {
             'students': users,
             'event': self.event,
@@ -495,10 +498,9 @@ class AddUserToEvent(GetEventMixin, TemplateView):
         form = AddUserForm(data=request.POST, event=self.event)
         if form.is_valid():
             user = form.cleaned_data['user']
-            success = set_check_in(self.event, user, True)
-            EventEntry.objects.update_or_create(
+            EventEntry.all_objects.update_or_create(
                 user=user, event=self.event,
-                defaults={'added_by_assistant': True, 'is_active': True, 'check_in_pushed': success}
+                defaults={'added_by_assistant': True, 'check_in_pushed': False, 'deleted': False}
             )
             Attendance.objects.update_or_create(
                 event=self.event, user=user,
@@ -512,6 +514,20 @@ class AddUserToEvent(GetEventMixin, TemplateView):
             return redirect('event-view', uid=self.event.uid)
         else:
             return render(request, self.template_name, {'event': self.event, 'form': form})
+
+
+class RemoveUserFromEvent(GetEventMixin, View):
+    def post(self, request, uid=None):
+        if not request.user.is_authenticated or not request.user.is_assistant:
+            return JsonResponse({}, status=403)
+        try:
+            assert EventEntry.objects.filter(event=self.event, user_id=request.POST.get('user_id'),
+                                             added_by_assistant=True).exists()
+        except (TypeError, ValueError, AssertionError):
+            return JsonResponse({}, status=404)
+        EventEntry.objects.filter(event=self.event, user_id=request.POST.get('user_id')).update(deleted=True)
+        Attendance.objects.filter(event=self.event, user_id=request.POST.get('user_id')).delete()
+        return JsonResponse({})
 
 
 class UserAutocomplete(autocomplete.Select2QuerySetView):

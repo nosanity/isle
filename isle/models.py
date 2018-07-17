@@ -108,6 +108,11 @@ class Trace(models.Model):
         return self.name
 
 
+class NotDeletedEntries(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted=False)
+
+
 class EventEntry(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -115,6 +120,10 @@ class EventEntry(models.Model):
     timestamp = models.DateTimeField(auto_now=True)
     added_by_assistant = models.BooleanField(default=False, verbose_name='Добавлен вручную')
     check_in_pushed = models.BooleanField(default=False, verbose_name='Чекин проставлен в ILE')
+    deleted = models.BooleanField(default=False)
+
+    objects = NotDeletedEntries()
+    all_objects = models.Manager()
 
     class Meta:
         verbose_name = _(u'Запись пользователя')
