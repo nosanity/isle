@@ -149,6 +149,7 @@ class AbstractMaterial(models.Model):
     url = models.URLField(blank=True)
     file = models.FileField(blank=True, max_length=300)
     trace = models.ForeignKey(Trace, on_delete=models.CASCADE)
+    initiator = models.PositiveIntegerField(blank=True, null=True)
 
     class Meta:
         abstract = True

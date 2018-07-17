@@ -219,6 +219,7 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
             return JsonResponse({}, status=400)
         if url:
             data['url'] = url
+        data['initiator'] = request.user.unti_id
         material = self.material_model.objects.create(**data)
         if file_:
             material.file.save(self.make_file_path(file_.name), file_)
