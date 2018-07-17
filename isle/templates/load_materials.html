@@ -45,6 +45,11 @@
                     <li class="list-group-item">
                         <a href="{{ link.get_url }}">{{ link.get_name }}</a>&nbsp;
                         <span>{{ link.comment }}</span>
+                        {% if can_set_public %}
+                            <label>Публичный
+                            <input type="checkbox" data-link-id="{{ link.id }}" class="upload_is_public"  {% if link.is_public %}checked{% endif %}>
+                            </label>
+                        {% endif %}
                         {% if can_upload %}
                         <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
                             {% blocktrans %}Удалить{% endblocktrans %}
@@ -66,6 +71,9 @@
                     {% if with_comment_input %}
                         <label for="description">Описание</label>
                         <input id="description" maxlength="255" name="comment" class="form-control">
+                    {% elif can_set_public %}
+                        <label for="description">Публичный</label>
+                        <input id="is_public" type="checkbox" name="is_public" class="form-control">
                     {% endif %}
                         <button name="add_btn" type="submit" class="btn btn-primary add-material-btn" disabled="disabled">{% trans "Добавить" %}</button>
                     <div><span class="file-name"></span></div>
@@ -87,6 +95,7 @@
     <script type="text/javascript">
         MAX_SIZE = {{ max_size }};
         MAX_PARALLEL_UPLOADS = {{ max_uploads }};
+        CHANGE_STATE = "{% url 'is-material-public' uid=event.uid %}"
     </script>
     <script type="text/javascript" src="{% static 'js/jquery.are-you-sure.min.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/file-upload.js' %}"></script>

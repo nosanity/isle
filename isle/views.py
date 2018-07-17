@@ -165,11 +165,15 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
             'max_uploads': settings.MAX_PARALLEL_UPLOADS,
             'event': self.event,
             'can_upload': self.can_upload(),
+            'can_set_public': self._can_set_public(),
         })
         return data
 
     def can_upload(self):
         return self.request.user.is_assistant
+
+    def _can_set_public(self):
+        return False
 
     def get_traces_data(self):
         traces = self.event.get_traces()
@@ -224,7 +228,9 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
         if file_:
             material.file.save(self.make_file_path(file_.name), file_)
         return JsonResponse({'material_id': material.id, 'url': material.get_url(),
-                             'name': material.get_name(), 'comment': getattr(material, 'comment', '')})
+                             'name': material.get_name(), 'comment': getattr(material, 'comment', ''),
+                             'is_public': getattr(material, 'is_public', True),
+                             'can_set_public': self._can_set_public()})
 
     def get_material_fields(self, trace, request):
         return {}
@@ -238,6 +244,9 @@ class LoadMaterials(BaseLoadMaterials):
     Просмотр/загрузка материалов по эвенту
     """
     material_model = EventMaterial
+
+    def _can_set_public(self):
+        return self.request.user.unti_id == int(self.kwargs['unti_id'])
 
     def can_upload(self):
         return self.request.user.is_assistant or int(self.kwargs['unti_id']) == self.request.user.unti_id
@@ -266,7 +275,8 @@ class LoadMaterials(BaseLoadMaterials):
         return super().add_item(request)
 
     def get_material_fields(self, trace, request):
-        return dict(event=self.event, user=self.user, trace=trace)
+        public = self._can_set_public() and request.POST.get('is_public') in ['on']
+        return dict(event=self.event, user=self.user, trace=trace, is_public=public)
 
     def make_file_path(self, fn):
         return os.path.join(self.event.uid, str(self.user.unti_id), fn)
@@ -653,3 +663,17 @@ class UpdateAttendanceView(GetEventMixin, View):
         print('User %s has changed attendance for user %s on event %s to %s' %
                      (request.user.username, user.username, self.event.id, is_confirmed))
         return JsonResponse({'success': True})
+
+
+@method_decorator(login_required, name='dispatch')
+class IsMaterialPublic(GetEventMixin, View):
+    def post(self, request, uid=None):
+        try:
+            trace = EventMaterial.objects.get(id=request.POST.get('trace_id'))
+        except (EventMaterial.DoesNotExist, ValueError, TypeError):
+            return JsonResponse({}, status=404)
+        if trace.user != request.user:
+            return JsonResponse({}, status=403)
+        is_public = request.POST.get('is_public') in ['true', 'True']
+        EventMaterial.objects.filter(id=trace.id).update(is_public=is_public)
+        return JsonResponse({'is_public': is_public})
