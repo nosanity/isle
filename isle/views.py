@@ -524,12 +524,14 @@ class RemoveUserFromEvent(GetEventMixin, View):
         if not request.user.is_authenticated or not request.user.is_assistant:
             return JsonResponse({}, status=403)
         try:
-            assert EventEntry.objects.filter(event=self.event, user_id=request.POST.get('user_id'),
-                                             added_by_assistant=True).exists()
-        except (TypeError, ValueError, AssertionError):
+            entry = EventEntry.objects.get(event=self.event, user_id=request.POST.get('user_id'),
+                                           added_by_assistant=True)
+        except (TypeError, ValueError, EventEntry.DoesNotExist):
             return JsonResponse({}, status=404)
         EventEntry.objects.filter(event=self.event, user_id=request.POST.get('user_id')).update(deleted=True)
         Attendance.objects.filter(event=self.event, user_id=request.POST.get('user_id')).delete()
+        logging.warning('User %s removed user %s from event %s' %
+                        (request.user.username, entry.user.username, entry.event.uid))
         return JsonResponse({})
 
 
