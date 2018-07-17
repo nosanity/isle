@@ -3,11 +3,10 @@
 
 {% block content %}
     <h2> {{ event.title }} </h2>
-    {% if event.uid and request.user.is_assistant %}
-        <a href="{% url 'event-view' uid=event.uid %}">
-            <button class="btn btn-light float-right">К странице мероприятия</button>
-        </a>
-    {% endif %}
+    <a href="{% url 'event-view' uid=event.uid %}">
+        <button class="btn btn-light float-right">К странице мероприятия</button>
+    </a>
+    <div class="clearfix"></div>
     {% if team_upload %}
         <h4> Команда: '{{ team_name }}' </h4>
         <table class="table table-hover table-bordered table-striped margin-top">
@@ -15,7 +14,7 @@
                 <tr>
                   <th scope="col">ФИО</th>
                   <th scope="col">Фото</th>
-                  <th scope="col">Количество загруженных файлов</th>
+                  <th scope="col">Элементов следа</th>
                   <th scope="col">Загрузка</th>
                 </tr>
             </thead>
@@ -36,7 +35,7 @@
         </table>
     {% endif %}
     {% for trace in traces %}
-        <h2>{{ trace.trace.name }}</h2>
+        <h5>{{ trace.trace.name }}</h5>
         <form method="post" class="trace-form">
             {% csrf_token %}
             <input name="trace_name" type="hidden" value="{{ trace.trace.id }}">
@@ -44,7 +43,6 @@
                 {% for link in trace.links %}
                     <li class="list-group-item">
                         <a href="{{ link.get_url }}">{{ link.get_name }}</a>&nbsp;
-                        <span>{{ link.comment }}</span>
                         {% if can_set_public %}
                             <label>Публичный
                             <input type="checkbox" data-link-id="{{ link.id }}" class="upload_is_public"  {% if link.is_public %}checked{% endif %}>
@@ -54,9 +52,15 @@
                         <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
                             {% blocktrans %}Удалить{% endblocktrans %}
                         </button>
+                        <div><span>{{ link.comment }}</span></div>
                         {% endif %}
                     </li>
                 {% endfor %}
+                {% if not trace.links and not can_upload %}
+                    <p class="materials-form-no-files">
+                        Пока материалов не загружено
+                    </p>
+                {% endif %}
                 {% if can_upload %}
                 <li class="list-group-item form-inline">
                     {% if allow_file_upload %}
@@ -68,14 +72,15 @@
                     {% endif %}
                     <label for="url">{% trans "URL: (если не загружаете файл)" %}</label>
                     <input type="url" name="url_field" class="form-control" id="url">
-                    {% if with_comment_input %}
-                        <label for="description">Описание</label>
-                        <input id="description" maxlength="255" name="comment" class="form-control">
-                    {% elif can_set_public %}
-                        <label for="description">Публичный</label>
+                    {% if with_public_checkbox %}
+                        <label for="is_public">Публичный</label>
                         <input id="is_public" type="checkbox" name="is_public" class="form-control">
                     {% endif %}
                         <button name="add_btn" type="submit" class="btn btn-primary add-material-btn" disabled="disabled">{% trans "Добавить" %}</button>
+                    <div class="materials-form-comment-div">
+                        <label for="description">Описание</label>
+                        <input id="description" maxlength="255" name="comment" class="form-control">
+                    </div>
                     <div><span class="file-name"></span></div>
                     <div class="uploads">
                     </div>

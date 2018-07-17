@@ -100,19 +100,11 @@ class Index(TemplateView):
             min_dt = timezone.make_aware(timezone.datetime.combine(date, timezone.datetime.min.time()))
             max_dt = min_dt + timezone.timedelta(days=1)
             events = events.filter(dt_start__gte=min_dt, dt_start__lt=max_dt)
-        events = events.order_by('-dt_end')
-        inactive_events, active_events, current_events = [], [], []
-        delta = settings.CURRENT_EVENT_DELTA
-        for e in events:
-            if not e.is_active:
-                inactive_events.append(e)
-            elif e.dt_end and timezone.now() - timezone.timedelta(seconds=delta) < e.dt_end < timezone.now() \
-                    + timezone.timedelta(seconds=delta):
-                current_events.append(e)
-            else:
-                active_events.append(e)
-        current_events.reverse()
-        return current_events + active_events + inactive_events
+        return self.sort_events(events)
+
+    def sort_events(self, events):
+        desc = self.request.GET.get('sort') == 'desc'
+        return events.order_by('{}dt_start'.format('-' if desc else ''))
 
 
 class GetEventMixin:
@@ -267,6 +259,7 @@ class LoadMaterials(BaseLoadMaterials):
     Просмотр/загрузка материалов по эвенту
     """
     material_model = EventMaterial
+    extra_context = {'with_public_checkbox': True}
 
     def _can_set_public(self):
         return self.request.user.unti_id == int(self.kwargs['unti_id'])
@@ -301,7 +294,8 @@ class LoadMaterials(BaseLoadMaterials):
 
     def get_material_fields(self, trace, request):
         public = self._can_set_public() and request.POST.get('is_public') in ['on']
-        return dict(event=self.event, user=self.user, trace=trace, is_public=public)
+        return dict(event=self.event, user=self.user, trace=trace, is_public=public,
+                    comment=request.POST.get('comment', ''))
 
     def make_file_path(self, fn):
         return os.path.join(self.event.uid, str(self.user.unti_id), fn)

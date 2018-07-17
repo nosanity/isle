@@ -79,12 +79,14 @@ $(document).ready(function() {
                         var item = $(items[items.length - 1]);
                         var s;
                         if (data.can_set_public) {
-                            s = '<li class="list-group-item"><a href="' + url + '">' + name + '</a>&nbsp;<span>' + comment + '</span>' +
+                            s = '<li class="list-group-item"><a href="' + url + '">' + name + '</a>&nbsp; ' +
                                 '<label>Публичный<input type="checkbox" data-link-id="' + m_id + '" class="upload_is_public"  ' + (data.is_public ? 'checked' : '') + '></label>' +
-                                '&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button></li>';
+                                '&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button></li>' +
+                                '<div><span>' + comment + '</span></div>';
                         }
                         else {
-                            s = '<li class="list-group-item"><a href="' + url + '">' + name + '</a>&nbsp;<span>' + comment + '</span>&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button></li>';
+                            s = '<li class="list-group-item"><a href="' + url + '">' + name + '</a>&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button>' +
+                                '<div><span>' + comment + '</span></div></li>';
                         }
                         item.before($(s));
                     },

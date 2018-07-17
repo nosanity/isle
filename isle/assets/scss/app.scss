@@ -77,3 +77,23 @@ nav.navbar
     background-color: #f9eea2;
   }
 }
+
+.materials-form-comment-div
+{
+  margin-top: 10px;
+
+  input#description
+  {
+    width: 60%;
+  }
+}
+
+.materials-form-no-files
+{
+  color: $red;
+}
+
+.file-comment-span
+{
+  margin: auto 10px;
+}

@@ -87,6 +87,12 @@ class Event(models.Model):
     def event_only_material_count(self):
         return EventOnlyMaterial.objects.filter(event=self).count()
 
+    def get_authors(self):
+        if self.data and isinstance(self.data, dict):
+            authors = (self.data.get('activity') or {}).get('authors') or []
+            return ', '.join([(i.get('title') or '').strip() for i in authors])
+        return ''
+
 
 class Trace(models.Model):
     """
@@ -182,6 +188,7 @@ class AbstractMaterial(models.Model):
 class EventMaterial(AbstractMaterial):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     is_public = models.BooleanField(default=False)
+    comment = models.CharField(default='', max_length=255)
 
     class Meta:
         verbose_name = _(u'Материал')
@@ -196,6 +203,10 @@ class Team(models.Model):
     @property
     def team_name(self):
         return 'team_{}'.format(self.id)
+
+    @property
+    def traces_number(self):
+        return EventTeamMaterial.objects.filter(team=self).count()
 
     class Meta:
         verbose_name = 'Команда'

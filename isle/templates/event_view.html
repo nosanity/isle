@@ -3,6 +3,7 @@
 
 {% block content %}
     <h2>{{ event.title }}</h2>
+    <h6>{{ event.get_authors }}</h6>
     <h6>
         {{ event.dt_start|date:'d E, H:i' }} - {{ event.dt_end|date:'H:i' }};&nbsp;
         ID: {{ event.ext_id }}, Run_ID: {{ event.data.run.ext_id }}, Activity_ID: {{ event.data.activity.ext_id }}
@@ -24,7 +25,7 @@
             <tr>
                 <th scope="col">ФИО</th>
                 <th scope="col">Фото</th>
-                <th scope="col">Количество загруженных файлов</th>
+                <th scope="col">Элементов следа</th>
                 <th scope="col">Чекин</th>
                 <th scope="col">Присутствие</th>
                 <th scope="col">Загрузка</th>
@@ -81,6 +82,7 @@
                 <tr>
                   <th scope="col">Название команды</th>
                   <th scope="col">Количество участников</th>
+                  <th scope="col">Элементов следа</th>
                   <th scope="col">Загрузка</th>
                 </tr>
             </thead>
@@ -90,6 +92,7 @@
                         <a href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{{ team.name }}</a>
                     </td>
                     <td>{{ team.users.count }}</td>
+                    <td>{{ team.traces_number }}</td>
                     <td>
                         {% if event.is_active and request.user.is_assistant %}
                         <a class="btn btn-primary btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
