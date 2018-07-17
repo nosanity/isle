@@ -14,6 +14,7 @@ urlpatterns = [
     path('load-team/<str:uid>/<int:team_id>/', views.LoadTeamMaterials.as_view(), name='load-team-materials'),
     path('load-event/<str:uid>/', views.LoadEventMaterials.as_view(), name='load-event-materials'),
     path('add-user/<str:uid>/', views.AddUserToEvent.as_view(), name='add-user'),
+    path('is_public/<str:uid>/', views.IsMaterialPublic.as_view(), name='is-material-public'),
     path('autocomplete/user/', views.UserAutocomplete.as_view(), name='user-autocomplete'),
     path('api/attendance/', views.AttendanceApi.as_view()),
     path('<str:uid>/', views.EventView.as_view(), name='event-view'),
