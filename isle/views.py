@@ -49,18 +49,35 @@ class Index(TemplateView):
         date = self.get_date()
         objects = self.get_events()
         ctx = {
-                'objects': objects,
-                'date': date.strftime(self.DATE_FORMAT),
-                'total_elements': EventMaterial.objects.count() + EventTeamMaterial.objects.count() + EventOnlyMaterial.objects.count(),
-                'today_elements': EventMaterial.objects.filter(event__in=objects).count() + EventTeamMaterial.objects.filter(event__in=objects).count() + EventOnlyMaterial.objects.filter(event__in=objects).count(),
+            'objects': objects,
+            'date': date.strftime(self.DATE_FORMAT),
         }
         if self.request.user.is_assistant:
-            enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
-            check_ins = dict(EventEntry.objects.filter(is_active=True).values_list('event_id')
-                             .annotate(cnt=Count('user_id')))
+            ctx.update({
+                'total_elements': EventMaterial.objects.count() + EventTeamMaterial.objects.count() + EventOnlyMaterial.objects.count(),
+                'today_elements': EventMaterial.objects.filter(event__in=objects).count() + EventTeamMaterial.objects.filter(event__in=objects).count() + EventOnlyMaterial.objects.filter(event__in=objects).count(),
+            })
+            if self.request.user.is_assistant:
+                enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
+                check_ins = dict(EventEntry.objects.filter(is_active=True).values_list('event_id')
+                                 .annotate(cnt=Count('user_id')))
+                for obj in objects:
+                    obj.prop_enrollments = enrollments.get(obj.id, 0)
+                    obj.prop_checkins = check_ins.get(obj.id, 0)
+        else:
+            user_materials_num = dict(EventMaterial.objects.filter(event__in=objects, user=self.request.user)
+                                      .values_list('event_id').annotate(cnt=Count('user_id')))
+            teams = Team.objects.filter(event__in=objects, users=self.request.user).values_list('id', flat=True)
+            team_materials_num = dict(EventTeamMaterial.objects.filter(event__in=objects, team_id__in=teams)
+                                      .values_list('event_id').annotate(cnt=Count('team_id')))
+            event_num, trace_num = 0, 0
             for obj in objects:
-                obj.prop_enrollments = enrollments.get(obj.id, 0)
-                obj.prop_checkins = check_ins.get(obj.id, 0)
+                obj.user_materials_num = user_materials_num.get(obj.id, 0)
+                obj.team_materials_num = team_materials_num.get(obj.id, 0)
+                if obj.user_materials_num or obj.team_materials_num:
+                    event_num += 1
+                trace_num += (obj.user_materials_num + obj.team_materials_num)
+            ctx.update({'event_num': event_num, 'trace_num': trace_num})
         return ctx
 
     def get_date(self):
