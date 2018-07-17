@@ -267,6 +267,8 @@ class LoadMaterials(BaseLoadMaterials):
         if not material:
             return JsonResponse({}, status=400)
         material.delete()
+        logging.warning('User %s has deleted file %s for user %s' %
+                        (self.request.user.username, material.get_url(), self.user.username))
         return JsonResponse({})
 
     def add_item(self, request):
@@ -336,6 +338,8 @@ class LoadTeamMaterials(BaseLoadMaterials):
         if not material:
             return JsonResponse({}, status=400)
         material.delete()
+        logging.warning('User %s has deleted file %s for team %s' %
+                        (self.request.user.username, material.get_url(), self.team.id))
         return JsonResponse({})
 
     def make_file_path(self, fn):
@@ -362,6 +366,8 @@ class LoadEventMaterials(BaseLoadMaterials):
         if not material:
             return JsonResponse({}, status=400)
         material.delete()
+        logging.warning('User %s has deleted file %s for event %s' %
+                        (self.request.user.username, material.get_url(), self.event.uid))
         return JsonResponse({})
 
     def make_file_path(self, fn):
