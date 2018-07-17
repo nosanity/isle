@@ -2,8 +2,10 @@
 {% load i18n %}
 
 {% block content %}
-    <h2>{{ event.title }}</h2>
-    <h6>{{ event.get_authors }}</h6>
+    <div class="row">
+        <div class="col-lg-9"><h2>{{ event.title }}</h2></div>
+        <div class="col-lg-3"><h6>{{ event.get_authors|join:'<br>'|safe }}</h6></div>
+    </div>
     <h6>
         {{ event.dt_start|date:'d E, H:i' }} - {{ event.dt_end|date:'H:i' }};&nbsp;
         ID: {{ event.ext_id }}, Run_ID: {{ event.data.run.ext_id }}, Activity_ID: {{ event.data.activity.ext_id }}

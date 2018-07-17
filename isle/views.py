@@ -51,6 +51,7 @@ class Index(TemplateView):
         ctx = {
             'objects': objects,
             'date': date.strftime(self.DATE_FORMAT),
+            'sort_asc': self.is_asc_sort(),
         }
         if self.request.user.is_assistant:
             ctx.update({
@@ -100,11 +101,11 @@ class Index(TemplateView):
             min_dt = timezone.make_aware(timezone.datetime.combine(date, timezone.datetime.min.time()))
             max_dt = min_dt + timezone.timedelta(days=1)
             events = events.filter(dt_start__gte=min_dt, dt_start__lt=max_dt)
-        return self.sort_events(events)
+        events = events.order_by('{}dt_start'.format('' if self.is_asc_sort() else '-'))
+        return events
 
-    def sort_events(self, events):
-        desc = self.request.GET.get('sort') == 'desc'
-        return events.order_by('{}dt_start'.format('-' if desc else ''))
+    def is_asc_sort(self):
+        return self.request.GET.get('sort') != 'desc'
 
 
 class GetEventMixin:

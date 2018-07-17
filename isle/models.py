@@ -90,8 +90,8 @@ class Event(models.Model):
     def get_authors(self):
         if self.data and isinstance(self.data, dict):
             authors = (self.data.get('activity') or {}).get('authors') or []
-            return ', '.join([(i.get('title') or '').strip() for i in authors])
-        return ''
+            return [(i.get('title') or '').strip() for i in authors]
+        return []
 
 
 class Trace(models.Model):
