@@ -15,6 +15,7 @@ def update_user(strategy, details, user=None, backend=None, *args, **kwargs):
         tags = data.get('tags') or []
         user.is_assistant = any(i in tags for i in settings.ASSISTANT_TAGS_NAME)
         user.unti_id = data.get('unti_id')
+        user.leader_id = data.get('leader_id') or ''
         user.save()
 
 

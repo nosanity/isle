@@ -13,6 +13,7 @@ class User(AbstractUser):
     icon = JSONField()
     is_assistant = models.BooleanField(default=False)
     unti_id = models.PositiveIntegerField(null=True, db_index=True)
+    leader_id = models.CharField(max_length=255, default='')
 
     class Meta:
         verbose_name = _(u'Пользователь')
