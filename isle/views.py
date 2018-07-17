@@ -566,7 +566,7 @@ class UserAutocomplete(autocomplete.Select2QuerySetView):
 
     def get_result_label(self, result):
         full_name = ' '.join(filter(None, [result.last_name, result.first_name, result.second_name]))
-        return '%s, %s' % (full_name, result.leader_id)
+        return '%s, (%s)' % (full_name, result.leader_id)
 
 
 class Paginator(PageNumberPagination):
