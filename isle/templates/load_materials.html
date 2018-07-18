@@ -41,7 +41,7 @@
             <input name="trace_name" type="hidden" value="{{ trace.trace.id }}">
             <ul class="list-group list-group-flush">
                 {% for link in trace.links %}
-                    <li class="list-group-item">
+                    <li class="list-group-item {% if link.confirmed and team_upload and not link.initiator_user.is_assistant %}confirmed-team-link{% elif team_upload and link.initiator_user.is_assistant %}assistant-team-link{% endif %}">
                         <a href="{{ link.get_url }}">{{ link.get_name }}</a>&nbsp;
                         {% if can_set_public %}
                             <label>Публичный
@@ -52,6 +52,12 @@
                         <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
                             {% blocktrans %}Удалить{% endblocktrans %}
                         </button>
+                        {% if team_upload and request.user.is_assistant and not link.confirmed %}
+                            <button value="{{ link.id }}" class="btn btn-success btn-sm pull-right confirm-material-btn">
+                                {% blocktrans %}Подтвердить{% endblocktrans %}
+                            </button>
+                        {% endif %}
+                        {% if link.initiator_user and team_upload %}<div>({{ link.initiator_user.fio }})</div>{% endif %}
                         <div><span>{{ link.comment }}</span></div>
                         {% endif %}
                     </li>
@@ -100,9 +106,33 @@
     <script type="text/javascript">
         MAX_SIZE = {{ max_size }};
         MAX_PARALLEL_UPLOADS = {{ max_uploads }};
-        CHANGE_STATE = "{% url 'is-material-public' uid=event.uid %}"
+        CHANGE_STATE = "{% url 'is-material-public' uid=event.uid %}";
+        IS_ASSISTANT = {% if request.user.is_assistant %}true{% else %}false{% endif %};
     </script>
     <script type="text/javascript" src="{% static 'js/jquery.are-you-sure.min.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/file-upload.js' %}"></script>
+    {% if request.user.is_assistant and team_upload %}
+        <script type="text/javascript">
+            $(document).ready(function() {
+                $('.confirm-material-btn').click(function(e) {
+                    e.preventDefault();
+                    var self = $(this);
+                    var data = {material_id: self.val(), csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()};
+                    $.ajax({
+                        url: "{% url 'confirm-team-material' uid=event.uid team_id=team.id %}",
+                        method: 'POST',
+                        data: data,
+                        success: function() {
+                            self.parents('li').addClass('confirmed-team-link');
+                            self.remove();
+                        },
+                        error: function() {
+                            alert('error');
+                        }
+                    })
+                })
+            })
+        </script>
+    {% endif %}
     {% endif %}
 {% endblock %}
