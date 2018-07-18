@@ -679,7 +679,7 @@ class AttendanceApi(ListAPIView):
                 'is_confirmed': is_confirmed,
             }
         )[0]
-        EventEntry.objects.update_or_create(event=event, user=user, defaults={'is_active': is_confirmed})
+        EventEntry.objects.get_or_create(event=event, user=user)
         logging.info('AttendanceApi request: %s' % request.data)
         return Response(self.serializer_class(instance=a).data)
 
