@@ -74,7 +74,11 @@ nav.navbar
 {
   .tr-added-user
   {
-    background-color: #f9eea2;
+    background-color: rgba(249, 238, 162, 0.7);
+  }
+  .tr-added-chatbot-user
+  {
+    background-color: rgba(186, 214, 141, 0.7);
   }
 }
 

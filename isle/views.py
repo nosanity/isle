@@ -150,6 +150,8 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             users = user_entry + [i for i in users if i.id != self.request.user.id]
         check_ins = set(EventEntry.objects.filter(event=self.event, is_active=True).values_list('user_id', flat=True))
         attends = set(Attendance.objects.filter(event=self.event, is_confirmed=True).values_list('user_id', flat=True))
+        chat_bot_added = set(Attendance.objects.filter(event=self.event, confirmed_by_system=Attendance.SYSTEM_CHAT_BOT)
+                             .values_list('user_id', flat=True))
         if not self.request.user.is_assistant:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users, is_public=True).
                        values_list('user_id').annotate(num=Count('event_id')))
@@ -163,6 +165,7 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             u.checked_in = u.id in check_ins
             u.attend = u.id in attends
             u.can_delete = u.id in can_delete
+            u.added_by_chat_bot = u.id in chat_bot_added
         return {
             'students': users,
             'event': self.event,
@@ -679,7 +682,8 @@ class AttendanceApi(ListAPIView):
                 'is_confirmed': is_confirmed,
             }
         )[0]
-        EventEntry.objects.get_or_create(event=event, user=user)
+        EventEntry.all_objects.update_or_create(event=event, user=user,
+                                                defaults={'deleted': False, 'added_by_assistant': False})
         logging.info('AttendanceApi request: %s' % request.data)
         return Response(self.serializer_class(instance=a).data)
 

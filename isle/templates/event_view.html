@@ -39,7 +39,7 @@
             </tr>
         </thead>
         {% for student in students %}
-            <tr {% if student.can_delete %}class="tr-added-user"{% endif %}>
+            <tr {% if student.can_delete %}class="tr-added-user"{% elif student.added_by_chat_bot %}class="tr-added-chatbot-user"{% endif %}>
                 <td>
                     <a href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{{ student.get_full_name }}</a>
                 </td>
