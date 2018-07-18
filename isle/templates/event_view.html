@@ -95,8 +95,10 @@
                     <td>{{ team.users.count }}</td>
                     <td>{{ team.traces_number }}</td>
                     <td>
-                        {% if event.is_active and request.user.is_assistant %}
+                        {% if event.is_active %}
+                        {% if request.user.is_assistant or team.id == user_team %}
                         <a class="btn btn-primary btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
+                        {% endif %}
                         {% endif %}
                     </td>
                 </tr>

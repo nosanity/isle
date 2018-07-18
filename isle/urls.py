@@ -12,6 +12,8 @@ urlpatterns = [
     path('update-attendance/<str:uid>', views.UpdateAttendanceView.as_view(), name='update-attendance-view'),
     path('create-team/<str:uid>/', views.CreateTeamView.as_view(), name='create-team'),
     path('load-team/<str:uid>/<int:team_id>/', views.LoadTeamMaterials.as_view(), name='load-team-materials'),
+    path('confirm-team-material/<str:uid>/<int:team_id>/', views.ConfirmTeamMaterial.as_view(),
+         name='confirm-team-material'),
     path('load-event/<str:uid>/', views.LoadEventMaterials.as_view(), name='load-event-materials'),
     path('add-user/<str:uid>/', views.AddUserToEvent.as_view(), name='add-user'),
     path('remove-user/<str:uid>/', views.RemoveUserFromEvent.as_view(), name='remove-user'),
