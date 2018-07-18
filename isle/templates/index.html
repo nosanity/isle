@@ -25,10 +25,11 @@
                     <th>ID</th>
                     <th>Run ID</th>
                     <th>Activity ID</th>
+                    <th>Название мероприятия</th>
                 {% else %}
+                    <th>Название мероприятия</th>
                     <th>Автор</th>
                 {% endif %}
-                <th>Название мероприятия</th>
                 <th><span class="sort-col glyphicon"></span>&nbsp;Дата и время начала</th>
                 <th>Дата и время окончания</th>
                 {% if request.user.is_assistant %}
@@ -46,12 +47,11 @@
                     <td>{{ event.ext_id }}</td>
                     <td>{{ event.data.run.ext_id }}</td>
                     <td>{{ event.data.activity.ext_id }}</td>
+		    <td><a href="{% url 'event-view' uid=event.uid %}">{{ event.title }}</a></td>
                 {% else %}
+		    <td><a href="{% url 'event-view' uid=event.uid %}">{{ event.title }}</a></td>
                     <td>{{ event.get_authors|join:', ' }}</td>
                 {% endif %}
-                <td>
-                    <a href="{% url 'event-view' uid=event.uid %}">{{ event.title }}</a>
-                </td>
                 <td>
                     <span class="nowrap">{{ event.dt_start|date:"d E, H:i" }}</span>
                 </td>
