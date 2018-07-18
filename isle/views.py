@@ -450,30 +450,30 @@ class RefreshCheckInView(GetEventMixin, View):
             return JsonResponse({'success': False})
         return JsonResponse({'success': bool(update_check_ins_for_event(self.event))})
 
-    def post(self, request, uid=None):
-        if not self.event.ext_id:
-            return JsonResponse({'success': False})
-        user_id = request.POST.get('user_id')
-        if not user_id or 'status' not in request.POST:
-            return JsonResponse({}, status=400)
-        user = User.objects.filter(id=user_id).first()
-        if not user or not EventEntry.objects.filter(event=self.event, user=user).exists():
-            return JsonResponse({}, status=400)
-        status = request.POST['status'] in ['true', '1', True]
-        result = set_check_in(self.event, user, status)
-        if result:
-            EventEntry.objects.filter(event=self.event, user=user).update(is_active=True)
-            Attendance.objects.update_or_create(
-                event=self.event, user=user,
-                defaults={
-                    'confirmed_by_user': request.user,
-                    'is_confirmed': True,
-                    'confirmed_by_system': Attendance.SYSTEM_UPLOADS,
-                }
-            )
-            logging.info('User %s has checked in user %s on event %s' %
-                         (request.user.username, user.username, self.event.id))
-        return JsonResponse({'success': result})
+    # def post(self, request, uid=None):
+    #     if not self.event.ext_id:
+    #         return JsonResponse({'success': False})
+    #     user_id = request.POST.get('user_id')
+    #     if not user_id or 'status' not in request.POST:
+    #         return JsonResponse({}, status=400)
+    #     user = User.objects.filter(id=user_id).first()
+    #     if not user or not EventEntry.objects.filter(event=self.event, user=user).exists():
+    #         return JsonResponse({}, status=400)
+    #     status = request.POST['status'] in ['true', '1', True]
+    #     result = set_check_in(self.event, user, status)
+    #     if result:
+    #         EventEntry.objects.filter(event=self.event, user=user).update(is_active=True)
+    #         Attendance.objects.update_or_create(
+    #             event=self.event, user=user,
+    #             defaults={
+    #                 'confirmed_by_user': request.user,
+    #                 'is_confirmed': True,
+    #                 'confirmed_by_system': Attendance.SYSTEM_UPLOADS,
+    #             }
+    #         )
+    #         logging.info('User %s has checked in user %s on event %s' %
+    #                      (request.user.username, user.username, self.event.id))
+    #     return JsonResponse({'success': result})
 
 
 class AddUserToEvent(GetEventMixin, TemplateView):
@@ -677,6 +677,7 @@ class AttendanceApi(ListAPIView):
                 'is_confirmed': is_confirmed,
             }
         )[0]
+        EventEntry.objects.update_or_create(event=event, user=user, defaults={'is_active': is_confirmed})
         logging.info('AttendanceApi request: %s' % request.data)
         return Response(self.serializer_class(instance=a).data)
 
