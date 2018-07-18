@@ -16,7 +16,11 @@
             </form>
         </div>
         {% if request.user.is_assistant %}
-            <div class="pull-right">Элементов по мероприятиям за день: {{ today_elements }};&nbsp;&nbsp;Всего элементов: {{ total_elements }} </div>
+            <div class="pull-right">
+                Элементов по мероприятиям за день: {{ today_elements }};&nbsp;&nbsp;Загружено пользователями: {{ today_elements_user }}
+                <br>
+                Всего элементов: {{ total_elements }}&nbsp;&nbsp;Загружено пользователями: {{ total_elements_user }}
+            </div>
         {% else %}
             <div class="pull-right">&nbsp;Мероприятий: {{ event_num }};&nbsp;&nbsp;Элементов цифрового следа: {{ trace_num }} </div>
         {% endif %}
