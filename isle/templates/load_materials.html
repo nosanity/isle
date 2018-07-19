@@ -72,9 +72,9 @@
 
                 <li class="list-group-item form-inline" style="border: 1px solid #e6e6e6;margin: 10px 20px; border-radius: 4px">
 
-                        <h6>Добавить новые материалы</h6>
+                        <a class="btn btn-block" data-toggle="collapse" href="#collapseExample-{{ trace.trace.id }}" role="button" aria-expanded="false" aria-controls="collapseExample" >+ Добавить новые материалы </a>
 
-                    <div class="row">
+                    <div class="row collapse" id="collapseExample-{{ trace.trace.id }}" style="margin-top: 10px;">
                         <div class="col-sm-12 col-md-3" style="margin-bottom: 10px;">
                         <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
                           <a class="nav-link active" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы</a>
