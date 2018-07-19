@@ -163,13 +163,13 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
         attends = set(Attendance.objects.filter(event=self.event, is_confirmed=True).values_list('user_id', flat=True))
         chat_bot_added = set(Attendance.objects.filter(event=self.event, confirmed_by_system=Attendance.SYSTEM_CHAT_BOT)
                              .values_list('user_id', flat=True))
-        user_team = None
+        user_teams = []
         if not self.request.user.is_assistant:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users, is_public=True).
                        values_list('user_id').annotate(num=Count('event_id')))
             num[self.request.user.id] = EventMaterial.objects.filter(event=self.event, user=self.request.user).count()
-            user_team = Team.objects.filter(event=self.event, users=self.request.user).first()
-            user_team = user_team and user_team.id
+            user_teams_objs = Team.objects.filter(event=self.event, users=self.request.user)
+            user_teams = [user_team.id for user_team in user_teams_objs if user_team.id]
         else:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
                        values_list('user_id').annotate(num=Count('event_id')))
@@ -185,7 +185,7 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             'students': users,
             'event': self.event,
             'teams': Team.objects.filter(event=self.event).order_by('name'),
-            'user_team': user_team,
+            'user_teams': user_teams,
         }
 
 
@@ -462,8 +462,7 @@ class CreateTeamView(GetEventMixin, TemplateView):
         return {'students': users, 'event': self.event}
 
     def get_available_users(self):
-        return get_event_participants(self.event).exclude(
-            id__in=Team.objects.filter(event=self.event).values_list('users', flat=True))
+        return get_event_participants(self.event)
 
     def post(self, request, uid=None):
         form = CreateTeamForm(data=request.POST, event=self.event, users_qs=self.get_available_users())
