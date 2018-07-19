@@ -11,26 +11,28 @@
         ID: {{ event.ext_id }}, Run_ID: {{ event.data.run.ext_id }}, Activity_ID: {{ event.data.activity.ext_id }}
     </h6>
     {% csrf_token %}
-    <div class="margin-bottom">
-        {% if request.user.is_assistant %}
-            <button class="btn btn-primary" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
-            <button class="btn btn-primary" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
-            <a class="btn btn-primary" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
-            <a class="btn btn-primary" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
-        {% endif %}
-        <a class="btn btn-success float-right" href="{% url 'load-event-materials' uid=event.uid %}">
-            Материалы мероприятия{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
-    </div>
 
+     <nav class="nav nav-pills nav-justified">
+        {% if request.user.is_assistant %}
+            <button class="nav-item btn btn-primary" style="margin:2px" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
+            <button class="nav-item btn btn-primary" style="margin:2px" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
+            <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
+            <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
+        {% endif %}
+        <a class="nav-item btn btn-success" style="margin:2px" href="{% url 'load-event-materials' uid=event.uid %}">
+            Материалы мероприятия{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
+    </nav>
+    <div class="row">
+    <div class="col"><div style="overflow: scroll">
     <table id="event-users-table" class="table table-hover table-bordered table-striped">
         <thead class="thead-light">
             <tr>
-                <th scope="col">ФИО</th>
-                <th scope="col">Фото</th>
-                <th scope="col">Элементов следа</th>
-                <th scope="col">Чекин</th>
-                <th scope="col">Присутствие</th>
-                <th scope="col">Загрузка</th>
+                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">ФИО</th>
+                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Фото</th>
+                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Элементов следа</th>
+                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Чекин</th>
+                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Присутствие</th>
+                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Загрузка</th>
                 {% if request.user.is_assistant %}
                     <th scope="col"></th>
                 {% endif %}
@@ -38,23 +40,23 @@
         </thead>
         {% for student in students %}
             <tr {% if student.can_delete %}class="tr-added-user"{% endif %}>
-                <td>
+                <td class="align-middle" style="padding: .25rem .75rem;">
                     <a href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{{ student.get_full_name }}</a>
                 </td>
-                <td>{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
-                <td>{{ student.materials_num }}</td>
-                <td><input type="checkbox" data-user="{{ student.id }}" class="check-in"
+                <td class="text-center align-middle" style="padding: .25rem .75rem;">{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
+                <td class="text-center align-middle" style="padding: .25rem .75rem;">{{ student.materials_num }}</td>
+                <td class="text-center align-middle" style="padding: .25rem .75rem;"><input type="checkbox" data-user="{{ student.id }}" class="check-in"
                            {% if student.checked_in %}checked{% endif %}
                         {% if student.checked_in or not request.user.is_assistant %} disabled{% endif %}>
                 </td>
-                <td><input type="checkbox" data-user="{{ student.id }}" class="attendance" 
+                <td class="text-center align-middle" style="padding: .25rem .75rem;"><input type="checkbox" data-user="{{ student.id }}" class="attendance"
                            {% if student.attend %}checked {% endif %}
                            {% if not request.user.is_assistant %} disabled{% endif %}>
                 </td>
-                <td>
+                <td >
                     {% if event.is_active %}
                     {% if student.unti_id == request.user.unti_id or request.user.is_assistant %}
-                    <a class="btn btn-primary btn-sm" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
+                    <a class="btn btn-primary btn-sm btn-block" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
                     {% endif %}
                     {% endif %}
                 </td>
@@ -70,7 +72,7 @@
             </tr>
         {% endfor %}
     </table>
-
+    </div></div></div>
     {% if not students %}
 	<div class="alert alert-danger" role="alert">
              Нет записей на данное мероприятие
