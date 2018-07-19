@@ -149,7 +149,7 @@ SOCIAL_AUTH_UNTI_SECRET = ''
 # таймаут для запросов в ILE
 CONNECTION_TIMEOUT = 20
 # логин и пароль пользователя в ILE
-#ILE_TOKEN_USER = ('user', 'token')
+ILE_TOKEN_USER = ('user', 'token')
 # базовый урл ILE
 ILE_BASE_URL = 'https://ile2.u2035dev.ru'
 # урл для получения токена в ILE
