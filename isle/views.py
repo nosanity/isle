@@ -185,6 +185,7 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             'event': self.event,
             'teams': Team.objects.filter(event=self.event).select_related('creator').order_by('name'),
             'user_teams': user_teams,
+            'event_entry': EventEntry.objects.filter(event=self.event, user=self.request.user).first(),
         }
 
 
@@ -821,3 +822,17 @@ class TeamMaterialOwnership(BaseOwnershipChecker):
 class EventMaterialOwnership(BaseOwnershipChecker):
     def get_material(self):
         return get_object_or_404(EventOnlyMaterial, id=self.kwargs['material_id'], event=self.event)
+
+
+class ApproveTextEdit(View):
+    def post(self, request, event_entry_id=None):
+        print(request.POST)
+        if not request.user.is_authenticated or not event_entry_id:
+            return JsonResponse({}, status=403)
+        try:
+            event_entry = EventEntry.objects.get(id=event_entry_id)
+            event_entry.approve_text = request.POST.get('approve_text')
+            event_entry.save()
+        except EventEntry.DoesNotExist:
+            return JsonResponse({}, status=404)
+        return JsonResponse({})

@@ -131,6 +131,7 @@ class EventEntry(models.Model):
     added_by_assistant = models.BooleanField(default=False, verbose_name='Добавлен вручную')
     check_in_pushed = models.BooleanField(default=False, verbose_name='Чекин проставлен в ILE')
     deleted = models.BooleanField(default=False)
+    approve_text = models.TextField(verbose_name='Подтверждающий текст', blank=True, default='')
 
     objects = NotDeletedEntries()
     all_objects = models.Manager()
@@ -142,6 +143,9 @@ class EventEntry(models.Model):
 
     def __str__(self):
         return '%s - %s' % (self.event, self.user)
+
+    def approved(self):
+        return self.is_active or Attendance.objects.filter(user=self.user, event=self.event, is_confirmed=True)
 
 
 class Attendance(models.Model):

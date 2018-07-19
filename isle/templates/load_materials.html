@@ -8,6 +8,7 @@
     </a>
     {% csrf_token %}
     <div class="clearfix"></div>
+
     {% if team_upload %}
         <h4> Команда: '{{ team_name }}' </h4>
         <table class="table table-hover table-bordered table-striped margin-top">
@@ -189,7 +190,7 @@
                             alert('error');
                         }
                     })
-                })
+                });
             })
         </script>
     {% endif %}
