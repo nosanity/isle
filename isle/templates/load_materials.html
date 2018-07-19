@@ -6,7 +6,9 @@
     <a href="{% url 'event-view' uid=event.uid %}">
         <button class="btn btn-light float-right">К странице мероприятия</button>
     </a>
+    {% csrf_token %}
     <div class="clearfix"></div>
+
     {% if team_upload %}
         <h4> Команда: '{{ team_name }}' </h4>
         <table class="table table-hover table-bordered table-striped margin-top">
@@ -58,9 +60,20 @@
                                 {% blocktrans %}Подтвердить{% endblocktrans %}
                             </button>
                         {% endif %}
+                        {% if show_owners and not request.user.is_assistant %}
+                            <button value="{{ link.id }}" class="btn btn-success btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
+                                {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
+                            </button>
+                        {% endif %}
                         {% if link.initiator_user and team_upload %}<div>({{ link.initiator_user.fio }})</div>{% endif %}
                         <div><span>{{ link.comment }}</span></div>
                         {% endif %}
+                        {% if show_owners and not request.user.is_assistant and not can_upload %}
+                            <button value="{{ link.id }}" class="btn btn-success btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
+                                {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
+                            </button>
+                        {% endif %}
+                        {% if show_owners %}<div><span class="material-owners">{{ link.get_owners|join:', ' }}</span></div>{% endif %}
                     </li>
                 {% endfor %}
                 {% if not trace.links and not can_upload %}
@@ -72,9 +85,9 @@
 
                 <li class="list-group-item form-inline" style="border: 1px solid #e6e6e6;margin: 10px 20px; border-radius: 4px">
 
-                        <h6>Добавить новые материалы</h6>
+                        <a class="btn btn-block" data-toggle="collapse" href="#collapseExample-{{ trace.trace.id }}" role="button" aria-expanded="false" aria-controls="collapseExample" >+ Добавить новые материалы </a>
 
-                    <div class="row">
+                    <div class="row collapse" id="collapseExample-{{ trace.trace.id }}" style="margin-top: 10px;">
                         <div class="col-sm-12 col-md-3" style="margin-bottom: 10px;">
                         <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
                           <a class="nav-link active" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы</a>
@@ -127,6 +140,28 @@
 
 {% block js %}
     {{ block.super }}
+    <script type="text/javascript">
+        $('body').delegate('.my-material-btn', 'click', function(e) {
+            e.preventDefault();
+            var is_owner = this.hasAttribute('data-owner');
+            var self = $(this);
+            var data = {csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val(), confirm: !is_owner};
+            $.ajax({
+                url: self.data('url'),
+                method: 'POST',
+                data: data,
+                success: function(data) {
+                    if (data.is_owner) {
+                        self.attr('data-owner', '').text('Это не мое');
+                    }
+                    else {
+                        self.removeAttr('data-owner').text('Это мое');
+                    }
+                    self.parents('li').find('.material-owners').html(data.owners);
+                }
+            })
+        });
+    </script>
     {% if can_upload %}
     <script type="text/javascript">
         MAX_SIZE = {{ max_size }};
@@ -155,7 +190,7 @@
                             alert('error');
                         }
                     })
-                })
+                });
             })
         </script>
     {% endif %}

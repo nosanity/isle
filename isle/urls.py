@@ -21,6 +21,11 @@ urlpatterns = [
     path('is_public/<str:uid>/', views.IsMaterialPublic.as_view(), name='is-material-public'),
     path('autocomplete/user/', views.UserAutocomplete.as_view(), name='user-autocomplete'),
     path('api/attendance/', views.AttendanceApi.as_view()),
+    path('owner/team-material/<str:uid>/<int:team_id>/<int:material_id>/', views.TeamMaterialOwnership.as_view(),
+         name='team-material-owner'),
+    path('owner/event-material/<str:uid>/<int:material_id>/', views.EventMaterialOwnership.as_view(),
+         name='event-material-owner'),
+    path('approve-text-edit/<int:event_entry_id>/', views.ApproveTextEdit.as_view(), name='approve-text-edit'),
     path('<str:uid>/', views.EventView.as_view(), name='event-view'),
     path('<str:uid>/<int:unti_id>/', views.LoadMaterials.as_view(), name='load-materials'),
 ]

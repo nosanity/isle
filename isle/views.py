@@ -185,6 +185,7 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             'event': self.event,
             'teams': Team.objects.filter(event=self.event).select_related('creator').order_by('name'),
             'user_teams': user_teams,
+            'event_entry': EventEntry.objects.filter(event=self.event, user=self.request.user).first(),
         }
 
 
@@ -333,7 +334,7 @@ class LoadTeamMaterials(BaseLoadMaterials):
     """
     Просмотр/загрузка командных материалов по эвенту
     """
-    extra_context = {'with_comment_input': True, 'team_upload': True}
+    extra_context = {'with_comment_input': True, 'team_upload': True, 'show_owners': True}
     material_model = EventTeamMaterial
 
     def get_context_data(self, **kwargs):
@@ -352,10 +353,14 @@ class LoadTeamMaterials(BaseLoadMaterials):
         return get_object_or_404(Team, id=self.kwargs['team_id'])
 
     def get_materials(self):
-        qs = EventTeamMaterial.objects.filter(event=self.event, team=self.team)
+        qs = EventTeamMaterial.objects.filter(event=self.event, team=self.team).prefetch_related('owners')
         users = {i.unti_id: i for i in User.objects.filter(unti_id__in=filter(None, [j.initiator for j in qs]))}
         for item in qs:
             item.initiator_user = users.get(item.initiator)
+            if not self.request.user.is_assistant:
+                item.is_owner = self.request.user in item.owners.all()
+                item.ownership_url = reverse('team-material-owner', kwargs={
+                    'uid': self.event.uid, 'material_id': item.id, 'team_id': self.team.id})
         return qs
 
     def can_upload(self):
@@ -409,10 +414,16 @@ class LoadEventMaterials(BaseLoadMaterials):
     Загрузка материалов мероприятия
     """
     material_model = EventOnlyMaterial
-    extra_context = {'with_comment_input': True}
+    extra_context = {'with_comment_input': True, 'show_owners': True}
 
     def get_materials(self):
-        return EventOnlyMaterial.objects.filter(event=self.event)
+        qs = EventOnlyMaterial.objects.filter(event=self.event).prefetch_related('owners')
+        for item in qs:
+            if not self.request.user.is_assistant:
+                item.is_owner = self.request.user in item.owners.all()
+                item.ownership_url = reverse('event-material-owner', kwargs={
+                    'uid': self.event.uid, 'material_id': item.id})
+        return qs
 
     def _delete_item(self, trace, material_id):
         material = EventOnlyMaterial.objects.filter(
@@ -782,5 +793,46 @@ class ConfirmTeamView(GetEventMixin, View):
             assert Team.objects.filter(event=self.event, id=request.POST.get('team_id')).update(confirmed=True)
             logging.info('User %s confirmed team %s' % (request.user.username, request.POST.get('team_id')))
         except (Team.DoesNotExist, TypeError, ValueError, AssertionError):
+            return JsonResponse({}, status=404)
+        return JsonResponse({})
+
+
+class BaseOwnershipChecker(GetEventMixin, View):
+    def post(self, request, **kwargs):
+        if request.user.is_assistant or not EventEntry.objects.filter(event=self.event, user=request.user):
+            return JsonResponse({}, status=403)
+        material = self.get_material()
+        confirm = request.POST.get('confirm')
+        if confirm not in ['true', 'false']:
+            return JsonResponse({}, status=400)
+        confirm = confirm == 'true'
+        if confirm:
+            material.owners.add(request.user)
+        else:
+            material.owners.remove(request.user)
+        return JsonResponse({'is_owner': confirm, 'owners': ', '.join(material.get_owners())})
+
+
+class TeamMaterialOwnership(BaseOwnershipChecker):
+    def get_material(self):
+        return get_object_or_404(EventTeamMaterial, id=self.kwargs['material_id'], event=self.event,
+                                 team_id=self.kwargs['team_id'])
+
+
+class EventMaterialOwnership(BaseOwnershipChecker):
+    def get_material(self):
+        return get_object_or_404(EventOnlyMaterial, id=self.kwargs['material_id'], event=self.event)
+
+
+class ApproveTextEdit(View):
+    def post(self, request, event_entry_id=None):
+        print(request.POST)
+        if not request.user.is_authenticated or not event_entry_id:
+            return JsonResponse({}, status=403)
+        try:
+            event_entry = EventEntry.objects.get(id=event_entry_id)
+            event_entry.approve_text = request.POST.get('approve_text')
+            event_entry.save()
+        except EventEntry.DoesNotExist:
             return JsonResponse({}, status=404)
         return JsonResponse({})

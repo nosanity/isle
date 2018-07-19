@@ -14,6 +14,25 @@
     </h6>
     {% csrf_token %}
 
+    {% if not event_entry.approved %}
+      <div class="approve-text d-none">
+      <div class="alert alert-warning">
+        Ваше присутствие на мероприятии не подтверждено!
+        В окне ввода ниже укажите обстоятельства, подтверждающие что Вы присутствовали на мероприятии.
+        Если у вас есть фотографии с мероприятия, которые могут это подтвердить - пожалуйста,
+        загрузите их в качестве своего цифрового следа.
+      </div>
+        <div class="p-2">
+          <textarea class="form-control" id="approve_text_data" rows="3">{{ event_entry.approve_text }}</textarea>
+        </div>
+        <div class="p-2">
+          <button class="btn btn-outline-secondary approve-text-btn">Сохранить</button>
+          <button class="btn btn-outline-secondary hide-text-btn pull-right">Скрыть</button>
+        </div>
+        <div class="clearfix"></div>
+        </div>
+    {% endif %}
+
      <nav class="nav nav-pills nav-justified">
         {% if request.user.is_assistant %}
             <button class="nav-item btn btn-primary" style="margin:2px" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
@@ -22,6 +41,15 @@
             <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
         {% else %}
             <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
+            {% if not event_entry.approved %}
+                <a class="nav-item btn btn-primary text-white" style="margin:2px" id="i-was-here">
+                    {% if event_entry.approve_text %}
+                        Изменить подтверждение присутствия
+                    {% else %}
+                        Я тут точно был!
+                    {% endif %}
+                </a>
+            {% endif %}
         {% endif %}
         <a class="nav-item btn btn-success" style="margin:2px" href="{% url 'load-event-materials' uid=event.uid %}">
             Материалы мероприятия{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
@@ -229,4 +257,33 @@
         });
     </script>
     {% endif %}
+
+    <script type="text/javascript">
+        $(document).ready(function() {
+            $('#i-was-here').click(function(e){
+                $('.approve-text').removeClass('d-none');
+            });
+            $('.hide-text-btn').click(function(e){
+                $('.approve-text').addClass('d-none');
+            });
+
+            $('.approve-text-btn').click(function(e){
+                e.preventDefault();
+                var text_data = $('#approve_text_data').val();
+                var data = {approve_text: text_data, csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()};
+                $.ajax({
+                    url: "{% url 'approve-text-edit' event_entry_id=event_entry.id %}",
+                    method: 'POST',
+                    data: data,
+                    success: function() {
+                        console.log('success');
+                    },
+                    error: function() {
+                        alert('error');
+                    }
+                })
+            });
+        })
+    </script>
+
 {% endblock %}
