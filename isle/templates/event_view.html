@@ -8,7 +8,9 @@
     </div>
     <h6>
         {{ event.dt_start|date:'d E, H:i' }} - {{ event.dt_end|date:'H:i' }};&nbsp;
-        ID: {{ event.ext_id }}, Run_ID: {{ event.data.run.ext_id }}, Activity_ID: {{ event.data.activity.ext_id }}
+	{% if request.user.is_assistant %}
+            ID: {{ event.ext_id }}, Run_ID: {{ event.data.run.ext_id }}, Activity_ID: {{ event.data.activity.ext_id }}
+	{% endif %}
     </h6>
     {% csrf_token %}
 

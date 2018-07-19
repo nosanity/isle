@@ -7,6 +7,9 @@
                 <label>Дата</label>
                 <input type="date" id="choose-date" class="form-control">
                 <button class="btn btn-primary" id="btn-date-refresh">Фильтровать</button>
+                {% if not request.user.is_assistant %}
+                    <a href='/'><button class="btn btn-info">Сбросить фильтр</button></a>
+                {% endif %}
                 {% if request.user.is_assistant %}
                     <button class="btn btn-info float-right" id="refresh" data-url="{% url 'refresh-view' %}">Обновить данные</button>
                 {% endif %}
