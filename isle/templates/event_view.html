@@ -39,21 +39,20 @@
             </tr>
         </thead>
         {% for student in students %}
-            <tr {% if student.can_delete %}class="tr-added-user"{% endif %}>
+            <tr {% if student.can_delete %}class="tr-added-user"{% elif student.added_by_chat_bot %}class="tr-added-chatbot-user"{% endif %}>
                 <td class="align-middle" style="padding: .25rem .75rem;">
                     <a href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{{ student.get_full_name }}</a>
                 </td>
                 <td class="text-center align-middle" style="padding: .25rem .75rem;">{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
                 <td class="text-center align-middle" style="padding: .25rem .75rem;">{{ student.materials_num }}</td>
                 <td class="text-center align-middle" style="padding: .25rem .75rem;"><input type="checkbox" data-user="{{ student.id }}" class="check-in"
-                           {% if student.checked_in %}checked{% endif %}
-                        {% if student.checked_in or not request.user.is_assistant %} disabled{% endif %}>
+                           {% if student.checked_in %}checked{% endif %} disabled>
                 </td>
                 <td class="text-center align-middle" style="padding: .25rem .75rem;"><input type="checkbox" data-user="{{ student.id }}" class="attendance"
                            {% if student.attend %}checked {% endif %}
                            {% if not request.user.is_assistant %} disabled{% endif %}>
                 </td>
-                <td >
+                <td>
                     {% if event.is_active %}
                     {% if student.unti_id == request.user.unti_id or request.user.is_assistant %}
                     <a class="btn btn-primary btn-sm btn-block" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
@@ -98,8 +97,10 @@
                     <td>{{ team.users.count }}</td>
                     <td>{{ team.traces_number }}</td>
                     <td>
-                        {% if event.is_active and request.user.is_assistant %}
+                        {% if event.is_active %}
+                        {% if request.user.is_assistant or team.id == user_team %}
                         <a class="btn btn-primary btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
+                        {% endif %}
                         {% endif %}
                     </td>
                 </tr>
@@ -133,29 +134,29 @@
                 })
             });
 
-            $('input.check-in').change(function() {
-                if (!this.checked) {
-                    this.checked = !this.checked;
-                    return;
-                }
-                var checked = this.checked;
-                var box = this;
-                var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), user_id: $(this).data('user'), status: checked};
-                $.ajax({
-                    url: "{% url 'refresh-checkin-view' uid=event.uid %}",
-                    method: 'POST',
-                    data: data,
-                    success: function(data) {
-                        if (!data.success) {
-                            box.checked = !checked;
-                        }
-                    },
-                    error: function() {
-                        alert('error');
-                        box.checked = !checked;
-                    }
-                })
-            });
+{#            $('input.check-in').change(function() {#}
+{#                if (!this.checked) {#}
+{#                    this.checked = !this.checked;#}
+{#                    return;#}
+{#                }#}
+{#                var checked = this.checked;#}
+{#                var box = this;#}
+{#                var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), user_id: $(this).data('user'), status: checked};#}
+{#                $.ajax({#}
+{#                    url: "{% url 'refresh-checkin-view' uid=event.uid %}",#}
+{#                    method: 'POST',#}
+{#                    data: data,#}
+{#                    success: function(data) {#}
+{#                        if (!data.success) {#}
+{#                            box.checked = !checked;#}
+{#                        }#}
+{#                    },#}
+{#                    error: function() {#}
+{#                        alert('error');#}
+{#                        box.checked = !checked;#}
+{#                    }#}
+{#                })#}
+{#            });#}
 
             $('input.attendance').change(function() {
                 var checked = this.checked;

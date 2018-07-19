@@ -85,7 +85,8 @@ $(document).ready(function() {
                                 '<div><span>' + comment + '</span></div>';
                         }
                         else {
-                            s = '<li class="list-group-item"><a href="' + url + '">' + name + '</a>&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button>' +
+                            s = '<li class="list-group-item ' + (data.uploader_name && IS_ASSISTANT ? 'assistant-team-link' : '') + '"><a href="' + url + '">' + name + '</a>&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button>' +
+                                (data.uploader_name ? ('<div>(' + data.uploader_name + ')</div>') : '') +
                                 '<div><span>' + comment + '</span></div></li>';
                         }
                         item.before($(s));

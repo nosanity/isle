@@ -54,9 +54,20 @@ class Index(TemplateView):
             'sort_asc': self.is_asc_sort(),
         }
         if self.request.user.is_assistant:
+            fdict = {
+                'initiator__in': User.objects.filter(is_assistant=True).values_list('id', flat=True)
+            }
             ctx.update({
-                'total_elements': EventMaterial.objects.count() + EventTeamMaterial.objects.count() + EventOnlyMaterial.objects.count(),
-                'today_elements': EventMaterial.objects.filter(event__in=objects).count() + EventTeamMaterial.objects.filter(event__in=objects).count() + EventOnlyMaterial.objects.filter(event__in=objects).count(),
+                'total_elements': EventMaterial.objects.count() +
+                                  EventTeamMaterial.objects.count() +
+                                  EventOnlyMaterial.objects.count(),
+                'today_elements': EventMaterial.objects.filter(event__in=objects).count() +
+                                  EventTeamMaterial.objects.filter(event__in=objects).count() +
+                                  EventOnlyMaterial.objects.filter(event__in=objects).count(),
+                'total_elements_user': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).count() +
+                                       EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).count(),
+                'today_elements_user': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count() +
+                                       EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count(),
             })
             if self.request.user.is_assistant:
                 enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
@@ -148,9 +159,15 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             users = user_entry + [i for i in users if i.id != self.request.user.id]
         check_ins = set(EventEntry.objects.filter(event=self.event, is_active=True).values_list('user_id', flat=True))
         attends = set(Attendance.objects.filter(event=self.event, is_confirmed=True).values_list('user_id', flat=True))
+        chat_bot_added = set(Attendance.objects.filter(event=self.event, confirmed_by_system=Attendance.SYSTEM_CHAT_BOT)
+                             .values_list('user_id', flat=True))
+        user_team = None
         if not self.request.user.is_assistant:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users, is_public=True).
                        values_list('user_id').annotate(num=Count('event_id')))
+            num[self.request.user.id] = EventMaterial.objects.filter(event=self.event, user=self.request.user).count()
+            user_team = Team.objects.filter(event=self.event, users=self.request.user).first()
+            user_team = user_team and user_team.id
         else:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
                        values_list('user_id').annotate(num=Count('event_id')))
@@ -161,10 +178,12 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             u.checked_in = u.id in check_ins
             u.attend = u.id in attends
             u.can_delete = u.id in can_delete
+            u.added_by_chat_bot = u.id in chat_bot_added
         return {
             'students': users,
             'event': self.event,
             'teams': Team.objects.filter(event=self.event).order_by('name'),
+            'user_team': user_team,
         }
 
 
@@ -243,10 +262,17 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
         material = self.material_model.objects.create(**data)
         if file_:
             material.file.save(self.make_file_path(file_.name), file_)
-        return JsonResponse({'material_id': material.id, 'url': material.get_url(),
-                             'name': material.get_name(), 'comment': getattr(material, 'comment', ''),
-                             'is_public': getattr(material, 'is_public', True),
-                             'can_set_public': self._can_set_public()})
+        resp = {
+            'material_id': material.id,
+            'url': material.get_url(),
+            'name': material.get_name(),
+            'comment': getattr(material, 'comment', ''),
+            'is_public': getattr(material, 'is_public', True),
+            'can_set_public': self._can_set_public()
+        }
+        if self.extra_context and self.extra_context.get('team_upload'):
+            resp['uploader_name'] = request.user.fio
+        return JsonResponse(resp)
 
     def get_material_fields(self, trace, request):
         return {}
@@ -316,7 +342,8 @@ class LoadTeamMaterials(BaseLoadMaterials):
                    values_list('user_id').annotate(num=Count('event_id')))
         for u in users:
             u.materials_num = num.get(u.id, 0)
-        data.update({'students': users, 'event': self.event, 'team_name': getattr(self.team, 'name', '')})
+        data.update({'students': users, 'event': self.event, 'team_name': getattr(self.team, 'name', ''),
+                     'team': self.team})
         return data
 
     @cached_property
@@ -324,7 +351,15 @@ class LoadTeamMaterials(BaseLoadMaterials):
         return get_object_or_404(Team, id=self.kwargs['team_id'])
 
     def get_materials(self):
-        return EventTeamMaterial.objects.filter(event=self.event, team=self.team)
+        qs = EventTeamMaterial.objects.filter(event=self.event, team=self.team)
+        users = {i.unti_id: i for i in User.objects.filter(unti_id__in=filter(None, [j.initiator for j in qs]))}
+        for item in qs:
+            item.initiator_user = users.get(item.initiator)
+        return qs
+
+    def can_upload(self):
+        # командные файлы загружает ассистент или участники этой команды
+        return self.request.user.is_assistant or self.team.users.filter(id=self.request.user.id).exists()
 
     def post(self, request, *args, **kwargs):
         # загрузка и удаление файлов доступны только для эвентов, доступных для оцифровки, и по
@@ -364,7 +399,8 @@ class LoadTeamMaterials(BaseLoadMaterials):
         return os.path.join(self.event.uid, str(self.team.team_name), fn)
 
     def get_material_fields(self, trace, request):
-        return dict(event=self.event, team=self.team, trace=trace, comment=request.POST.get('comment', ''))
+        return dict(event=self.event, team=self.team, trace=trace, comment=request.POST.get('comment', ''),
+                    confirmed=self.request.user.is_assistant)
 
 
 class LoadEventMaterials(BaseLoadMaterials):
@@ -450,30 +486,30 @@ class RefreshCheckInView(GetEventMixin, View):
             return JsonResponse({'success': False})
         return JsonResponse({'success': bool(update_check_ins_for_event(self.event))})
 
-    def post(self, request, uid=None):
-        if not self.event.ext_id:
-            return JsonResponse({'success': False})
-        user_id = request.POST.get('user_id')
-        if not user_id or 'status' not in request.POST:
-            return JsonResponse({}, status=400)
-        user = User.objects.filter(id=user_id).first()
-        if not user or not EventEntry.objects.filter(event=self.event, user=user).exists():
-            return JsonResponse({}, status=400)
-        status = request.POST['status'] in ['true', '1', True]
-        result = set_check_in(self.event, user, status)
-        if result:
-            EventEntry.objects.filter(event=self.event, user=user).update(is_active=True)
-            Attendance.objects.update_or_create(
-                event=self.event, user=user,
-                defaults={
-                    'confirmed_by_user': request.user,
-                    'is_confirmed': True,
-                    'confirmed_by_system': Attendance.SYSTEM_UPLOADS,
-                }
-            )
-            logging.info('User %s has checked in user %s on event %s' %
-                         (request.user.username, user.username, self.event.id))
-        return JsonResponse({'success': result})
+    # def post(self, request, uid=None):
+    #     if not self.event.ext_id:
+    #         return JsonResponse({'success': False})
+    #     user_id = request.POST.get('user_id')
+    #     if not user_id or 'status' not in request.POST:
+    #         return JsonResponse({}, status=400)
+    #     user = User.objects.filter(id=user_id).first()
+    #     if not user or not EventEntry.objects.filter(event=self.event, user=user).exists():
+    #         return JsonResponse({}, status=400)
+    #     status = request.POST['status'] in ['true', '1', True]
+    #     result = set_check_in(self.event, user, status)
+    #     if result:
+    #         EventEntry.objects.filter(event=self.event, user=user).update(is_active=True)
+    #         Attendance.objects.update_or_create(
+    #             event=self.event, user=user,
+    #             defaults={
+    #                 'confirmed_by_user': request.user,
+    #                 'is_confirmed': True,
+    #                 'confirmed_by_system': Attendance.SYSTEM_UPLOADS,
+    #             }
+    #         )
+    #         logging.info('User %s has checked in user %s on event %s' %
+    #                      (request.user.username, user.username, self.event.id))
+    #     return JsonResponse({'success': result})
 
 
 class AddUserToEvent(GetEventMixin, TemplateView):
@@ -677,6 +713,8 @@ class AttendanceApi(ListAPIView):
                 'is_confirmed': is_confirmed,
             }
         )[0]
+        EventEntry.all_objects.update_or_create(event=event, user=user,
+                                                defaults={'deleted': False, 'added_by_assistant': False})
         logging.info('AttendanceApi request: %s' % request.data)
         return Response(self.serializer_class(instance=a).data)
 
@@ -717,3 +755,19 @@ class IsMaterialPublic(GetEventMixin, View):
         is_public = request.POST.get('is_public') in ['true', 'True']
         EventMaterial.objects.filter(id=trace.id).update(is_public=is_public)
         return JsonResponse({'is_public': is_public})
+
+
+class ConfirmTeamMaterial(GetEventMixin, View):
+    def post(self, request, uid=None, team_id=None):
+        if not request.user.is_authenticated or not request.user.is_assistant:
+            return JsonResponse({}, status=403)
+        try:
+            team = Team.objects.get(event=self.event, id=team_id)
+            confirmed = EventTeamMaterial.objects.filter(team=team, id=request.POST.get('material_id')).\
+                update(confirmed=True)
+            assert confirmed
+            logging.info('User %s confirmed team %s upload %s' %
+                         (request.user.username, team.id, request.POST.get('material_id')))
+        except (Team.DoesNotExist, EventTeamMaterial.DoesNotExist, ValueError, TypeError, AssertionError):
+            return JsonResponse({}, status=404)
+        return JsonResponse({})

@@ -22,6 +22,10 @@ class User(AbstractUser):
     def __str__(self):
         return '%s %s' % (self.unti_id, self.get_full_name())
 
+    @property
+    def fio(self):
+        return ' '.join(filter(None, [self.last_name, self.first_name, self.second_name]))
+
 
 class EventType(models.Model):
     ext_id = models.PositiveIntegerField(unique=True, verbose_name='Внешний id')
@@ -219,6 +223,7 @@ class Team(models.Model):
 class EventTeamMaterial(AbstractMaterial):
     team = models.ForeignKey(Team, on_delete=models.CASCADE)
     comment = models.CharField(default='', max_length=255)
+    confirmed = models.BooleanField(default=True)
 
     class Meta:
         verbose_name = _(u'Материал команды')
