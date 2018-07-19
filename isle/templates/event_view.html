@@ -272,7 +272,7 @@
                 var text_data = $('#approve_text_data').val();
                 var data = {approve_text: text_data, csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()};
                 $.ajax({
-                    url: "{% url 'approve-text-edit' event_entry_id=event_entry.id %}",
+                    url: "{% url 'approve-text-edit' event_entry_id=event_entry_id %}",
                     method: 'POST',
                     data: data,
                     success: function() {

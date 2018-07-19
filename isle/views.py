@@ -180,12 +180,14 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             u.attend = u.id in attends
             u.can_delete = u.id in can_delete
             u.added_by_chat_bot = u.id in chat_bot_added
+        event_entry = EventEntry.objects.filter(event=self.event, user=self.request.user).first()
         return {
             'students': users,
             'event': self.event,
             'teams': Team.objects.filter(event=self.event).select_related('creator').order_by('name'),
             'user_teams': user_teams,
-            'event_entry': EventEntry.objects.filter(event=self.event, user=self.request.user).first(),
+            'event_entry': event_entry,
+            'event_entry_id': getattr(event_entry, 'id', 0),
         }
 
 
