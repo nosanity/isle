@@ -188,6 +188,11 @@ class AbstractMaterial(models.Model):
     def __str__(self):
         return '#%s %s' % (self.id, self.get_url())
 
+    def get_owners(self):
+        if hasattr(self, 'owners'):
+            return [i.fio for i in self.owners.all()]
+        return []
+
 
 class EventMaterial(AbstractMaterial):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -226,6 +231,7 @@ class EventTeamMaterial(AbstractMaterial):
     team = models.ForeignKey(Team, on_delete=models.CASCADE)
     comment = models.CharField(default='', max_length=255)
     confirmed = models.BooleanField(default=True)
+    owners = models.ManyToManyField(User)
 
     class Meta:
         verbose_name = _(u'Материал команды')
@@ -234,6 +240,7 @@ class EventTeamMaterial(AbstractMaterial):
 
 class EventOnlyMaterial(AbstractMaterial):
     comment = models.CharField(default='', max_length=255)
+    owners = models.ManyToManyField(User)
 
     class Meta:
         verbose_name = _(u'Материал мероприятия')
