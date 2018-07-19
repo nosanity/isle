@@ -6,6 +6,7 @@
     <a href="{% url 'event-view' uid=event.uid %}">
         <button class="btn btn-light float-right">К странице мероприятия</button>
     </a>
+    {% csrf_token %}
     <div class="clearfix"></div>
     {% if team_upload %}
         <h4> Команда: '{{ team_name }}' </h4>
@@ -58,9 +59,20 @@
                                 {% blocktrans %}Подтвердить{% endblocktrans %}
                             </button>
                         {% endif %}
+                        {% if show_owners and not request.user.is_assistant %}
+                            <button value="{{ link.id }}" class="btn btn-success btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
+                                {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
+                            </button>
+                        {% endif %}
                         {% if link.initiator_user and team_upload %}<div>({{ link.initiator_user.fio }})</div>{% endif %}
                         <div><span>{{ link.comment }}</span></div>
                         {% endif %}
+                        {% if show_owners and not request.user.is_assistant and not can_upload %}
+                            <button value="{{ link.id }}" class="btn btn-success btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
+                                {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
+                            </button>
+                        {% endif %}
+                        {% if show_owners %}<div><span class="material-owners">{{ link.get_owners|join:', ' }}</span></div>{% endif %}
                     </li>
                 {% endfor %}
                 {% if not trace.links and not can_upload %}
@@ -127,6 +139,28 @@
 
 {% block js %}
     {{ block.super }}
+    <script type="text/javascript">
+        $('body').delegate('.my-material-btn', 'click', function(e) {
+            e.preventDefault();
+            var is_owner = this.hasAttribute('data-owner');
+            var self = $(this);
+            var data = {csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val(), confirm: !is_owner};
+            $.ajax({
+                url: self.data('url'),
+                method: 'POST',
+                data: data,
+                success: function(data) {
+                    if (data.is_owner) {
+                        self.attr('data-owner', '').text('Это не мое');
+                    }
+                    else {
+                        self.removeAttr('data-owner').text('Это мое');
+                    }
+                    self.parents('li').find('.material-owners').html(data.owners);
+                }
+            })
+        });
+    </script>
     {% if can_upload %}
     <script type="text/javascript">
         MAX_SIZE = {{ max_size }};
