@@ -61,7 +61,7 @@
                             </button>
                         {% endif %}
                         {% if show_owners and not request.user.is_assistant %}
-                            <button value="{{ link.id }}" class="btn btn-success btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
+                            <button value="{{ link.id }}" class="btn {% if link.is_owner %}btn-danger{% else %}btn-success{% endif %} btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
                                 {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
                             </button>
                         {% endif %}
@@ -69,11 +69,11 @@
                         <div><span>{{ link.comment }}</span></div>
                         {% endif %}
                         {% if show_owners and not request.user.is_assistant and not can_upload %}
-                            <button value="{{ link.id }}" class="btn btn-success btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
+                            <button value="{{ link.id }}" class="btn {% if link.is_owner %}btn-danger{% else %}btn-success{% endif %} btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
                                 {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
                             </button>
                         {% endif %}
-                        {% if show_owners %}<div><span class="material-owners">{{ link.get_owners|join:', ' }}</span></div>{% endif %}
+                        {% if show_owners %}<div><span class="material-owners">{% if link.get_owners %}Связан с: {% endif %}{{ link.get_owners|join:', ' }}</span></div>{% endif %}
                     </li>
                 {% endfor %}
                 {% if not trace.links and not can_upload %}
@@ -152,12 +152,17 @@
                 data: data,
                 success: function(data) {
                     if (data.is_owner) {
-                        self.attr('data-owner', '').text('Это не мое');
+                        self.attr('data-owner', '').text('Это не мое').addClass('btn-danger').removeClass('btn-success');
                     }
                     else {
-                        self.removeAttr('data-owner').text('Это мое');
+                        self.removeAttr('data-owner').text('Это мое').addClass('btn-success').removeClass('btn-danger');
                     }
-                    self.parents('li').find('.material-owners').html(data.owners);
+                    if (data.owners) {
+                        self.parents('li').find('.material-owners').html('Связан с: ' + data.owners);
+                    }
+                    else {
+                        self.parents('li').find('.material-owners').html('');
+                    }
                 }
             })
         });
