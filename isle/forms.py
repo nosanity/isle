@@ -7,6 +7,7 @@ class CreateTeamForm(forms.ModelForm):
     def __init__(self, **kwargs):
         qs = kwargs.pop('users_qs')
         self.event = kwargs.pop('event')
+        self.creator = kwargs.pop('creator')
         super().__init__(**kwargs)
         self.fields['users'].queryset = qs
 
@@ -17,6 +18,8 @@ class CreateTeamForm(forms.ModelForm):
     def save(self, commit=True):
         instance = super().save(commit=False)
         instance.event = self.event
+        instance.creator = self.creator
+        instance.confirmed = self.creator.is_assistant
         instance.save()
         self.save_m2m()
 
