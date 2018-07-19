@@ -50,7 +50,7 @@ class Index(TemplateView):
         objects = self.get_events()
         ctx = {
             'objects': objects,
-            'date': date.strftime(self.DATE_FORMAT),
+            'date': date.strftime(self.DATE_FORMAT) if date else None,
             'sort_asc': self.is_asc_sort(),
         }
         if self.request.user.is_assistant:
@@ -96,6 +96,8 @@ class Index(TemplateView):
         try:
             date = timezone.datetime.strptime(self.request.GET.get('date'), self.DATE_FORMAT).date()
         except:
+            if not self.request.user.is_assistant:
+                return
             date = timezone.localtime(timezone.now()).date()
         return date
 
