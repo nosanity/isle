@@ -73,7 +73,7 @@
                                 {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
                             </button>
                         {% endif %}
-                        {% if show_owners %}<div><span class="material-owners">{{ link.get_owners|join:', ' }}</span></div>{% endif %}
+                        {% if show_owners %}<div><span class="material-owners">{% if link.get_owners %}Связан с: {% endif %}{{ link.get_owners|join:', ' }}</span></div>{% endif %}
                     </li>
                 {% endfor %}
                 {% if not trace.links and not can_upload %}
@@ -157,7 +157,12 @@
                     else {
                         self.removeAttr('data-owner').text('Это мое');
                     }
-                    self.parents('li').find('.material-owners').html(data.owners);
+                    if (data.owners) {
+                        self.parents('li').find('.material-owners').html('Связан с: ' + data.owners);
+                    }
+                    else {
+                        self.parents('li').find('.material-owners').html('');
+                    }
                 }
             })
         });
