@@ -168,8 +168,7 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users, is_public=True).
                        values_list('user_id').annotate(num=Count('event_id')))
             num[self.request.user.id] = EventMaterial.objects.filter(event=self.event, user=self.request.user).count()
-            user_teams_objs = Team.objects.filter(event=self.event, users=self.request.user)
-            user_teams = [user_team.id for user_team in user_teams_objs if user_team.id]
+            user_teams = list(Team.objects.filter(event=self.event, users=self.request.user).values_list('id', flat=True))
         else:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
                        values_list('user_id').annotate(num=Count('event_id')))
@@ -184,7 +183,7 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
         return {
             'students': users,
             'event': self.event,
-            'teams': Team.objects.filter(event=self.event).order_by('name'),
+            'teams': Team.objects.filter(event=self.event).select_related('creator').order_by('name'),
             'user_teams': user_teams,
         }
 
@@ -448,12 +447,12 @@ class RefreshDataView(View):
         return JsonResponse({'success': bool(success)})
 
 
-@method_decorator(login_required, name='dispatch')
 class CreateTeamView(GetEventMixin, TemplateView):
     template_name = 'create_team.html'
 
     def dispatch(self, request, *args, **kwargs):
-        if request.user.is_authenticated and not request.user.is_assistant:
+        if not request.user.is_authenticated or not (request.user.is_assistant or
+                EventEntry.objects.filter(event=self.event, user=request.user).exists()):
             return HttpResponseForbidden()
         return super().dispatch(request, *args, **kwargs)
 
@@ -465,7 +464,8 @@ class CreateTeamView(GetEventMixin, TemplateView):
         return get_event_participants(self.event)
 
     def post(self, request, uid=None):
-        form = CreateTeamForm(data=request.POST, event=self.event, users_qs=self.get_available_users())
+        form = CreateTeamForm(data=request.POST, event=self.event, users_qs=self.get_available_users(),
+                              creator=request.user)
         if not form.is_valid():
             return JsonResponse({}, status=400)
         form.save()
@@ -770,5 +770,17 @@ class ConfirmTeamMaterial(GetEventMixin, View):
             logging.info('User %s confirmed team %s upload %s' %
                          (request.user.username, team.id, request.POST.get('material_id')))
         except (Team.DoesNotExist, EventTeamMaterial.DoesNotExist, ValueError, TypeError, AssertionError):
+            return JsonResponse({}, status=404)
+        return JsonResponse({})
+
+
+class ConfirmTeamView(GetEventMixin, View):
+    def post(self, request, uid=None):
+        if not request.user.is_authenticated or not request.user.is_assistant:
+            return JsonResponse({}, status=403)
+        try:
+            assert Team.objects.filter(event=self.event, id=request.POST.get('team_id')).update(confirmed=True)
+            logging.info('User %s confirmed team %s' % (request.user.username, request.POST.get('team_id')))
+        except (Team.DoesNotExist, TypeError, ValueError, AssertionError):
             return JsonResponse({}, status=404)
         return JsonResponse({})

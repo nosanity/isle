@@ -203,6 +203,8 @@ class Team(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE, verbose_name='Событие')
     users = models.ManyToManyField(User, verbose_name='Студенты')
     name = models.CharField(max_length=500, verbose_name='Название команды')
+    creator = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None, related_name='team_creator')
+    confirmed = models.BooleanField(default=True)
 
     @property
     def team_name(self):

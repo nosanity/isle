@@ -20,6 +20,8 @@
             <button class="nav-item btn btn-primary" style="margin:2px" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
             <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
             <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
+        {% else %}
+            <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
         {% endif %}
         <a class="nav-item btn btn-success" style="margin:2px" href="{% url 'load-event-materials' uid=event.uid %}">
             Материалы мероприятия{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
@@ -82,17 +84,20 @@
 
     {% if teams %}
         <h3>Команды</h3>
-        <table class="table table-hover table-bordered table-striped">
+        <table class="table table-hover table-bordered">
             <thead class="thead-light">
                 <tr>
                   <th scope="col">Название команды</th>
                   <th scope="col">Количество участников</th>
                   <th scope="col">Элементов следа</th>
                   <th scope="col">Загрузка</th>
+                  {% if request.user.is_assistant %}
+                      <th scope="col">Подтвердить</th>
+                  {% endif %}
                 </tr>
             </thead>
             {% for team in teams %}
-                <tr>
+                <tr class="{% if team.confirmed and team.creator and not team.creator.is_assistant %}confirmed-team-link{% elif team.confirmed %}assistant-team-link{% endif %}">
                     <td>
                         <a href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{{ team.name }}</a>
                     </td>
@@ -105,6 +110,13 @@
                         {% endif %}
                         {% endif %}
                     </td>
+                    {% if request.user.is_assistant %}
+                        <td>
+                        {% if team.creator and not team.creator.is_assistant and not team.confirmed %}
+                            <button class="btn btn-success btn-sm btn-confirm-team" value="{{ team.id }}">{% trans "Подтвердить" %}</button>
+                        {% endif %}
+                        </td>
+                    {% endif %}
                 </tr>
             {% endfor %}
         </table>
@@ -189,6 +201,24 @@
                     data: data,
                     success: function() {
                         window.location.reload();
+                    },
+                    error: function() {
+                        alert('error');
+                    }
+                })
+            });
+
+            $('.btn-confirm-team').click(function(e) {
+                e.preventDefault();
+                var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), team_id: $(this).val()};
+                var self = $(this);
+                $.ajax({
+                    url: "{% url 'confirm-team' uid=event.uid %}",
+                    method: 'POST',
+                    data: data,
+                    success: function() {
+                        self.parents('tr').addClass('confirmed-team-link');
+                        self.remove();
                     },
                     error: function() {
                         alert('error');
