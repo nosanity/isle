@@ -1,6 +1,8 @@
 import os
 import urllib
 from django.contrib.auth.models import AbstractUser
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -174,6 +176,13 @@ class AbstractMaterial(models.Model):
     file = models.FileField(blank=True, max_length=300)
     trace = models.ForeignKey(Trace, on_delete=models.CASCADE)
     initiator = models.PositiveIntegerField(blank=True, null=True)
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, default=None)
+    object_id = models.PositiveIntegerField(null=True, default=None)
+    parent = GenericForeignKey()
+    deleted = models.BooleanField(default=False)
+
+    objects = NotDeletedEntries()
+    all_objects = models.Manager()
 
     class Meta:
         abstract = True
@@ -206,6 +215,26 @@ class EventMaterial(AbstractMaterial):
     class Meta:
         verbose_name = _(u'Материал')
         verbose_name_plural = _(u'Материалы')
+
+    @classmethod
+    def copy_from_object(cls, material, user):
+        """
+        перемещение материалов мероприятия пользователю
+        """
+        if not isinstance(material, EventOnlyMaterial):
+            raise NotImplementedError
+        new_obj = cls.objects.create(
+            user=user,
+            event=material.event,
+            url=material.url,
+            file=material.file,
+            trace=material.trace,
+            initiator=material.initiator,
+            comment=material.comment,
+            parent=material,
+        )
+        EventOnlyMaterial.objects.filter(id=material.id).update(deleted=True)
+        return new_obj
 
 
 class Team(models.Model):
@@ -241,6 +270,27 @@ class EventTeamMaterial(AbstractMaterial):
         verbose_name = _(u'Материал команды')
         verbose_name_plural = _(u'Материалы команд')
 
+    @classmethod
+    def copy_from_object(cls, material, team):
+        """
+        перемещение материалов мероприятия команде
+        """
+        if not isinstance(material, EventOnlyMaterial):
+            raise NotImplementedError
+        new_obj = cls.objects.create(
+            team=team,
+            event=material.event,
+            url=material.url,
+            file=material.file,
+            trace=material.trace,
+            initiator=material.initiator,
+            comment=material.comment,
+            parent=material,
+        )
+        new_obj.owners.set(list(material.owners.all()))
+        EventOnlyMaterial.objects.filter(id=material.id).update(deleted=True)
+        return new_obj
+
 
 class EventOnlyMaterial(AbstractMaterial):
     comment = models.CharField(default='', max_length=255)
@@ -249,3 +299,36 @@ class EventOnlyMaterial(AbstractMaterial):
     class Meta:
         verbose_name = _(u'Материал мероприятия')
         verbose_name_plural = _(u'Материалы мероприятий')
+
+    @classmethod
+    def copy_from_object(cls, material):
+        """
+        перемещение материалов команды или пользователя в мероприятие
+        """
+        if isinstance(material, EventMaterial):
+            new_obj = cls.objects.create(
+                event=material.event,
+                url=material.url,
+                file=material.file,
+                trace=material.trace,
+                initiator=material.initiator,
+                comment=material.comment,
+                parent=material,
+            )
+            EventMaterial.objects.filter(id=material.id).update(deleted=True)
+            return new_obj
+        elif isinstance(material, EventTeamMaterial):
+            new_obj = cls.objects.create(
+                event=material.event,
+                url=material.url,
+                file=material.file,
+                trace=material.trace,
+                initiator=material.initiator,
+                comment=material.comment,
+                parent=material,
+            )
+            new_obj.owners.set(list(material.owners.all()))
+            EventTeamMaterial.objects.filter(id=material.id).update(deleted=True)
+            return new_obj
+        else:
+            raise NotImplementedError

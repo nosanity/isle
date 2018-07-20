@@ -290,7 +290,7 @@ class LoadMaterials(BaseLoadMaterials):
     Просмотр/загрузка материалов по эвенту
     """
     material_model = EventMaterial
-    extra_context = {'with_public_checkbox': True}
+    extra_context = {'with_public_checkbox': True, 'user_upload': True}
 
     def _can_set_public(self):
         return self.request.user.unti_id == int(self.kwargs['unti_id'])
@@ -416,7 +416,15 @@ class LoadEventMaterials(BaseLoadMaterials):
     Загрузка материалов мероприятия
     """
     material_model = EventOnlyMaterial
-    extra_context = {'with_comment_input': True, 'show_owners': True}
+    extra_context = {'with_comment_input': True, 'show_owners': True, 'event_upload': True}
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        data.update({
+            'event_users': get_event_participants(self.event),
+            'event_teams': Team.objects.filter(event=self.event).order_by('name'),
+        })
+        return data
 
     def get_materials(self):
         qs = EventOnlyMaterial.objects.filter(event=self.event).prefetch_related('owners')
@@ -918,3 +926,62 @@ class Statistics(TemplateView):
 
         }
         return data
+
+
+class TransferView(GetEventMixin, View):
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated and not request.user.is_assistant:
+            return HttpResponseForbidden()
+        return super().dispatch(request, *args, **kwargs)
+
+    def post(self, request, uid=None):
+        if request.POST.get('type') == 'event':
+            return self.move_to_event(request)
+        if request.POST.get('type') not in ['user', 'team']:
+            return JsonResponse({}, status=400)
+        try:
+            material = EventOnlyMaterial.objects.get(event=self.event, id=request.POST.get('material_id'))
+        except (EventOnlyMaterial.DoesNotExist, TypeError, ValueError):
+            return JsonResponse({}, status=404)
+        if request.POST['type'] == 'user':
+            return self.move_to_user(request, material)
+        return self.move_to_team(request, material)
+
+    def move_to_user(self, request, material):
+        try:
+            user = User.objects.get(id=request.POST.get('dest_id'))
+        except (User.DoesNotExist, TypeError, ValueError):
+            return JsonResponse({}, status=404)
+        if not EventEntry.objects.filter(event=self.event, user=user).exists():
+            return JsonResponse({}, status=400)
+        EventMaterial.copy_from_object(material, user)
+        logging.info('User %s transferred event file %s to user %s' % (request.user.username, material.id, user.id))
+        return JsonResponse({})
+
+    def move_to_team(self, request, material):
+        try:
+            team = Team.objects.get(id=request.POST.get('dest_id'))
+        except (Team.DoesNotExist, TypeError, ValueError):
+            return JsonResponse({}, status=404)
+        if not Team.objects.filter(id=team.id, event=self.event).exists():
+            return JsonResponse({}, status=400)
+        EventTeamMaterial.copy_from_object(material, team)
+        logging.info('User %s transferred event file %s to team %s' % (request.user.username, material.id, team.id))
+        return JsonResponse({})
+
+    def move_to_event(self, request):
+        model = {'true': EventMaterial, 'false': EventTeamMaterial}.get(request.POST.get('from_user'))
+        if not model:
+            return JsonResponse({}, status=400)
+        try:
+            obj = model.objects.get(id=request.POST.get('material_id'), event=self.event)
+        except (model.DoesNotExist, TypeError, ValueError):
+            return JsonResponse({}, status=404)
+        if model == EventMaterial and not EventEntry.objects.filter(event=self.event, user=obj.user_id).exists():
+            return JsonResponse({}, status=400)
+        if model == EventTeamMaterial and not Team.objects.filter(id=obj.team_id, event=self.event).exists():
+            return JsonResponse({}, status=400)
+        EventOnlyMaterial.copy_from_object(obj)
+        logging.info('User %s transferred %s file %s to event' %
+                     (request.user.username, 'user' if model == EventMaterial else 'team', obj.id))
+        return JsonResponse({})
