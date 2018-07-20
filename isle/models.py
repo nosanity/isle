@@ -3,6 +3,7 @@ import urllib
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+from django.utils.functional import cached_property
 from django.utils.translation import ugettext_lazy as _
 from jsonfield import JSONField
 
@@ -12,6 +13,7 @@ class User(AbstractUser):
     icon = JSONField()
     is_assistant = models.BooleanField(default=False)
     unti_id = models.PositiveIntegerField(null=True, db_index=True)
+    leader_id = models.CharField(max_length=255, default='')
 
     class Meta:
         verbose_name = _(u'Пользователь')
@@ -19,6 +21,10 @@ class User(AbstractUser):
 
     def __str__(self):
         return '%s %s' % (self.unti_id, self.get_full_name())
+
+    @property
+    def fio(self):
+        return ' '.join(filter(None, [self.last_name, self.first_name, self.second_name]))
 
 
 class EventType(models.Model):
@@ -81,6 +87,16 @@ class Event(models.Model):
     def trace_count(self):
         return EventMaterial.objects.filter(event=self).count() + EventTeamMaterial.objects.filter(event=self).count() + EventOnlyMaterial.objects.filter(event=self).count()
 
+    @cached_property
+    def event_only_material_count(self):
+        return EventOnlyMaterial.objects.filter(event=self).count()
+
+    def get_authors(self):
+        if self.data and isinstance(self.data, dict):
+            authors = (self.data.get('activity') or {}).get('authors') or []
+            return [(i.get('title') or '').strip() for i in authors]
+        return []
+
 
 class Trace(models.Model):
     """
@@ -102,11 +118,23 @@ class Trace(models.Model):
         return self.name
 
 
+class NotDeletedEntries(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted=False)
+
+
 class EventEntry(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     is_active = models.BooleanField(default=False)
     timestamp = models.DateTimeField(auto_now=True)
+    added_by_assistant = models.BooleanField(default=False, verbose_name='Добавлен вручную')
+    check_in_pushed = models.BooleanField(default=False, verbose_name='Чекин проставлен в ILE')
+    deleted = models.BooleanField(default=False)
+    approve_text = models.TextField(verbose_name='Подтверждающий текст', blank=True, default='')
+
+    objects = NotDeletedEntries()
+    all_objects = models.Manager()
 
     class Meta:
         verbose_name = _(u'Запись пользователя')
@@ -116,12 +144,36 @@ class EventEntry(models.Model):
     def __str__(self):
         return '%s - %s' % (self.event, self.user)
 
+    def approved(self):
+        return self.is_active or Attendance.objects.filter(user=self.user, event=self.event, is_confirmed=True)
+
+
+class Attendance(models.Model):
+    SYSTEM_UPLOADS = 'uploads'
+    SYSTEM_CHAT_BOT = 'chat_bot'
+    SYSTEMS = (
+        (SYSTEM_UPLOADS, SYSTEM_UPLOADS),
+        (SYSTEM_CHAT_BOT, SYSTEM_CHAT_BOT)
+    )
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    created_on = models.DateTimeField(auto_now_add=True)
+    updated_on = models.DateTimeField(auto_now=True)
+    confirmed_by_user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='confirmed_by_user', null=True)
+    confirmed_by_system = models.CharField(max_length=255, choices=SYSTEMS)
+    is_confirmed = models.BooleanField()
+
+    class Meta:
+        unique_together = ('event', 'user')
+
 
 class AbstractMaterial(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
     url = models.URLField(blank=True)
-    file = models.FileField(blank=True)
+    file = models.FileField(blank=True, max_length=300)
     trace = models.ForeignKey(Trace, on_delete=models.CASCADE)
+    initiator = models.PositiveIntegerField(blank=True, null=True)
 
     class Meta:
         abstract = True
@@ -140,9 +192,16 @@ class AbstractMaterial(models.Model):
     def __str__(self):
         return '#%s %s' % (self.id, self.get_url())
 
+    def get_owners(self):
+        if hasattr(self, 'owners'):
+            return [i.fio for i in self.owners.all()]
+        return []
+
 
 class EventMaterial(AbstractMaterial):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
+    is_public = models.BooleanField(default=False)
+    comment = models.CharField(default='', max_length=255)
 
     class Meta:
         verbose_name = _(u'Материал')
@@ -153,10 +212,16 @@ class Team(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE, verbose_name='Событие')
     users = models.ManyToManyField(User, verbose_name='Студенты')
     name = models.CharField(max_length=500, verbose_name='Название команды')
+    creator = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None, related_name='team_creator')
+    confirmed = models.BooleanField(default=True)
 
     @property
     def team_name(self):
         return 'team_{}'.format(self.id)
+
+    @property
+    def traces_number(self):
+        return EventTeamMaterial.objects.filter(team=self).count()
 
     class Meta:
         verbose_name = 'Команда'
@@ -169,6 +234,8 @@ class Team(models.Model):
 class EventTeamMaterial(AbstractMaterial):
     team = models.ForeignKey(Team, on_delete=models.CASCADE)
     comment = models.CharField(default='', max_length=255)
+    confirmed = models.BooleanField(default=True)
+    owners = models.ManyToManyField(User)
 
     class Meta:
         verbose_name = _(u'Материал команды')
@@ -177,6 +244,7 @@ class EventTeamMaterial(AbstractMaterial):
 
 class EventOnlyMaterial(AbstractMaterial):
     comment = models.CharField(default='', max_length=255)
+    owners = models.ManyToManyField(User)
 
     class Meta:
         verbose_name = _(u'Материал мероприятия')

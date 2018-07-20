@@ -2,42 +2,108 @@
 {% load i18n %}
 
 {% block content %}
-    <h2>{{ event.title }}</h2>
+    <div class="row">
+        <div class="col-lg-9"><h2>{{ event.title }}</h2></div>
+        <div class="col-lg-3"><h6>{{ event.get_authors|join:'<br>'|safe }}</h6></div>
+    </div>
+    <h6>
+        {{ event.dt_start|date:'d E, H:i' }} - {{ event.dt_end|date:'H:i' }};&nbsp;
+	{% if request.user.is_assistant %}
+            ID: {{ event.ext_id }}, Run_ID: {{ event.data.run.ext_id }}, Activity_ID: {{ event.data.activity.ext_id }}
+	{% endif %}
+    </h6>
     {% csrf_token %}
-    {% if request.user.is_assistant %}
-        <div class="margin-bottom">
-            <button class="btn btn-primary" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
-            <button class="btn btn-primary" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
-            <a class="btn btn-primary" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
-            <a class="btn btn-primary" href="{% url 'load-event-materials' uid=event.uid %}">Загрузка материалов мероприятия</a>
+
+    {% if not event_entry.approved %}
+      <div class="approve-text d-none">
+      <div class="alert alert-warning">
+        Ваше присутствие на мероприятии не подтверждено!
+        В окне ввода ниже укажите обстоятельства, подтверждающие что Вы присутствовали на мероприятии.
+        Если у вас есть фотографии с мероприятия, которые могут это подтвердить - пожалуйста,
+        загрузите их в качестве своего цифрового следа.
+      </div>
+        <div class="p-2">
+          <textarea class="form-control" id="approve_text_data" rows="3">{{ event_entry.approve_text }}</textarea>
+        </div>
+        <div class="p-2">
+          <button class="btn btn-outline-secondary approve-text-btn">Сохранить</button>
+          <button class="btn btn-outline-secondary hide-text-btn pull-right">Скрыть</button>
+        </div>
+        <div class="clearfix"></div>
         </div>
     {% endif %}
 
-    <table class="table table-hover table-bordered table-striped">
+     <nav class="nav nav-pills nav-justified">
+        {% if request.user.is_assistant %}
+            <button class="nav-item btn btn-primary" style="margin:2px" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
+            <button class="nav-item btn btn-primary" style="margin:2px" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
+            <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
+            <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
+        {% else %}
+            <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
+            {% if not event_entry.approved %}
+                <a class="nav-item btn btn-primary text-white" style="margin:2px" id="i-was-here">
+                    {% if event_entry.approve_text %}
+                        Изменить подтверждение присутствия
+                    {% else %}
+                        Я тут точно был!
+                    {% endif %}
+                </a>
+            {% endif %}
+        {% endif %}
+        <a class="nav-item btn btn-success" style="margin:2px" href="{% url 'load-event-materials' uid=event.uid %}">
+            Материалы мероприятия{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
+    </nav>
+    <div class="row">
+    <div class="col"><div style="overflow: scroll">
+    <table id="event-users-table" class="table table-hover table-bordered table-striped">
         <thead class="thead-light">
             <tr>
-                <th scope="col">ФИО</th>
-                <th scope="col">Фото</th>
-                <th scope="col">Количество загруженных файлов</th>
-                <th scope="col">Чекин</th>
-                <th scope="col">Загрузка</th>
+                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">ФИО</th>
+                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Фото</th>
+                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Элементов следа</th>
+                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Чекин</th>
+                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Присутствие</th>
+                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Загрузка</th>
+                {% if request.user.is_assistant %}
+                    <th scope="col"></th>
+                {% endif %}
             </tr>
         </thead>
         {% for student in students %}
-            <tr>
-                <td>{{ student.get_full_name }}</td>
-                <td>{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
-                <td>{{ student.materials_num }}</td>
-                <td><input type="checkbox" data-user="{{ student.id }}" class="check-in" {% if student.checked_in %}checked{% endif %}></td>
+            <tr {% if student.can_delete %}class="tr-added-user"{% elif student.added_by_chat_bot %}class="tr-added-chatbot-user"{% endif %}>
+                <td class="align-middle" style="padding: .25rem .75rem;">
+                    <a href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{{ student.get_full_name }}</a>
+                </td>
+                <td class="text-center align-middle" style="padding: .25rem .75rem;">{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
+                <td class="text-center align-middle" style="padding: .25rem .75rem;">{{ student.materials_num }}</td>
+                <td class="text-center align-middle" style="padding: .25rem .75rem;"><input type="checkbox" data-user="{{ student.id }}" class="check-in"
+                           {% if student.checked_in %}checked{% endif %} disabled>
+                </td>
+                <td class="text-center align-middle" style="padding: .25rem .75rem;"><input type="checkbox" data-user="{{ student.id }}" class="attendance"
+                           {% if student.attend %}checked {% endif %}
+                           {% if not request.user.is_assistant %} disabled{% endif %}>
+                </td>
                 <td>
                     {% if event.is_active %}
-                    <a class="btn btn-primary btn-sm" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
+                    {% if student.unti_id == request.user.unti_id or request.user.is_assistant %}
+                    <a class="btn btn-primary btn-sm btn-block" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
+                    {% endif %}
                     {% endif %}
                 </td>
+                {% if request.user.is_assistant %}
+                    <td>
+                        {% if student.can_delete %}
+                            <button class="btn btn-danger btn-sm btn-delete-attendance" data-user-id="{{ student.id }}">
+                                Удалить
+                            </button>
+                        {% endif %}
+                    </td>
+                {% endif %}
             </tr>
         {% endfor %}
     </table>
-
+    </div></div></div>
     {% if not students %}
 	<div class="alert alert-danger" role="alert">
              Нет записей на данное мероприятие
@@ -46,23 +112,39 @@
 
     {% if teams %}
         <h3>Команды</h3>
-        <table class="table table-hover table-bordered table-striped">
+        <table class="table table-hover table-bordered">
             <thead class="thead-light">
                 <tr>
                   <th scope="col">Название команды</th>
                   <th scope="col">Количество участников</th>
+                  <th scope="col">Элементов следа</th>
                   <th scope="col">Загрузка</th>
+                  {% if request.user.is_assistant %}
+                      <th scope="col">Подтвердить</th>
+                  {% endif %}
                 </tr>
             </thead>
             {% for team in teams %}
-                <tr>
-                    <td>{{ team.name }}</td>
+                <tr class="{% if team.confirmed and team.creator and not team.creator.is_assistant %}confirmed-team-link{% elif team.confirmed %}assistant-team-link{% endif %}">
+                    <td>
+                        <a href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{{ team.name }}</a>
+                    </td>
                     <td>{{ team.users.count }}</td>
+                    <td>{{ team.traces_number }}</td>
                     <td>
                         {% if event.is_active %}
+                        {% if request.user.is_assistant or team.id in user_teams %}
                         <a class="btn btn-primary btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
                         {% endif %}
+                        {% endif %}
                     </td>
+                    {% if request.user.is_assistant %}
+                        <td>
+                        {% if team.creator and not team.creator.is_assistant and not team.confirmed %}
+                            <button class="btn btn-success btn-sm btn-confirm-team" value="{{ team.id }}">{% trans "Подтвердить" %}</button>
+                        {% endif %}
+                        </td>
+                    {% endif %}
                 </tr>
             {% endfor %}
         </table>
@@ -73,7 +155,7 @@
     {{ block.super }}
     {% if request.user.is_assistant %}
         {% include 'refresh_script.html' %}
-    {% endif %}
+
     <script type="text/javascript">
         $(document).ready(function() {
             $('#refresh-check-ins').click(function(e) {
@@ -94,16 +176,36 @@
                 })
             });
 
-            $('input.check-in').change(function() {
-                if (!this.checked) {
-                    this.checked = !this.checked;
-                    return;
-                }
+{#            $('input.check-in').change(function() {#}
+{#                if (!this.checked) {#}
+{#                    this.checked = !this.checked;#}
+{#                    return;#}
+{#                }#}
+{#                var checked = this.checked;#}
+{#                var box = this;#}
+{#                var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), user_id: $(this).data('user'), status: checked};#}
+{#                $.ajax({#}
+{#                    url: "{% url 'refresh-checkin-view' uid=event.uid %}",#}
+{#                    method: 'POST',#}
+{#                    data: data,#}
+{#                    success: function(data) {#}
+{#                        if (!data.success) {#}
+{#                            box.checked = !checked;#}
+{#                        }#}
+{#                    },#}
+{#                    error: function() {#}
+{#                        alert('error');#}
+{#                        box.checked = !checked;#}
+{#                    }#}
+{#                })#}
+{#            });#}
+
+            $('input.attendance').change(function() {
                 var checked = this.checked;
                 var box = this;
                 var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), user_id: $(this).data('user'), status: checked};
                 $.ajax({
-                    url: "{% url 'refresh-checkin-view' uid=event.uid %}",
+                    url: "{% url 'update-attendance-view' uid=event.uid %}",
                     method: 'POST',
                     data: data,
                     success: function(data) {
@@ -117,6 +219,71 @@
                     }
                 })
             });
+
+            $('body').delegate('.btn-delete-attendance', 'click', function(e) {
+                e.preventDefault();
+                var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), user_id: $(this).data('user-id')};
+                $.ajax({
+                    url: "{% url 'remove-user' uid=event.uid %}",
+                    method: 'POST',
+                    data: data,
+                    success: function() {
+                        window.location.reload();
+                    },
+                    error: function() {
+                        alert('error');
+                    }
+                })
+            });
+
+            $('.btn-confirm-team').click(function(e) {
+                e.preventDefault();
+                var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), team_id: $(this).val()};
+                var self = $(this);
+                $.ajax({
+                    url: "{% url 'confirm-team' uid=event.uid %}",
+                    method: 'POST',
+                    data: data,
+                    success: function() {
+                        self.parents('tr').addClass('confirmed-team-link');
+                        self.remove();
+                    },
+                    error: function() {
+                        alert('error');
+                    }
+                })
+            });
+
         });
     </script>
+    {% endif %}
+
+    <script type="text/javascript">
+        $(document).ready(function() {
+            $('#i-was-here').click(function(e){
+                $('.approve-text').removeClass('d-none');
+            });
+            $('.hide-text-btn').click(function(e){
+                $('.approve-text').addClass('d-none');
+            });
+
+            $('.approve-text-btn').click(function(e){
+                e.preventDefault();
+                var text_data = $('#approve_text_data').val();
+                var data = {approve_text: text_data, csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()};
+                $.ajax({
+                    url: "{% url 'approve-text-edit' event_entry_id=event_entry.id %}",
+                    method: 'POST',
+                    data: data,
+                    success: function() {
+                        console.log('success');
+                    },
+                    error: function() {
+                        alert('error');
+                    }
+                })
+            });
+        })
+    </script>
+
 {% endblock %}

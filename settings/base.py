@@ -19,6 +19,8 @@ ALLOWED_HOSTS = ['*']
 # Application definition
 
 INSTALLED_APPS = [
+    'dal',
+    'dal_select2',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -28,6 +30,7 @@ INSTALLED_APPS = [
     'isle',
     'social_core',
     'social_django',
+    'rest_framework',
 ]
 
 MIDDLEWARE = [
@@ -115,7 +118,9 @@ AUTHENTICATION_BACKENDS = (
     'isle.auth.UNTIBackend',
     'django.contrib.auth.backends.ModelBackend'
 )
-LOGIN_URL = '/login/unti/'
+LOGIN_URL = '/login/'
+
+AWS_S3_FILE_OVERWRITE = False
 
 ### константы, которые можно переписать ###
 # название тега, по которому приложение понимает, что пользователь ассистент
@@ -130,6 +135,10 @@ API_DATA_CACHE_TIME = 60 * 30
 VISIBLE_EVENT_TYPES = ['клуб мышления', 'визионерская лекция', 'мастер-класс', 'x-labs']
 # максимальное количество одновременно загружаемых файлов пользователем
 MAX_PARALLEL_UPLOADS = 10
+# использовать снэпшот для обновления эвентов
+USE_ILE_SNAPSHOT = True
+# сколько активностей запрашивать на странице (если не используется снэпшот для обновления эвентов)
+ACTIVITIES_PER_PAGE = 20
 
 ### параметры, которые надо указать в local_settings ###
 # урл sso без / в конце
@@ -140,7 +149,7 @@ SOCIAL_AUTH_UNTI_SECRET = ''
 # таймаут для запросов в ILE
 CONNECTION_TIMEOUT = 20
 # логин и пароль пользователя в ILE
-ILE_TOKEN_USER = ('user', 'password')
+ILE_TOKEN_USER = ('user', 'token')
 # базовый урл ILE
 ILE_BASE_URL = 'https://ile2.u2035dev.ru'
 # урл для получения токена в ILE
@@ -153,3 +162,4 @@ ILE_VERIFY_CERTIFICATE = False
 LABS_TRACES_API_URL = 'https://labs.u2035dev.ru/api/v1/tracetype?app_token=7at0hbdmabmtfl0y'
 
 from .local_settings import *
+

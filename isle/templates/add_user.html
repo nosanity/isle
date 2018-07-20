@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+    <h2>Добавление пользователя на мероприятие "{{ event.title }}"</h2>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="btn btn-primary" type="submit">Добавить</button>
+    </form>
+
+    <a href="{% url 'event-view' uid=event.uid %}">
+        <button class="btn btn-default margin-top">К странице мероприятия</button>
+    </a>
+{% endblock %}
+
+{% block footer %}
+    {{ form.media }}
+{% endblock %}
