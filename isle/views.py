@@ -858,7 +858,7 @@ class Statistics(TemplateView):
         private_elements = EventMaterial.objects.filter(is_public=False).count()
         public_elements = total_elements - private_elements
 
-        fixics = list(User.objects.filter(is_assistant=False).exclude(unti_id__isnull=True).values_list('unti_id', flat=True))
+        fixics = list(User.objects.filter(is_assistant=True).exclude(unti_id__isnull=True).values_list('unti_id', flat=True))
 
         student_event_materials = (EventMaterial.objects.exclude(initiator__in=fixics) & EventMaterial.objects.filter(initiator__isnull=False)).values_list('initiator', flat=True)
         student_loaders_event_materials = set(student_event_materials)

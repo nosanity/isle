@@ -13,7 +13,7 @@
                     <a href='/'><button class="btn btn-info">Сбросить фильтр</button></a>
                 {% endif %}
                 {% if request.user.is_assistant %}
-                    <button class="btn btn-info float-right" id="refresh" data-url="{% url 'refresh-view' %}">Обновить данные</button>
+		    <a class="nav-item btn btn-secondary" href='/statistics/'>Статистика</a>
                 {% endif %}
             </form>
         </div>
