@@ -9,6 +9,35 @@
     {% csrf_token %}
     <div class="clearfix"></div>
 
+    {% if request.user.is_assistant and event_upload %}
+        <div class="modal fade text-left" tabindex="-1" role="dialog" id="transfer-modal">
+          <div class="modal-dialog">
+            <div class="modal-content">
+              <div class="modal-body">
+                <h5>Участники:</h5>
+                <ul class="list-group list-group-flush">
+                  {% for user in event_users %}
+                    <li class="list-group-item">{{ user.fio }}&nbsp;<button class="btn btn-sm btn-success pull-right transfer-from-event" data-type-to="user" value="{{ user.id }}">Перенести</button></li>
+                  {% endfor %}
+                </ul>
+                <br>
+                <h5>Команды:</h5>
+                <ul class="list-group list-group-flush">
+                  {% for team in event_teams %}
+                    <li class="list-group-item">{{ team.name }}&nbsp;<button class="btn btn-sm btn-success pull-right transfer-from-event" data-type-to="team" value="{{ team.id }}">Перенести</button></li>
+                  {% endfor %}
+                </ul>
+              </div>
+              <div class="modal-footer">
+                <div class="clearfix">
+                  <span data-dismiss="modal" class="btn btn-danger pull-left">Закрыть</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+    {% endif %}
+
     {% if team_upload %}
         <h4> Команда: '{{ team_name }}' </h4>
         <table class="table table-hover table-bordered table-striped margin-top">
@@ -55,6 +84,11 @@
                         <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
                             {% blocktrans %}Удалить{% endblocktrans %}
                         </button>
+                        {% if request.user.is_assistant %}
+                            <button value="{{ link.id }}" class="btn btn-danger btn-sm pull-right transfer-material-btn">
+                                Перенести
+                            </button>
+                        {% endif %}
                         {% if team_upload and request.user.is_assistant and not link.confirmed %}
                             <button value="{{ link.id }}" class="btn btn-success btn-sm pull-right confirm-material-btn">
                                 {% blocktrans %}Подтвердить{% endblocktrans %}
@@ -167,6 +201,71 @@
             })
         });
     </script>
+    {% if request.user.is_assistant %}
+        <script type="text/javascript">
+            $(document).ready(function() {
+                var EVENT_UPLOAD = {% if event_upload %}true{% else %}false{% endif %};
+                {% if event_upload %}
+                $('.transfer-material-btn').click(function(e) {
+                    e.preventDefault();
+                    $('#transfer-modal').data('material-id', $(this).val()).modal('show');
+                });
+
+                $('.transfer-from-event').click(function(e) {
+                    e.preventDefault();
+                    var msg = 'Вы уверены, что хотите переместить файл?';
+                    var self = $(this);
+                    if (confirm(msg)) {
+                        data = {
+                            csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
+                            material_id: $('#transfer-modal').data('material-id'),
+                            dest_id: self.val(),
+                            type: self.data('type-to')
+                        };
+                        $.ajax({
+                            url: "{% url 'transfer' uid=event.uid %}",
+                            method: 'POST',
+                            data: data,
+                            success: function() {
+                                $('.transfer-material-btn[value=' + data.material_id + ']').parents('li').remove();
+                                $('#transfer-modal').modal('hide');
+                            },
+                            error: function() {
+                                alert('error');
+                            }
+                        })
+                    }
+                });
+                {% else %}
+                $('.transfer-material-btn').click(function(e) {
+                    e.preventDefault();
+                    $('#transfer-modal').data('material-id', $(this).val()).modal('show');
+                    var msg = 'Вы уверены, что хотите перенести этот файл в файлы мероприятия?';
+                    var self = $(this);
+                    var data = {
+                        csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
+                        material_id: self.val(),
+                        type: 'event',
+                        from_user: {% if user_upload %}true{% else %}false{% endif %}
+                    };
+                    if (confirm(msg)) {
+                        $.ajax({
+                            url: "{% url 'transfer' uid=event.uid %}",
+                            method: 'POST',
+                            data: data,
+                            success: function() {
+                                self.parents('li').remove();
+                            },
+                            error: function() {
+                                alert('error');
+                            }
+                        })
+                    }
+                });
+                {% endif %}
+            })
+        </script>
+    {% endif %}
     {% if can_upload %}
     <script type="text/javascript">
         MAX_SIZE = {{ max_size }};

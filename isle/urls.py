@@ -25,6 +25,7 @@ urlpatterns = [
          name='team-material-owner'),
     path('owner/event-material/<str:uid>/<int:material_id>/', views.EventMaterialOwnership.as_view(),
          name='event-material-owner'),
+    path('transfer-material/<str:uid>/', views.TransferView.as_view(), name='transfer'),
     path('statistics/', views.Statistics.as_view()),
     path('approve-text-edit/<str:event_entry_id>/', views.ApproveTextEdit.as_view(), name='approve-text-edit'),
     path('<str:uid>/', views.EventView.as_view(), name='event-view'),
