@@ -844,6 +844,8 @@ class Statistics(TemplateView):
     template_name = 'stat.html'
 
     def get_context_data(self):
+        if not self.request.user.is_assistant:
+            return {}
         event_materials = EventMaterial.objects.count()
         event_team_materials = EventTeamMaterial.objects.count()
         event_only_materials = EventOnlyMaterial.objects.count()
