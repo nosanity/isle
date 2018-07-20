@@ -839,6 +839,7 @@ class ApproveTextEdit(View):
         return JsonResponse({})
 
 
+@method_decorator(login_required, name='dispatch')
 class Statistics(TemplateView):
     template_name = 'stat.html'
 
@@ -855,7 +856,7 @@ class Statistics(TemplateView):
         private_elements = EventMaterial.objects.filter(is_public=False).count()
         public_elements = total_elements - private_elements
 
-        fixics = list(User.objects.filter(is_assistant=False).values_list('unti_id', flat=True))
+        fixics = list(User.objects.filter(is_assistant=False).exclude(unti_id__isnull=True).values_list('unti_id', flat=True))
 
         student_event_materials = (EventMaterial.objects.exclude(initiator__in=fixics) & EventMaterial.objects.filter(initiator__isnull=False)).values_list('initiator', flat=True)
         student_loaders_event_materials = set(student_event_materials)
@@ -885,6 +886,10 @@ class Statistics(TemplateView):
 
         fixics_loaders = len(set(fixics_loaders_event_materials | fixics_loaders_event_team_materials | fixics_loaders_event_only_materials))
 
+        evs = Event.objects.filter(id__in=set(EventEntry.objects.all().values_list('event', flat=True)), event_type__ext_id__in=[1,2,5,6])
+        iterator = (e for e in evs if e.trace_count==0 and EventEntry.objects.filter(is_active=True, event=e).count() > 0)
+        without_trace = sum(1 for _ in iterator)
+
         data = {
             'total_elements': total_elements,
             'event_materials': event_materials,
@@ -907,6 +912,7 @@ class Statistics(TemplateView):
             'category_event_materials': dict(category_event_materials),
             'category_event_team_materials': dict(category_event_team_materials),
             'category_event_only_materials': dict(category_event_only_materials),
+            'without_trace': without_trace,
 
         }
         return data

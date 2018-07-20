@@ -6,26 +6,27 @@
         <tr><th>Параметр</th>
         <th>Значение</th></tr>
         </thead>
+	    <tr class="table-danger"><td>Неоцифрованных мероприятий</td><td> {{ without_trace }}</td></tr>
             <tr><td>Всего Элементов цифрового следа</td><td> {{  total_elements }}</td></tr>
-            <tr><td>Пользовательский след</td><td> {{event_materials}}  </td></tr>
-            <tr><td>Командный след</td><td> {{event_team_materials}}  </td></tr>
-            <tr><td>След мероприятия</td><td> {{event_only_materials}}      </td></tr>
+            <tr><td class="text-right">Пользовательский след</td><td> {{event_materials}}  </td></tr>
+            <tr><td class="text-right">Командный след</td><td> {{event_team_materials}}  </td></tr>
+            <tr><td class="text-right">След мероприятия</td><td> {{event_only_materials}}      </td></tr>
 
-            <tr><td>Пользовательский след, загруженный участниками</td><td> {{student_event_materials_count}}       </td></tr>
-            <tr><td>Командный след, загруженный участниками</td><td> {{student_event_team_materials_count}}  </td></tr>
-            <tr><td>След мероприятия, загруженный участниками</td><td> {{student_event_only_materials_count}}   </td></tr>
             <tr><td>Число грузивших участников</td><td> {{student_loaders}}</td></tr>
+            <tr><td class="text-right">Пользовательский след, загруженный участниками</td><td> {{student_event_materials_count}}       </td></tr>
+            <tr><td class="text-right">Командный след, загруженный участниками</td><td> {{student_event_team_materials_count}}  </td></tr>
+            <tr><td class="text-right">След мероприятия, загруженный участниками</td><td> {{student_event_only_materials_count}}   </td></tr>
 
-            <tr><td>Пользовательский след, загруженный фиксиками</td><td> {{fixics_event_materials_count}}     </td></tr>
-            <tr><td>Командный след, загруженный фиксиками</td><td> {{fixics_event_team_materials_count}}   </td></tr>
-            <tr><td>След мероприятия, загруженный фиксиками</td><td> {{fixics_event_only_materials_count}}  </td></tr>
             <tr><td>Число грузивших фиксиков</td><td> {{fixics_loaders}}              </td></tr>
+            <tr><td class="text-right">Пользовательский след, загруженный фиксиками</td><td> {{fixics_event_materials_count}}     </td></tr>
+            <tr><td class="text-right">Командный след, загруженный фиксиками</td><td> {{fixics_event_team_materials_count}}   </td></tr>
+            <tr><td class="text-right">След мероприятия, загруженный фиксиками</td><td> {{fixics_event_only_materials_count}}  </td></tr>
 
             <tr><td>Приватных элементов</td><td> {{private_elements}}       </td></tr>
             <tr><td>Публичных элементов</td><td> {{public_elements}}       </td></tr>
 
-            <tr><td>След мероприятий по категориям</td><td> {{category_event_materials}}   </td></tr>
-            <tr><td>След команд по категориям</td><td> {{category_event_team_materials}}  </td></tr>
-            <tr><td>След участников по категориям</td><td> {{category_event_only_materials}}  </td></tr>
+	    <tr><td>След мероприятий по категориям</td><td><ul> {% for k, v in category_event_materials.items %}<li> {{k}}: {{v}}</li> {% endfor %}</ul></td></tr>
+	    <tr><td>След команд по категориям</td><td><ul> {% for k, v in category_event_team_materials.items %}<li> {{k}}: {{v}}</li> {% endfor %}</ul></td></tr>
+	    <tr><td>След участников по категориям</td><td><ul> {% for k, v in category_event_only_materials.items %}<li> {{k}}: {{v}}</li> {% endfor %}</ul></td></tr>
     </table>
 {% endblock %}
