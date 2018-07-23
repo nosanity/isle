@@ -55,7 +55,7 @@ class Index(TemplateView):
         }
         if self.request.user.is_assistant:
             fdict = {
-                'initiator__in': User.objects.filter(is_assistant=True).values_list('id', flat=True)
+                'initiator__in': User.objects.filter(is_assistant=True).values_list('unti_id', flat=True)
             }
             ctx.update({
                 'total_elements': EventMaterial.objects.count() +
