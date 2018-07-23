@@ -126,7 +126,7 @@ AWS_S3_FILE_OVERWRITE = False
 # название тега, по которому приложение понимает, что пользователь ассистент
 ASSISTANT_TAGS_NAME = ['assistant', 'island_assistant']
 # максимальный размер загружаемых файлов
-MAXIMUM_ALLOWED_FILE_SIZE = 100
+MAXIMUM_ALLOWED_FILE_SIZE = 5120
 # значение в секундах, +- от текущего времени когда событие считается новым
 CURRENT_EVENT_DELTA = 60 * 60
 # на сколько кешировать данные, получаемые по апи

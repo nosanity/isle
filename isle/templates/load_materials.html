@@ -17,14 +17,14 @@
                 <h5>Участники:</h5>
                 <ul class="list-group list-group-flush">
                   {% for user in event_users %}
-                    <li class="list-group-item">{{ user.fio }}&nbsp;<button class="btn btn-sm btn-success pull-right transfer-from-event" data-type-to="user" value="{{ user.id }}">Перенести</button></li>
+                    <li class="list-group-item">{{ user.fio }}&nbsp;<button class="btn btn-sm btn-success pull-right transfer-from-event" data-type-to="user" value="{{ user.id }}">Переместить</button></li>
                   {% endfor %}
                 </ul>
                 <br>
                 <h5>Команды:</h5>
                 <ul class="list-group list-group-flush">
                   {% for team in event_teams %}
-                    <li class="list-group-item">{{ team.name }}&nbsp;<button class="btn btn-sm btn-success pull-right transfer-from-event" data-type-to="team" value="{{ team.id }}">Перенести</button></li>
+                    <li class="list-group-item">{{ team.name }}&nbsp;<button class="btn btn-sm btn-success pull-right transfer-from-event" data-type-to="team" value="{{ team.id }}">Переместить</button></li>
                   {% endfor %}
                 </ul>
               </div>
@@ -86,7 +86,7 @@
                         </button>
                         {% if request.user.is_assistant %}
                             <button value="{{ link.id }}" class="btn btn-danger btn-sm pull-right transfer-material-btn">
-                                Перенести
+                                Переместить
                             </button>
                         {% endif %}
                         {% if team_upload and request.user.is_assistant and not link.confirmed %}
@@ -240,7 +240,7 @@
                 $('.transfer-material-btn').click(function(e) {
                     e.preventDefault();
                     $('#transfer-modal').data('material-id', $(this).val()).modal('show');
-                    var msg = 'Вы уверены, что хотите перенести этот файл в файлы мероприятия?';
+                    var msg = 'Вы уверены, что хотите переместить этот файл в файлы мероприятия?';
                     var self = $(this);
                     var data = {
                         csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
