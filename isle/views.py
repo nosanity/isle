@@ -52,6 +52,7 @@ class Index(TemplateView):
             'objects': objects,
             'date': date.strftime(self.DATE_FORMAT) if date else None,
             'sort_asc': self.is_asc_sort(),
+            'activity_filter': self.activity_filter,
         }
         if self.request.user.is_assistant:
             fdict = {
@@ -96,10 +97,17 @@ class Index(TemplateView):
         try:
             date = timezone.datetime.strptime(self.request.GET.get('date'), self.DATE_FORMAT).date()
         except:
-            if not self.request.user.is_assistant:
+            if not self.request.user.is_assistant or self.activity_filter:
                 return
             date = timezone.localtime(timezone.now()).date()
         return date
+
+    @cached_property
+    def activity_filter(self):
+        try:
+            return Activity.objects.get(ext_id=self.request.GET.get('activity'))
+        except (ValueError, TypeError, Activity.DoesNotExist):
+            return
 
     def get_events(self):
         if self.request.user.is_assistant:
@@ -114,6 +122,8 @@ class Index(TemplateView):
             min_dt = timezone.make_aware(timezone.datetime.combine(date, timezone.datetime.min.time()))
             max_dt = min_dt + timezone.timedelta(days=1)
             events = events.filter(dt_start__gte=min_dt, dt_start__lt=max_dt)
+        if self.activity_filter:
+            events = events.filter(activity=self.activity_filter)
         events = events.order_by('{}dt_start'.format('' if self.is_asc_sort() else '-'))
         return events
 

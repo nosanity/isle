@@ -30,7 +30,7 @@
             {% for activity in objects %}
                 <tr>
                     <td>{{ activity.ext_id }}</td>
-                    <td><a href="#">{{ activity.title }}</a></td>
+                    <td><a href="{% url 'index' %}?activity={{ activity.ext_id }}">{{ activity.title }}</a></td>
                     <td>{{ activity.main_author }}</td>
                     <td>{{ activity.event_count }}</td>
                     <td>{{ activity.participants_num }} / {{ activity.check_ins_num }}</td>
