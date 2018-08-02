@@ -52,11 +52,15 @@ class Command(BaseCommand):
         try:
             resp = requests.get('{}/api/v1/activity?app_token={}'.
                                 format(settings.LABS_URL.strip('/'), settings.LABS_TOKEN))
+            assert resp.status_code == 200, 'status code %s' % resp.status_code
+            assert isinstance(resp.json(), list), 'labs response is str'
             for a in resp.json():
                 authors = a.get('authors') or []
                 for author in authors:
                     if author.get('is_main'):
                         Activity.objects.filter(uid=a.get('uuid')).update(main_author=author.get('title'))
                         break
+        except AssertionError as e:
+            logging.error('assertion error' % e)
         except Exception as e:
             logging.exception('failed to fetch info from LABS')
