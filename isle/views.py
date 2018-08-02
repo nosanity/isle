@@ -24,7 +24,7 @@ from rest_framework.response import Response
 from social_django.models import UserSocialAuth
 from isle.forms import CreateTeamForm, AddUserForm
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
-    Attendance
+    Attendance, Activity, ActivityEnrollment
 from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in
 
@@ -985,3 +985,34 @@ class TransferView(GetEventMixin, View):
         logging.info('User %s transferred %s file %s to event' %
                      (request.user.username, 'user' if model == EventMaterial else 'team', obj.id))
         return JsonResponse({})
+
+
+@method_decorator(login_required, name='dispatch')
+class ActivitiesView(TemplateView):
+    template_name = 'activities.html'
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        activities = self.get_activities().order_by('title').annotate(event_count=Count('event'))
+        user_materials = dict(EventMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
+        team_materials = dict(EventTeamMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
+        event_materials = dict(EventOnlyMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
+        participants = dict(EventEntry.objects.filter(deleted=False).values_list('event__activity_id').
+                            annotate(cnt=Count('user_id')))
+        check_ins = dict(EventEntry.objects.filter(deleted=False, is_active=True).values_list('event__activity_id').
+                         annotate(cnt=Count('user_id')))
+        for a in activities:
+            a.participants_num = participants.get(a.id, 0)
+            a.check_ins_num = check_ins.get(a.id, 0)
+            a.materials_num = user_materials.get(a.id, 0) + team_materials.get(a.id, 0) + event_materials.get(a.id, 0)
+        data.update({'objects': activities, 'only_my': self.only_my_activities()})
+        return data
+
+    def get_activities(self):
+        if not self.only_my_activities():
+            return Activity.objects.all()
+        return Activity.objects.filter(id__in=ActivityEnrollment.objects.filter(user=self.request.user).
+                                       values_list('activity_id', flat=True))
+
+    def only_my_activities(self):
+        return self.request.GET.get('activities') == 'my'
