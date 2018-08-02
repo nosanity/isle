@@ -160,6 +160,8 @@ ILE_SNAPSHOT_PATH = '/api/snapshot/'
 ILE_VERIFY_CERTIFICATE = False
 # урл для получения трейсов из LABS
 LABS_TRACES_API_URL = 'https://labs.u2035dev.ru/api/v1/tracetype?app_token=7at0hbdmabmtfl0y'
+LABS_URL = 'SET-ME-PLEASE'
+LABS_TOKEN = 'SET-ME-PLEASE'
 
 from .local_settings import *
 

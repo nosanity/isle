@@ -13,12 +13,13 @@
                     <a href='/'><button class="btn btn-info">Сбросить фильтр</button></a>
                 {% endif %}
                 {% if request.user.is_assistant %}
-		    <a class="nav-item btn btn-secondary" href='/statistics/'>Статистика</a>
+		    <a class="nav-item btn btn-secondary" href='/statistics/'>Статистика</a> &nbsp;
+		    <a class="nav-item btn btn-primary" href='/activities/'>Все активности</a>
                 {% endif %}
             </form>
         </div>
         {% if request.user.is_assistant %}
-            <div class="pull-right">
+            <div class="pull-right small">
                 Элементов по мероприятиям за день: {{ today_elements }};&nbsp;&nbsp;Загружено пользователями: {{ today_elements_user }}
                 <br>
                 Всего элементов: {{ total_elements }}&nbsp;&nbsp;Загружено пользователями: {{ total_elements_user }}
