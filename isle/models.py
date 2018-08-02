@@ -51,6 +51,7 @@ class Activity(models.Model):
     ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS', db_index=True)
     title = models.CharField(max_length=1000)
     main_author = models.CharField(max_length=500, default='')
+    is_deleted = models.BooleanField(default=False, verbose_name=_(u'Удалено'))
 
 
 class ActivityEnrollment(models.Model):

@@ -1020,8 +1020,8 @@ class ActivitiesView(TemplateView):
 
     def get_activities(self):
         if not self.only_my_activities():
-            return Activity.objects.all()
-        return Activity.objects.filter(id__in=ActivityEnrollment.objects.filter(user=self.request.user).
+            return Activity.objects.filter(is_deleted=False)
+        return Activity.objects.filter(is_deleted=False, id__in=ActivityEnrollment.objects.filter(user=self.request.user).
                                        values_list('activity_id', flat=True))
 
     def only_my_activities(self):
