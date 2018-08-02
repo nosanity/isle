@@ -24,7 +24,7 @@ from rest_framework.response import Response
 from social_django.models import UserSocialAuth
 from isle.forms import CreateTeamForm, AddUserForm
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
-    Attendance
+    Attendance, Activity, ActivityEnrollment
 from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in
 
@@ -52,6 +52,7 @@ class Index(TemplateView):
             'objects': objects,
             'date': date.strftime(self.DATE_FORMAT) if date else None,
             'sort_asc': self.is_asc_sort(),
+            'activity_filter': self.activity_filter,
         }
         if self.request.user.is_assistant:
             fdict = {
@@ -96,10 +97,17 @@ class Index(TemplateView):
         try:
             date = timezone.datetime.strptime(self.request.GET.get('date'), self.DATE_FORMAT).date()
         except:
-            if not self.request.user.is_assistant:
+            if not self.request.user.is_assistant or self.activity_filter:
                 return
             date = timezone.localtime(timezone.now()).date()
         return date
+
+    @cached_property
+    def activity_filter(self):
+        try:
+            return Activity.objects.get(ext_id=self.request.GET.get('activity'))
+        except (ValueError, TypeError, Activity.DoesNotExist):
+            return
 
     def get_events(self):
         if self.request.user.is_assistant:
@@ -114,6 +122,8 @@ class Index(TemplateView):
             min_dt = timezone.make_aware(timezone.datetime.combine(date, timezone.datetime.min.time()))
             max_dt = min_dt + timezone.timedelta(days=1)
             events = events.filter(dt_start__gte=min_dt, dt_start__lt=max_dt)
+        if self.activity_filter:
+            events = events.filter(activity=self.activity_filter)
         events = events.order_by('{}dt_start'.format('' if self.is_asc_sort() else '-'))
         return events
 
@@ -985,3 +995,34 @@ class TransferView(GetEventMixin, View):
         logging.info('User %s transferred %s file %s to event' %
                      (request.user.username, 'user' if model == EventMaterial else 'team', obj.id))
         return JsonResponse({})
+
+
+@method_decorator(login_required, name='dispatch')
+class ActivitiesView(TemplateView):
+    template_name = 'activities.html'
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        activities = self.get_activities().order_by('title').annotate(event_count=Count('event'))
+        user_materials = dict(EventMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
+        team_materials = dict(EventTeamMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
+        event_materials = dict(EventOnlyMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
+        participants = dict(EventEntry.objects.filter(deleted=False).values_list('event__activity_id').
+                            annotate(cnt=Count('user_id')))
+        check_ins = dict(EventEntry.objects.filter(deleted=False, is_active=True).values_list('event__activity_id').
+                         annotate(cnt=Count('user_id')))
+        for a in activities:
+            a.participants_num = participants.get(a.id, 0)
+            a.check_ins_num = check_ins.get(a.id, 0)
+            a.materials_num = user_materials.get(a.id, 0) + team_materials.get(a.id, 0) + event_materials.get(a.id, 0)
+        data.update({'objects': activities, 'only_my': self.only_my_activities()})
+        return data
+
+    def get_activities(self):
+        if not self.only_my_activities():
+            return Activity.objects.all()
+        return Activity.objects.filter(id__in=ActivityEnrollment.objects.filter(user=self.request.user).
+                                       values_list('activity_id', flat=True))
+
+    def only_my_activities(self):
+        return self.request.GET.get('activities') == 'my'

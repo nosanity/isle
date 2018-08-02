@@ -45,6 +45,22 @@ class EventType(models.Model):
         return self.title
 
 
+class Activity(models.Model):
+    uid = models.CharField(max_length=255, unique=True)
+    ile_id = models.PositiveIntegerField(default=None, verbose_name='id в ILE')
+    ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS', db_index=True)
+    title = models.CharField(max_length=1000)
+    main_author = models.CharField(max_length=500, default='')
+
+
+class ActivityEnrollment(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ('user', 'activity')
+
+
 class Event(models.Model):
     uid = models.CharField(max_length=255, unique=True, verbose_name=_(u'UID события'))
     data = JSONField()
@@ -56,6 +72,8 @@ class Event(models.Model):
                                    blank=True, null=True, default=None)
     ile_id = models.PositiveIntegerField(default=None, verbose_name='id в ILE')
     ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS')
+
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, default=None, null=True)
 
     class Meta:
         verbose_name = _(u'Событие')
