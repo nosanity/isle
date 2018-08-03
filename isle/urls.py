@@ -29,6 +29,8 @@ urlpatterns = [
     path('statistics/', views.Statistics.as_view()),
     path('approve-text-edit/<str:event_entry_id>/', views.ApproveTextEdit.as_view(), name='approve-text-edit'),
     path('activities/', views.ActivitiesView.as_view(), name='activities'),
+    path('blocks/<str:uid>/', views.CreateEventBlocks.as_view(), name='create-blocks'),
+    path('delete-block/<str:uid>/<int:block_id>/', views.DeleteEventBlock.as_view(), name='delete-block'),
     path('<str:uid>/', views.EventView.as_view(), name='event-view'),
     path('<str:uid>/<int:unti_id>/', views.LoadMaterials.as_view(), name='load-materials'),
 ]

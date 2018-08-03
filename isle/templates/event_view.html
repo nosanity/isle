@@ -39,6 +39,7 @@
             <button class="nav-item btn btn-primary" style="margin:2px" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
             <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
             <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
+            <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-blocks' uid=event.uid %}">Редактировать разметку</a>
         {% else %}
             <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
             {% if not event_entry.approved %}

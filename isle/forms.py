@@ -1,6 +1,6 @@
 from django import forms
 from dal import autocomplete, forward
-from isle.models import Team, User
+from isle.models import Team, User, EventBlock
 
 
 class CreateTeamForm(forms.ModelForm):
@@ -33,3 +33,22 @@ class AddUserForm(forms.Form):
         event = kwargs.pop('event')
         super().__init__(**kwargs)
         self.fields['user'].widget.forward = [forward.Const(event.id, 'event_id')]
+
+
+class EventBlockForm(forms.ModelForm):
+    class Meta:
+        model = EventBlock
+        fields = ('event', 'duration', 'title', 'block_type')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['event'].required = False
+        self.fields['duration'].min_value = 0
+
+
+EventBlockFormset = forms.modelformset_factory(
+    EventBlock, form=EventBlockForm, fields=('event', 'duration', 'title', 'block_type'), extra=1,
+    widgets={
+        'event': forms.HiddenInput
+    }
+)

@@ -23,9 +23,9 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from social_django.models import UserSocialAuth
-from isle.forms import CreateTeamForm, AddUserForm
+from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
-    Attendance, Activity, ActivityEnrollment
+    Attendance, Activity, ActivityEnrollment, EventBlock
 from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in
 
@@ -1046,3 +1046,40 @@ class ActivitiesView(TemplateView):
 
     def only_my_activities(self):
         return self.request.GET.get('activities') == 'my'
+
+
+class CreateEventBlocks(GetEventMixin, TemplateView):
+    template_name = 'create_blocks.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return HttpResponseRedirect('{}?next={}'.format(reverse('login'), request.get_full_path()))
+        if not request.user.is_authenticated:
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        data.update({
+            'formset': EventBlockFormset(queryset=EventBlock.objects.none()),
+            'event': self.event,
+            'blocks': EventBlock.objects.filter(event=self.event).order_by('id'),
+        })
+        return data
+
+    def post(self, request, **kwargs):
+        formset = EventBlockFormset(request.POST)
+        if formset.is_valid():
+            for form in formset.forms:
+                b = form.save(commit=False)
+                b.event = self.event
+                b.save()
+        return redirect('create-blocks', uid=self.event.uid)
+
+
+class DeleteEventBlock(GetEventMixin, View):
+    def post(self, request, **kwargs):
+        if request.user.is_authenticated and request.user.is_assistant:
+            EventBlock.objects.filter(id=kwargs['block_id']).delete()
+            return redirect('create-blocks', uid=self.event.uid)
+        raise PermissionDenied
