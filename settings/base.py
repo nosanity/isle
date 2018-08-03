@@ -148,6 +148,8 @@ SOCIAL_AUTH_UNTI_KEY = ''
 SOCIAL_AUTH_UNTI_SECRET = ''
 # таймаут для запросов в ILE
 CONNECTION_TIMEOUT = 20
+# таймаут для head запроса к файлу
+HEAD_REQUEST_CONNECTION_TIMEOUT = 5
 # логин и пароль пользователя в ILE
 ILE_TOKEN_USER = ('user', 'token')
 # базовый урл ILE
