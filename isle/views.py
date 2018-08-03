@@ -15,6 +15,7 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.generic import TemplateView, View
+import requests
 from dal import autocomplete
 from rest_framework import status
 from rest_framework.generics import ListAPIView
@@ -271,7 +272,16 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
         if bool(file_) == bool(url):
             return JsonResponse({}, status=400)
         if url:
-            data['url'] = url
+            try:
+                r = requests.head(url, timeout=settings.HEAD_REQUEST_CONNECTION_TIMEOUT)
+                assert r.ok
+                file_type = r.headers.get('content-type', '')
+                file_size = r.headers.get('Content-Length')
+            except:
+                file_type, file_size = '', None
+            data.update({'url': url, 'file_type': file_type, 'file_size': file_size})
+        else:
+            data.update({'file_type': file_.content_type, 'file_size': file_.size})
         data['initiator'] = request.user.unti_id
         material = self.material_model.objects.create(**data)
         if file_:
@@ -282,6 +292,7 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
             'name': material.get_name(),
             'comment': getattr(material, 'comment', ''),
             'is_public': getattr(material, 'is_public', True),
+            'data_attrs': material.render_metadata(),
             'can_set_public': self._can_set_public()
         }
         if self.extra_context and self.extra_context.get('team_upload'):
@@ -293,6 +304,11 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
 
     def make_file_path(self, fn):
         return fn
+
+    def set_initiator_users_to_qs(self, qs):
+        users = {i.unti_id: i for i in User.objects.filter(unti_id__in=filter(None, [j.initiator for j in qs]))}
+        for item in qs:
+            item.initiator_user = users.get(item.initiator)
 
 
 class LoadMaterials(BaseLoadMaterials):
@@ -310,8 +326,11 @@ class LoadMaterials(BaseLoadMaterials):
 
     def get_materials(self):
         if self.can_upload():
-            return EventMaterial.objects.filter(event=self.event, user=self.user)
-        return EventMaterial.objects.filter(event=self.event, user=self.user, is_public=True)
+            qs = EventMaterial.objects.filter(event=self.event, user=self.user)
+        else:
+            qs = EventMaterial.objects.filter(event=self.event, user=self.user, is_public=True)
+        self.set_initiator_users_to_qs(qs)
+        return qs
 
     @cached_property
     def user(self):
@@ -443,6 +462,7 @@ class LoadEventMaterials(BaseLoadMaterials):
                 item.is_owner = self.request.user in item.owners.all()
                 item.ownership_url = reverse('event-material-owner', kwargs={
                     'uid': self.event.uid, 'material_id': item.id})
+        self.set_initiator_users_to_qs(qs)
         return qs
 
     def _delete_item(self, trace, material_id):

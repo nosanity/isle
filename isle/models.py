@@ -199,6 +199,8 @@ class AbstractMaterial(models.Model):
     object_id = models.PositiveIntegerField(null=True, default=None)
     parent = GenericForeignKey()
     deleted = models.BooleanField(default=False)
+    file_type = models.CharField(max_length=1000, default='')
+    file_size = models.PositiveIntegerField(default=None, null=True)
 
     objects = NotDeletedEntries()
     all_objects = models.Manager()
@@ -225,6 +227,42 @@ class AbstractMaterial(models.Model):
             return [i.fio for i in self.owners.all()]
         return []
 
+    def get_initiator_user(self):
+        if hasattr(self, 'initiator_user'):
+            return self.initiator_user
+        try:
+            initiator_user = User.objects.filter(unti_id=self.initiator).first()
+        except:
+            initiator_user = None
+        self.initiator_user = initiator_user
+        return self.initiator_user
+
+    def get_metadata(self):
+        initiator_user = self.get_initiator_user()
+        file_type, icon = self.get_file_type_and_icon()
+        return {
+            'fio': initiator_user and initiator_user.fio or '',
+            'file_type': file_type,
+            'icon': icon,
+            'size': self.file_size or '',
+        }
+
+    def render_metadata(self):
+        parts = ['data-{}="{}"'.format(k, v) for k, v in self.get_metadata().items()]
+        return ' '.join(parts)
+
+    def get_file_type_and_icon(self):
+        if self.file_type:
+            if self.file_type.startswith('image'):
+                return 'image', 'fa-picture-o'
+            if self.file_type.startswith('audio'):
+                return 'audio', 'fa-file-audio-o'
+            if self.file_type.startswith('video'):
+                return 'video', 'fa-file-video-o'
+            if 'pdf' in self.file_type:
+                return 'pdf', 'fa-file-pdf-o'
+        return 'other', 'fa-file'
+
 
 class EventMaterial(AbstractMaterial):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -250,6 +288,8 @@ class EventMaterial(AbstractMaterial):
             trace=material.trace,
             initiator=material.initiator,
             comment=material.comment,
+            file_type=material.file_type,
+            file_size=material.file_size,
             parent=material,
         )
         EventOnlyMaterial.objects.filter(id=material.id).update(deleted=True)
@@ -304,6 +344,8 @@ class EventTeamMaterial(AbstractMaterial):
             trace=material.trace,
             initiator=material.initiator,
             comment=material.comment,
+            file_type=material.file_type,
+            file_size=material.file_size,
             parent=material,
         )
         new_obj.owners.set(list(material.owners.all()))
@@ -332,6 +374,8 @@ class EventOnlyMaterial(AbstractMaterial):
                 trace=material.trace,
                 initiator=material.initiator,
                 comment=material.comment,
+                file_type=material.file_type,
+                file_size=material.file_size,
                 parent=material,
             )
             EventMaterial.objects.filter(id=material.id).update(deleted=True)
@@ -344,6 +388,8 @@ class EventOnlyMaterial(AbstractMaterial):
                 trace=material.trace,
                 initiator=material.initiator,
                 comment=material.comment,
+                file_type=material.file_type,
+                file_size=material.file_size,
                 parent=material,
             )
             new_obj.owners.set(list(material.owners.all()))
