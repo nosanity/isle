@@ -1023,7 +1023,8 @@ class ActivitiesView(TemplateView):
 
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
-        activities = self.get_activities().order_by('title').annotate(event_count=Count('event'))
+        activities = self.get_activities().filter(event__event_type_id__in=get_allowed_event_type_ids()).distinct()
+        activities = activities.order_by('title', 'ext_id').annotate(event_count=Count('event'))
         user_materials = dict(EventMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
         team_materials = dict(EventTeamMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
         event_materials = dict(EventOnlyMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
@@ -1031,10 +1032,12 @@ class ActivitiesView(TemplateView):
                             annotate(cnt=Count('user_id')))
         check_ins = dict(EventEntry.objects.filter(deleted=False, is_active=True).values_list('event__activity_id').
                          annotate(cnt=Count('user_id')))
+        activity_types = dict(Event.objects.values_list('activity_id', 'event_type__title'))
         for a in activities:
             a.participants_num = participants.get(a.id, 0)
             a.check_ins_num = check_ins.get(a.id, 0)
             a.materials_num = user_materials.get(a.id, 0) + team_materials.get(a.id, 0) + event_materials.get(a.id, 0)
+            a.activity_type = activity_types.get(a.id)
         data.update({'objects': activities, 'only_my': self.only_my_activities()})
         return data
 
