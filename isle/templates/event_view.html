@@ -3,9 +3,9 @@
 
 {% block content %}
     <div class="row">
-        <div class="col-lg-9"><h2>{{ event.title }}</h2></div>
-        <div class="col-lg-3"><h6>{{ event.get_authors|join:'<br>'|safe }}</h6></div>
+        <div class="col-lg-12"><h2>{{ event.title }}</h2></div>
     </div>
+    <div><h6>{{ event.get_authors|join:', '|safe }}</h6></div>
     <h6>
         {{ event.dt_start|date:'d E, H:i' }} - {{ event.dt_end|date:'H:i' }};&nbsp;
 	{% if request.user.is_assistant %}
@@ -33,30 +33,35 @@
         </div>
     {% endif %}
 
-     <nav class="nav nav-pills nav-justified">
-        {% if request.user.is_assistant %}
-            <button class="nav-item btn btn-primary" style="margin:2px" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
-            <button class="nav-item btn btn-primary" style="margin:2px" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
-            <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
+    {% if request.user.is_assistant %}
+        <nav class="nav nav-pills nav-justified">
+            <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-blocks' uid=event.uid %}">Структура мероприятия</a>
             <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
-            <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-blocks' uid=event.uid %}">Редактировать разметку</a>
-        {% else %}
-            <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-team' uid=event.uid %}">Создание команды</a>
-            {% if not event_entry.approved %}
-                <a class="nav-item btn btn-primary text-white" style="margin:2px" id="i-was-here">
-                    {% if event_entry.approve_text %}
-                        Изменить подтверждение присутствия
-                    {% else %}
-                        Я тут точно был!
-                    {% endif %}
-                </a>
-            {% endif %}
+        </nav>
+    {% endif %}
+    <nav class="nav nav-pills nav-justified">
+        <a class="nav-item btn btn-success" style="margin:2px" href="{% url 'create-team' uid=event.uid %}">Создать команду</a>
+        {% if not request.user.is_assistant and not event_entry.approved %}
+            <a class="nav-item btn btn-primary text-white" style="margin:2px" id="i-was-here">
+                {% if event_entry.approve_text %}
+                    Изменить подтверждение присутствия
+                {% else %}
+                    Я тут точно был!
+                {% endif %}
+            </a>
         {% endif %}
-        <a class="nav-item btn btn-success" style="margin:2px" href="{% url 'load-event-materials' uid=event.uid %}">
-            Материалы мероприятия{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
     </nav>
     <div class="row">
-    <div class="col"><div style="overflow: scroll">
+    <div class="col">
+        <h3>Участники</h3>
+    {% if request.user.is_assistant %}
+    <p>
+        <b>Важно: обязательно проверьте список участников.</b>
+        <br>
+        Поставьте отметки присутствия и добавьте недостающих участников.
+    </p>
+    {% endif %}
+        <div style="overflow: scroll">
     <table id="event-users-table" class="table table-hover table-bordered table-striped">
         <thead class="thead-light">
             <tr>
@@ -65,7 +70,7 @@
                 <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Элементов следа</th>
                 <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Чекин</th>
                 <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Присутствие</th>
-                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Загрузка</th>
+                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Результаты</th>
                 {% if request.user.is_assistant %}
                     <th scope="col"></th>
                 {% endif %}
@@ -119,9 +124,9 @@
                   <th scope="col">Название команды</th>
                   <th scope="col">Количество участников</th>
                   <th scope="col">Элементов следа</th>
-                  <th scope="col">Загрузка</th>
+                  <th scope="col">Результаты</th>
                   {% if request.user.is_assistant %}
-                      <th scope="col">Подтвердить</th>
+                      <th scope="col">Подтверждение</th>
                   {% endif %}
                 </tr>
             </thead>
@@ -149,6 +154,16 @@
                 </tr>
             {% endfor %}
         </table>
+    {% endif %}
+    <nav class="nav nav-pills nav-justified">
+        <a class="nav-item btn btn-success" style="margin:2px" href="{% url 'load-event-materials' uid=event.uid %}">
+            Материалы презентации спикера, фотографии, аудио, видео{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
+    </nav>
+    {% if request.user.is_assistant %}
+        <nav class="nav nav-pills nav-justified">
+            <button class="nav-item btn btn-primary" style="margin:2px" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
+            <button class="nav-item btn btn-primary" style="margin:2px" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
+        </nav>
     {% endif %}
 {% endblock %}
 
