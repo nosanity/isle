@@ -6,7 +6,7 @@ from collections import defaultdict, Counter
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import logout as base_logout
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, SuspiciousOperation
 from django.db.models import Count, Q
 from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
@@ -23,9 +23,9 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from social_django.models import UserSocialAuth
-from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset
+from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
-    Attendance, Activity, ActivityEnrollment, EventBlock
+    Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult
 from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in
 
@@ -262,11 +262,19 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
             return JsonResponse({}, status=400)
         return self._delete_item(trace, material_id)
 
-    def add_item(self, request):
-        trace = Trace.objects.filter(id=request.POST['trace_name']).first()
-        if not trace:
+    def add_item(self, request, block_upload=False):
+        trace, result = None, None
+        if not block_upload:
+            trace = Trace.objects.filter(id=request.POST['trace_name']).first()
+        else:
+            result = self.get_result_for_request(request)
+        if (block_upload and not result) or (not block_upload and not trace):
             return JsonResponse({}, status=400)
-        data = self.get_material_fields(trace, request)
+        data = self.get_material_fields(request)
+        if not block_upload:
+            data['trace'] = trace
+        else:
+            data['result'] = result
         url = request.POST.get('url_field')
         file_ = request.FILES.get('file_field')
         if bool(file_) == bool(url):
@@ -299,7 +307,7 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
             resp['uploader_name'] = request.user.fio
         return JsonResponse(resp)
 
-    def get_material_fields(self, trace, request):
+    def get_material_fields(self, request):
         return {}
 
     def make_file_path(self, fn):
@@ -309,6 +317,43 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
         users = {i.unti_id: i for i in User.objects.filter(unti_id__in=filter(None, [j.initiator for j in qs]))}
         for item in qs:
             item.initiator_user = users.get(item.initiator)
+
+
+class BaseLoadMaterialsResults(object):
+    """
+    для загрузки "результатоориентированных" файлов
+    """
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        data.update({
+            'results': self.get_results(),
+        })
+        return data
+
+    def post(self, request, *args, **kwargs):
+        resp = self.check_post_allowed(request)
+        if resp is not None:
+            return resp
+        if not request.user.is_assistant:
+            raise PermissionDenied
+        if 'add_btn' not in request.POST:
+            return self.delete_item(request)
+        try:
+            result_id = int(request.POST.get('result_id'))
+        except (ValueError, TypeError):
+            return JsonResponse({}, status=400)
+        if not result_id or not self.check_event_has_result(result_id):
+            return JsonResponse({}, status=400)
+        return self.add_item(request, block_upload=True)
+
+    def check_event_has_result(self, result_id):
+        pass
+
+    def delete_item(self, request):
+        material_id = request.POST.get('material_id')
+        if not material_id or not material_id.isdigit():
+            return JsonResponse({}, status=400)
+        return self._delete_item(material_id)
 
 
 class LoadMaterials(BaseLoadMaterials):
@@ -326,9 +371,9 @@ class LoadMaterials(BaseLoadMaterials):
 
     def get_materials(self):
         if self.can_upload():
-            qs = EventMaterial.objects.filter(event=self.event, user=self.user)
+            qs = EventMaterial.objects.filter(event=self.event, user=self.user, trace__isnull=False)
         else:
-            qs = EventMaterial.objects.filter(event=self.event, user=self.user, is_public=True)
+            qs = EventMaterial.objects.filter(event=self.event, user=self.user, trace__isnull=False, is_public=True)
         self.set_initiator_users_to_qs(qs)
         return qs
 
@@ -347,18 +392,75 @@ class LoadMaterials(BaseLoadMaterials):
                         (self.request.user.username, material.get_url(), self.user.username))
         return JsonResponse({})
 
-    def add_item(self, request):
+    def add_item(self, request, **kwargs):
         if not EventEntry.objects.filter(event=self.event, user=self.user).exists():
             return JsonResponse({}, status=400)
-        return super().add_item(request)
+        return super().add_item(request, **kwargs)
 
-    def get_material_fields(self, trace, request):
+    def get_material_fields(self, request):
         public = self._can_set_public() and request.POST.get('is_public') in ['on']
-        return dict(event=self.event, user=self.user, trace=trace, is_public=public,
+        return dict(event=self.event, user=self.user, is_public=public,
                     comment=request.POST.get('comment', ''))
 
     def make_file_path(self, fn):
         return os.path.join(self.event.uid, str(self.user.unti_id), fn)
+
+
+class LoadMaterialsAssistant(BaseLoadMaterialsResults, LoadMaterials):
+    template_name = 'load_user_materials.html'
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        traces = data['traces']
+        # складываем все старые файлы (привязанные к трейсам) в один список, т.к. на странице в
+        # разделе отдельных файлов для них нет никакого разделения
+        links = functools.reduce(lambda x, y: x + y, [i.get('links', []) for i in traces], [])
+        data.update({
+            'user': self.user,
+            'result_form': UserResultForm(initial={'event': self.event, 'user': self.user}),
+            'links': links,
+        })
+        return data
+
+    def get_result_for_request(self, request):
+        return UserResult.objects.filter(id=request.POST.get('result_id')).first()
+
+    def get_result_objects(self):
+        qs = self.material_model.objects.filter(user=self.user, trace__isnull=True)
+        self.set_initiator_users_to_qs(qs)
+        return qs
+
+    def get_results(self):
+        results = UserResult.objects.filter(event=self.event, user=self.user).order_by('id')
+        data = defaultdict(list)
+        for item in self.get_result_objects():
+            data[item.result_id].append(item)
+        res = []
+        for result in results:
+            res.append({'result': result, 'links': data.get(result.id, [])})
+        return res
+
+    def check_event_has_result(self, result_id):
+        return UserResult.objects.filter(event=self.event, user=self.user, id=result_id).exists()
+
+    def _delete_item(self, material_id):
+        material = EventMaterial.objects.filter(
+            event=self.event, user=self.user, id=material_id
+        ).first()
+        if not material:
+            return JsonResponse({}, status=400)
+        material.delete()
+        logging.warning('User %s has deleted file %s for user %s' %
+                        (self.request.user.username, material.get_url(), self.user.username))
+        return JsonResponse({})
+
+
+def choose_view(assistant_view, user_view):
+    def wrapped(request, *args, **kwargs):
+        if request.user.is_authenticated and request.user.is_assistant:
+            return assistant_view.as_view()(request, *args, **kwargs)
+        return user_view.as_view()(request, *args, **kwargs)
+    return wrapped
 
 
 class LoadTeamMaterials(BaseLoadMaterials):
@@ -435,8 +537,8 @@ class LoadTeamMaterials(BaseLoadMaterials):
     def make_file_path(self, fn):
         return os.path.join(self.event.uid, str(self.team.team_name), fn)
 
-    def get_material_fields(self, trace, request):
-        return dict(event=self.event, team=self.team, trace=trace, comment=request.POST.get('comment', ''),
+    def get_material_fields(self, request):
+        return dict(event=self.event, team=self.team, comment=request.POST.get('comment', ''),
                     confirmed=self.request.user.is_assistant)
 
 
@@ -479,8 +581,8 @@ class LoadEventMaterials(BaseLoadMaterials):
     def make_file_path(self, fn):
         return os.path.join(self.event.uid, fn)
 
-    def get_material_fields(self, trace, request):
-        return dict(event=self.event, trace=trace, comment=request.POST.get('comment', ''))
+    def get_material_fields(self, request):
+        return dict(event=self.event, comment=request.POST.get('comment', ''))
 
 
 class RefreshDataView(View):
@@ -650,6 +752,24 @@ class UserAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, result):
         full_name = ' '.join(filter(None, [result.last_name, result.first_name, result.second_name]))
         return '%s, (%s)' % (full_name, result.leader_id)
+
+
+class ResultTypeAutocomplete(autocomplete.Select2QuerySetView):
+    def get_queryset(self):
+        if not self.request.user.is_authenticated or not self.request.user.is_assistant:
+            return []
+        try:
+            event = Event.objects.get(id=self.forwarded.get('event'))
+        except (TypeError, ValueError, Event.DoesNotExist):
+            logging.warning("User %s hasn't provided event parameter for ResultTypeAutocomplete")
+            raise SuspiciousOperation
+        return BlockType.result_types_for_event(event)
+
+    def get_result_label(self, result):
+        return result[1]
+
+    def get_result_value(self, result):
+        return result[0]
 
 
 class Paginator(PageNumberPagination):
@@ -1007,6 +1127,8 @@ class TransferView(GetEventMixin, View):
             obj = model.objects.get(id=request.POST.get('material_id'), event=self.event)
         except (model.DoesNotExist, TypeError, ValueError):
             return JsonResponse({}, status=404)
+        if model == EventMaterial and not obj.trace:
+            return JsonResponse({}, status=404)
         if model == EventMaterial and not EventEntry.objects.filter(event=self.event, user=obj.user_id).exists():
             return JsonResponse({}, status=400)
         if model == EventTeamMaterial and not Team.objects.filter(id=obj.team_id, event=self.event).exists():
@@ -1086,3 +1208,43 @@ class DeleteEventBlock(GetEventMixin, View):
             EventBlock.objects.filter(id=kwargs['block_id']).delete()
             return redirect('create-blocks', uid=self.event.uid)
         raise PermissionDenied
+
+
+class BaseCreateResult(GetEventMixin, View):
+    form_class = UserResultForm
+    result_model = UserResult
+
+    def post(self, request, **kwargs):
+        if not request.user.is_assistant:
+            raise PermissionDenied
+        instance = None
+        if request.POST.get('result_id'):
+            try:
+                result = self.result_model.objects.get(id=request.POST.get('result_id'))
+                assert result.event == self.event
+                self.additional_assertion(result)
+                instance = result
+            except (ValueError, TypeError, self.result_model.DoesNotExist, AssertionError):
+                return JsonResponse({}, status=400)
+        form = self.form_class(data=request.POST, instance=instance)
+        if form.is_valid():
+            item = form.save()
+            res = item.to_json(as_object=True)
+            res['created'] = not instance
+            logging.info('User {} {} {} #{} with data: {}'.format(
+                request.user.username,
+                'created' if not instance else 'changed',
+                self.result_model._meta.model_name,
+                item.id,
+                item.to_json()
+            ))
+            return JsonResponse(res)
+        return JsonResponse({}, status=400)
+
+    def additional_assertion(self, result):
+        pass
+
+
+class CreateUserResult(BaseCreateResult):
+    def additional_assertion(self, result):
+        assert result.user.unti_id == self.kwargs['unti_id']

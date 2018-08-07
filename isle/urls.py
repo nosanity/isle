@@ -20,6 +20,7 @@ urlpatterns = [
     path('remove-user/<str:uid>/', views.RemoveUserFromEvent.as_view(), name='remove-user'),
     path('is_public/<str:uid>/', views.IsMaterialPublic.as_view(), name='is-material-public'),
     path('autocomplete/user/', views.UserAutocomplete.as_view(), name='user-autocomplete'),
+    path('autocomplete/result-type/', views.ResultTypeAutocomplete.as_view(), name='result-type-autocomplete'),
     path('api/attendance/', views.AttendanceApi.as_view()),
     path('owner/team-material/<str:uid>/<int:team_id>/<int:material_id>/', views.TeamMaterialOwnership.as_view(),
          name='team-material-owner'),
@@ -31,8 +32,10 @@ urlpatterns = [
     path('activities/', views.ActivitiesView.as_view(), name='activities'),
     path('blocks/<str:uid>/', views.CreateEventBlocks.as_view(), name='create-blocks'),
     path('delete-block/<str:uid>/<int:block_id>/', views.DeleteEventBlock.as_view(), name='delete-block'),
+    path('create-user-result/<str:uid>/<int:unti_id>/', views.CreateUserResult.as_view(), name='create-user-result'),
     path('<str:uid>/', views.EventView.as_view(), name='event-view'),
-    path('<str:uid>/<int:unti_id>/', views.LoadMaterials.as_view(), name='load-materials'),
+    path('<str:uid>/<int:unti_id>/', views.choose_view(views.LoadMaterialsAssistant, views.LoadMaterials),
+         name='load-materials'),
 ]
 
 # from django.conf.urls import url

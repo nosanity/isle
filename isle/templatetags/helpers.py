@@ -12,3 +12,9 @@ def add_class(value, arg):
         new_class = arg
     value.field.widget.attrs.update({'class': new_class})
     return value
+
+
+@register.filter
+def set_placeholder(value, arg):
+    value.field.widget.attrs['placeholder'] = arg
+    return value
