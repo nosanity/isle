@@ -24,6 +24,7 @@
                     <th>Activity ID</th>
                     <th>Название активности</th>
                     <th>Главный лектор</th>
+                    <th>Тип активности</th>
                     <th>Количество мероприятий</th>
                     <th>Количество участников/чекинов</th>
                     <th>Загружено элементов</th>
@@ -34,6 +35,7 @@
                     <td>{{ activity.ext_id }}</td>
                     <td><a href="{% url 'index' %}?activity={{ activity.ext_id }}">{{ activity.title }}</a></td>
                     <td>{{ activity.main_author }}</td>
+                    <td>{{ activity.activity_type }}</td>
                     <td>{{ activity.event_count }}</td>
                     <td>{{ activity.participants_num }} / {{ activity.check_ins_num }}</td>
                     <td>{{ activity.materials_num }}</td>

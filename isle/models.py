@@ -1,5 +1,7 @@
+import json
 import os
 import urllib
+from functools import reduce
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -118,6 +120,85 @@ class Event(models.Model):
             return [(i.get('title') or '').strip() for i in authors]
         return []
 
+    @cached_property
+    def get_results(self):
+        return EventBlock.objects.filter(event=self).order_by('id')
+
+
+class BlockType:
+    type_choices = (
+        (1, r'Лекция с вопросами из зала'),
+        (3, r'Лекция с проверкой усвоения'),
+        (4, r'Мастер-класс/освоение инструмента'),
+        (5, r'Мастер-класс\тренинг без фиксации'),
+        (6, r'Работа над проектами \ групповая работа'),
+        (7, r'Решение кейсов'),
+        (8, r'Стратегическая сессия \ форсайт'),
+        (9, r'Игра \ модельная сессия'),
+        (10, r'Хакатон \ дизайн сессия'),
+        (11, r'Нетворкинг - сессия'),
+        (12, r'Обсуждение \ дискуссия'),
+        (13, r'Питч сессия \ презентация результатов'),
+        (14, r'Проведение эксперимента'),
+        (15, r'Менторская \ тьюторская сессия'),
+        (16, r'Другое'),
+    )
+
+    result_types = (
+        (1, 'Автор интересных вопросов'),
+        (2, 'Другое'),
+        (3, 'Результаты тестов'),
+        (4, 'Результат выполнения'),
+        (5, 'Лидер мнений'),
+        (6, 'Презентация с оценкой ведущего'),
+        (7, 'Результаты эксперимента'),
+        (8, 'Обратная связь участников (start-stop-continue)'),
+        (9, 'Обратная связь тьютора\ментора (start-stop-continue)')
+    )
+
+    @classmethod
+    def filter(cls, types):
+        return [i for i in cls.type_choices if i[0] in types]
+
+    @classmethod
+    def in_event(cls, event, block_type):
+        return EventBlock.objects.filter(event=event, block_type=block_type).exists()
+
+    @classmethod
+    def map_to_result_type(cls, t):
+        return {
+            1: [1, 2],
+            3: [3, 2],
+            4: [4, 2],
+            5: [4, 2],
+            6: [4, 2],
+            7: [4, 2],
+            8: [4, 2],
+            9: [4, 2],
+            10: [4, 2],
+            11: [2],
+            12: [5, 2],
+            13: [6, 2],
+            14: [7, 2],
+            15: [8, 9, 2]
+        }.get(t, [])
+
+    @classmethod
+    def result_types_for_event(cls, event):
+        block_types = EventBlock.objects.filter(event=event).values_list('block_type', flat=True)
+        result_types = []
+        for x in block_types:
+            result_types.extend(cls.map_to_result_type(x))
+        result_types = sorted(set(result_types))
+        return [item for item in cls.result_types if item[0] in result_types]
+
+
+class EventBlock(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    duration = models.IntegerField()
+    title = models.CharField(max_length=255)
+    block_type = models.SmallIntegerField(choices=BlockType.type_choices)
+
 
 class Trace(models.Model):
     """
@@ -189,11 +270,54 @@ class Attendance(models.Model):
         unique_together = ('event', 'user')
 
 
+class ResultAbstract(models.Model):
+    RESULT_WEAK = 1
+    RESULT_OK = 2
+    RESULT_GREAT = 3
+    RESULT_CHOICES = (
+        (RESULT_WEAK, 'слабый результат'),
+        (RESULT_OK, 'нормальный результат'),
+        (RESULT_GREAT, 'отличный результат'),
+    )
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    result_type = models.SmallIntegerField(choices=BlockType.result_types, null=True, blank=True,
+                                           verbose_name='Тип результата')
+    rating = models.SmallIntegerField(choices=RESULT_CHOICES, null=True, blank=True, verbose_name='Оценка')
+    competences = models.CharField(max_length=300, default='', blank=True,
+                                   verbose_name='Продемонстрированные компетенции')
+    result_comment = models.CharField(max_length=1000, default='', blank=True, verbose_name='Комментарии сборщика')
+
+    class Meta:
+        abstract = True
+
+    def to_json(self, as_object=False):
+        res = {}
+        for f in self._meta.fields:
+            if getattr(f, 'choices', None):
+                res['{}_display'.format(f.name)] = getattr(self, 'get_{}_display'.format(f.name))() or ''
+                res[f.name] = getattr(self, f.name)
+            elif isinstance(f, models.ForeignKey):
+                res[f.name] = getattr(self, '{}_id'.format(f.name)) or ''
+            else:
+                res[f.name] = getattr(self, f.name) or ''
+        if as_object:
+            return res
+        return json.dumps(res, ensure_ascii=False)
+
+
+class UserResult(ResultAbstract):
+    """
+    результат пользователя по какому-то типу блока (не по самому блоку), к которому крепятся файлы
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+
+
 class AbstractMaterial(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
     url = models.URLField(blank=True)
     file = models.FileField(blank=True, max_length=300)
-    trace = models.ForeignKey(Trace, on_delete=models.CASCADE)
+    trace = models.ForeignKey(Trace, on_delete=models.CASCADE, null=True, default=None)
     initiator = models.PositiveIntegerField(blank=True, null=True)
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, default=None)
     object_id = models.PositiveIntegerField(null=True, default=None)
@@ -268,6 +392,7 @@ class EventMaterial(AbstractMaterial):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     is_public = models.BooleanField(default=False)
     comment = models.CharField(default='', max_length=255)
+    result = models.ForeignKey(UserResult, on_delete=models.CASCADE, null=True, default=None)
 
     class Meta:
         verbose_name = _(u'Материал')
