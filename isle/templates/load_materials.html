@@ -203,7 +203,7 @@
                 e.target.dataset.toggle='modal';
                 if (element) {delete element}
                 $('#modal_link_preview_footer').text('')
-                $('#modal_link_preview_footer').text(e.target.dataset.fio + " " + e.target.dataset.size + " " + e.target.dataset.icon);
+                //$('#modal_link_preview_footer').text(e.target.dataset.fio + " " + e.target.dataset.size + " " + e.target.dataset.icon);
 
                 if (e.target.dataset.file_type == '"pdf"'){
                     var element = document.createElement("object");
@@ -232,7 +232,14 @@
                      element.controls = 'true';
                      element.style.width = "100%"
                  }
-                $('#modal_link_preview_title').text("Preview: " +e.target.innerHTML)
+                if (e.target.dataset.file_type == '"other"') {
+                     var element = document.createElement('a');
+                     element.innerText = "Скачать файл";
+                     $(element).addClass('btn');
+                     element.href = e.target.href;
+                     element.style.width = "100%"
+                 }
+                $('#modal_link_preview_title').html(e.target.innerHTML)
                 document.querySelector('div.preview').innerHTML = '';
                 document.querySelector('div.preview').appendChild(element);
 
