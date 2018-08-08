@@ -9,7 +9,7 @@
         {% if field.hidden %}
             {{ field }}
         {% else %}
-            <div class="form-group">
+            <div class="form-group {% if field.name == 'result_type' or field.name == 'rating' %}col-sm-6 no-left-padding{% endif %}">
                 {{ field|add_class:'form-control'|set_placeholder:field.label }}
             </div>
         {% endif %}

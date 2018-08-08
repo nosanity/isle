@@ -47,6 +47,7 @@ $(document).ready(function() {
                     wrapper.find('.result-annotation .col-lg-2 button').data('result', data);
                     $('#results').append(wrapper);
                     form.find('input[name=result_id]').val(data.id);
+                    $('#no-loaded-results').remove();
                 }
                 else {
                     var div = $('.result-wrapper-div[data-result="' + data.id + '"]');
