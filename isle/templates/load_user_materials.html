@@ -6,28 +6,30 @@
     <a href="{% url 'event-view' uid=event.uid %}">
         <button class="btn btn-light float-right">К странице мероприятия</button>
     </a>
-    <h4>Индивидуальные результаты: {{ user.fio }}</h4>
+    <h4>{% block page_title %}Индивидуальные результаты: {{ user.fio }}{% endblock %}</h4>
     {% csrf_token %}
     <div class="clearfix"></div>
 
-    <form id="result_form" method="post" action="{% url 'create-user-result' uid=event.uid unti_id=user.unti_id %}" class="form">
+    <form id="result_form" method="post" action="{% block result_url %}{% url 'create-user-result' uid=event.uid unti_id=user.unti_id %}{% endblock %}" class="form">
         {% csrf_token %}
         <input type="hidden" name="result_id">
+        {% block form_render %}
         {% for field in result_form %}
             {% if field.hidden %}
                 {{ field }}
             {% else %}
-                <div class="form-group">
+                <div class="form-group {% if field.name == 'result_type' or field.name == 'rating' %}col-sm-6 no-left-padding{% endif %}">
                     {{ field|add_class:'form-control'|set_placeholder:field.label }}
                 </div>
             {% endif %}
         {% endfor %}
+        {% endblock %}
 
         <div class="row" style="margin-top: 10px;">
             <div class="col-sm-12 col-md-3" style="margin-bottom: 10px;">
             <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
-              <a class="nav-link active" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы</a>
-              <a class="nav-link" id="v-pills-profile-tab" data-toggle="pill" href="#v-pills-profile-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-profile" aria-selected="false">Ссылки</a>
+              <a class="nav-link active" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы подтверждения</a>
+              <a class="nav-link" id="v-pills-profile-tab" data-toggle="pill" href="#v-pills-profile-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-profile" aria-selected="false">Ссылки подтверждения</a>
             </div>
           </div>
           <div class="col-sm-12 col-md-9">
@@ -47,7 +49,7 @@
                   <input type="url" name="url_field" class="form-control" id="url" style="width: 100%" placeholder="Укажите URL-ссылку на материал">
               </div>
             <div class="materials-form-comment-div">
-                <textarea id="description" maxlength="255" name="comment" class="form-control" style="width: 100%;margin-bottom: 6px" placeholder="Введите описание"></textarea>
+                <textarea id="description" maxlength="255" name="comment" class="form-control" style="width: 100%;margin-bottom: 6px" placeholder="Описание файлов"></textarea>
             </div>
         </div>
           </div>
@@ -61,6 +63,11 @@
 
     <div id="results-jumper">
         <h4>Загруженные результаты</h4>
+
+        {% if not results %}
+            <div id="no-loaded-results"><p>Нет загруженных результатов</p></div>
+        {% endif %}
+
         {% for result in results %}
             <p class="result-anchor-text" data-result="{{ result.result.id }}">{{ forloop.counter }} - {{ result.result.get_result_type_display|default:'' }} - {{ result.result.get_rating_display|default:'' }} - <a href="#result-entry-{{ forloop.counter }}">подробнее</a></p>
         {% endfor %}
@@ -74,6 +81,9 @@
             <div class="col-lg-10">
                 <p class="text-muted">Тип: {{ result.result.get_result_type_display|default:'' }}. Оценка: {{ result.result.get_rating_display|default:'' }}</p>
                 <p class="text-muted">Компетенции: {{ result.result.competences }}</p>
+                {% if team_upload %}
+                    <p class="text-muted">Групповая динамика: {{ result.result.group_dynamics }}</p>
+                {% endif %}
                 <p class="text-muted">Комментарий: {{ result.result.result_comment }}</p>
             </div>
             <div class="col-lg-2">
@@ -116,7 +126,11 @@
     {% endfor %}
     </div>
 
-    <h4>Отдельные файлы</h4>
+    <h4 style="margin-top: 60px">Отдельные файлы</h4>
+
+    {% if not links %}
+        <div><p>Нет загруженных файлов</p></div>
+    {% endif %}
 
     <ul class="list-group list-group-flush">
         {% for link in links %}
@@ -264,6 +278,7 @@
         MAX_PARALLEL_UPLOADS = {{ max_uploads }};
         CHANGE_STATE = "{% url 'is-material-public' uid=event.uid %}";
         IS_ASSISTANT = {% if request.user.is_assistant %}true{% else %}false{% endif %};
+        FORMSET_RENDER_URL = '{% block formset_render_url %}{% endblock %}'
     </script>
     <script type="text/javascript" src="{% static 'js/jquery.are-you-sure.min.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/result-file-upload.js' %}"></script>
@@ -292,6 +307,27 @@
     {% endif %}
     {% endif %}
     {% include "link_preview.html" %}
+{% endblock %}
+
+{% block css %}
+    {{ block.super }}
+    <style>
+    #results-jumper {
+        margin-top: 60px;
+    }
+    .result-anchor-text {
+        margin-bottom: 4px;
+    }
+    .result-entry {
+        margin-top: 30px;
+    }
+    .no-left-padding {
+        padding-left: 0;
+    }
+    .nav-link.active {
+        background-color: #737373 !important;
+    }
+    </style>
 {% endblock %}
 
 {% block footer %}
