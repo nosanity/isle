@@ -63,7 +63,7 @@ $(document).ready(function() {
                 var files_len = form.find('input[name=file_field]')[0].files;
                 files_len = files_len ? files_len.length : 0;
                 if (files_len > 0 || form.find('input[name=url_field]').val()) {
-                    do_file_submit(form);
+                    do_file_submit(form, data.id);
                 }
                 else {
                     $('.save-result-btn').prop('disabled', false);
@@ -82,6 +82,7 @@ $(document).ready(function() {
         return '<div class="col-lg-10">' +
             '<p class="text-muted">Тип: ' + data.result_type_display + '. Оценка: ' + data.rating_display + '</p>' +
             '<p class="text-muted">Компетенции: ' + data.competences + '</p>' +
+            (FORMSET_RENDER_URL ? ('<p class="text-muted">Групповая динамика: ' + data.group_dynamics + '</p>') : '') +
             '<p class="text-muted">Комментарий: ' + data.result_comment + '</p>' +
         '</div>' +
         '<div class="col-lg-2">' +
@@ -93,7 +94,7 @@ $(document).ready(function() {
         return '' + l + ' - ' + data.result_type_display + ' - ' + data.rating_display + ' - <a href="#result-entry-' + l + '">подробнее</a>';
     }
 
-    function do_file_submit(form) {
+    function do_file_submit(form, result_id) {
         var files_len = form.find('input[name=file_field]')[0].files;
         files_len = files_len ? files_len.length : 0;
         if ((UPLOADS.length + files_len) > MAX_PARALLEL_UPLOADS && files_len) {
@@ -139,8 +140,7 @@ $(document).ready(function() {
                         var m_id = data.material_id;
                         var name = data.name;
                         var comment = data.comment;
-                        var items = form.children('ul.list-group').children('li');
-                        var item = $(items[items.length - 1]);
+                        var items = $('#results .result-wrapper-div div[data-result="' + result_id + '"] ul.list-group');
                         var s;
                         if (data.can_set_public) {
                             s = '<li class="list-group-item"><a href="' + url + '">' + name + '</a>&nbsp; ' +
@@ -153,7 +153,11 @@ $(document).ready(function() {
                                 (data.uploader_name ? ('<div>(' + data.uploader_name + ')</div>') : '') +
                                 '<div><span>' + comment + '</span></div></li>';
                         }
-                        item.before($(s));
+                        items.append($(s));
+                        if (num === undefined) {
+                            $('.save-result-btn').prop('disabled', false);
+                            clear_form(form);
+                        }
                     },
                     complete: function () {
                         if (num === undefined) return;
@@ -163,7 +167,8 @@ $(document).ready(function() {
                             UPLOADS.splice(index, 1);
                         }
                         if (UPLOADS.length == 0) {
-                            window.location.reload();
+                            $('.save-result-btn').prop('disabled', false);
+                            clear_form(form);
                         }
                     },
                     error: function (xhr, err) {
@@ -195,6 +200,20 @@ $(document).ready(function() {
         form.find('[name="competences"]').val(data.competences);
         form.find('[name="result_comment"]').val(data.result_comment);
         window.scrollTo(0, 0);
+        if (FORMSET_RENDER_URL) {
+            form.find('[name="group_dynamics"]').val(data.group_dynamics);
+            $.ajax({
+                url: FORMSET_RENDER_URL,
+                method: 'GET',
+                data: {id: data.id},
+                success: function (data) {
+                    $('div.user-roles-div').html(data);
+                },
+                error: function() {
+                    alert('error');
+                }
+            })
+        }
     });
 
     function setAutocompleteChoice(select, val, text) {
@@ -220,6 +239,10 @@ $(document).ready(function() {
             form.find('[name="' + names[i] + '"]').val('')
         clearAutocompleteChoice(form.find('[name="result_type"]'));
         form.find('[name="rating"] option:selected').prop('selected', false);
+        if (FORMSET_RENDER_URL) {
+            form.find('[name="group_dynamics"]').val('');
+            $('.user-roles-div select option:selected').prop('selected', false);
+        }
     }
 
     $('body').delegate('button.delete-material-btn', 'click', function(e) {

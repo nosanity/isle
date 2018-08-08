@@ -1,0 +1,24 @@
+{% extends 'load_user_materials.html' %}
+
+{% block page_title %}Групповые результаты: {{ team.name }}{% endblock %}
+
+{% block result_url %}{% url 'create-team-result' uid=event.uid team_id=team.id %}{% endblock %}
+
+{% block form_render %}
+    {% for field in result_form %}
+        {% if field.hidden %}
+            {{ field }}
+        {% else %}
+            <div class="form-group">
+                {{ field|add_class:'form-control'|set_placeholder:field.label }}
+            </div>
+        {% endif %}
+        {% if field.name == 'group_dynamics' %}
+            <div class="form-group user-roles-div">
+                {% include '_user_roles_formset.html' %}
+            </div>
+        {% endif %}
+    {% endfor %}
+{% endblock %}
+
+{% block formset_render_url %}{% url 'roles-formset-render' uid=event.uid team_id=team.id %}{% endblock %}

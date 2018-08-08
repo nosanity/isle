@@ -301,9 +301,14 @@ class ResultAbstract(models.Model):
                 res[f.name] = getattr(self, '{}_id'.format(f.name)) or ''
             else:
                 res[f.name] = getattr(self, f.name) or ''
+        for f in self._meta.many_to_many:
+            self.handle_m2m(res, f.name)
         if as_object:
             return res
         return json.dumps(res, ensure_ascii=False)
+
+    def handle_m2m(self, res, field):
+        pass
 
 
 class UserResult(ResultAbstract):
@@ -311,6 +316,51 @@ class UserResult(ResultAbstract):
     результат пользователя по какому-то типу блока (не по самому блоку), к которому крепятся файлы
     """
     user = models.ForeignKey(User, on_delete=models.CASCADE)
+
+
+class UserRole(models.Model):
+    """
+    роль пользователя в рамках команды
+    """
+    ROLE_LEADER = 1
+    ROLE_PARTICIPANT = 2
+    ROLE_CHOICES = (
+        (ROLE_LEADER, 'Лидер'),
+        (ROLE_PARTICIPANT, 'Участник'),
+    )
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    team_result = models.ForeignKey('TeamResult', on_delete=models.CASCADE)
+    role = models.SmallIntegerField(choices=ROLE_CHOICES, blank=True, null=True)
+
+    class Meta:
+        unique_together = ('user', 'team_result')
+
+    @classmethod
+    def get_initial_data_for_team_result(cls, team, team_result_id=None, serializable=True):
+        """
+        получение данных для initial параметра формсета с ролями или для логирования состояния
+        """
+        users = team.users.order_by('last_name', 'first_name', 'second_name')
+        if team_result_id:
+            roles = dict(cls.objects.filter(team_result__team_id=team.id, user__in=users).
+                         values_list('user_id', 'role'))
+        else:
+            roles = {}
+        return [
+            {'user': user.id if serializable else user, 'team_result': team_result_id, 'role': roles.get(user.id)}
+            for user in users
+        ]
+
+
+class TeamResult(ResultAbstract):
+    team = models.ForeignKey('Team', on_delete=models.CASCADE)
+    group_dynamics = models.CharField(max_length=300, verbose_name='Групповая динамика', blank=True, default='')
+    user_roles = models.ManyToManyField(User, through=UserRole)
+
+    def handle_m2m(self, res, field_name):
+        if field_name == 'user_roles':
+            res[field_name] = UserRole.get_initial_data_for_team_result(self.team, self.id)
 
 
 class AbstractMaterial(models.Model):
@@ -449,6 +499,7 @@ class EventTeamMaterial(AbstractMaterial):
     comment = models.CharField(default='', max_length=255)
     confirmed = models.BooleanField(default=True)
     owners = models.ManyToManyField(User)
+    result = models.ForeignKey(TeamResult, on_delete=models.CASCADE, null=True, default=None)
 
     class Meta:
         verbose_name = _(u'Материал команды')

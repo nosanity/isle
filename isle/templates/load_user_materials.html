@@ -6,13 +6,14 @@
     <a href="{% url 'event-view' uid=event.uid %}">
         <button class="btn btn-light float-right">К странице мероприятия</button>
     </a>
-    <h4>Индивидуальные результаты: {{ user.fio }}</h4>
+    <h4>{% block page_title %}Индивидуальные результаты: {{ user.fio }}{% endblock %}</h4>
     {% csrf_token %}
     <div class="clearfix"></div>
 
-    <form id="result_form" method="post" action="{% url 'create-user-result' uid=event.uid unti_id=user.unti_id %}" class="form">
+    <form id="result_form" method="post" action="{% block result_url %}{% url 'create-user-result' uid=event.uid unti_id=user.unti_id %}{% endblock %}" class="form">
         {% csrf_token %}
         <input type="hidden" name="result_id">
+        {% block form_render %}
         {% for field in result_form %}
             {% if field.hidden %}
                 {{ field }}
@@ -22,6 +23,7 @@
                 </div>
             {% endif %}
         {% endfor %}
+        {% endblock %}
 
         <div class="row" style="margin-top: 10px;">
             <div class="col-sm-12 col-md-3" style="margin-bottom: 10px;">
@@ -74,6 +76,9 @@
             <div class="col-lg-10">
                 <p class="text-muted">Тип: {{ result.result.get_result_type_display|default:'' }}. Оценка: {{ result.result.get_rating_display|default:'' }}</p>
                 <p class="text-muted">Компетенции: {{ result.result.competences }}</p>
+                {% if team_upload %}
+                    <p class="text-muted">Групповая динамика: {{ result.result.group_dynamics }}</p>
+                {% endif %}
                 <p class="text-muted">Комментарий: {{ result.result.result_comment }}</p>
             </div>
             <div class="col-lg-2">
@@ -264,6 +269,7 @@
         MAX_PARALLEL_UPLOADS = {{ max_uploads }};
         CHANGE_STATE = "{% url 'is-material-public' uid=event.uid %}";
         IS_ASSISTANT = {% if request.user.is_assistant %}true{% else %}false{% endif %};
+        FORMSET_RENDER_URL = '{% block formset_render_url %}{% endblock %}'
     </script>
     <script type="text/javascript" src="{% static 'js/jquery.are-you-sure.min.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/result-file-upload.js' %}"></script>

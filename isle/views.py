@@ -8,7 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import logout as base_logout
 from django.core.exceptions import PermissionDenied, SuspiciousOperation
 from django.db.models import Count, Q
-from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect
+from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -23,9 +23,9 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from social_django.models import UserSocialAuth
-from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm
+from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
-    Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult
+    Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole
 from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in
 
@@ -325,8 +325,13 @@ class BaseLoadMaterialsResults(object):
     """
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
+        traces = data['traces']
+        # складываем все старые файлы (привязанные к трейсам) в один список, т.к. на странице в
+        # разделе отдельных файлов для них нет никакого разделения
+        links = functools.reduce(lambda x, y: x + y, [i.get('links', []) for i in traces], [])
         data.update({
             'results': self.get_results(),
+            'links': links,
         })
         return data
 
@@ -411,14 +416,9 @@ class LoadMaterialsAssistant(BaseLoadMaterialsResults, LoadMaterials):
 
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
-        traces = data['traces']
-        # складываем все старые файлы (привязанные к трейсам) в один список, т.к. на странице в
-        # разделе отдельных файлов для них нет никакого разделения
-        links = functools.reduce(lambda x, y: x + y, [i.get('links', []) for i in traces], [])
         data.update({
             'user': self.user,
             'result_form': UserResultForm(initial={'event': self.event, 'user': self.user}),
-            'links': links,
         })
         return data
 
@@ -519,7 +519,7 @@ class LoadTeamMaterials(BaseLoadMaterials):
     def check_post_allowed(self, request):
         # загрузка и удаление файлов доступны только для эвентов, доступных для оцифровки, и по
         # командам, сформированным в данном эвенте
-        if not super().check_post_allowed(request) or not \
+        if super().check_post_allowed(request) is not None or not \
                 Team.objects.filter(event=self.event, id=self.kwargs['team_id']).exists():
             return JsonResponse({}, status=403)
 
@@ -540,6 +540,52 @@ class LoadTeamMaterials(BaseLoadMaterials):
     def get_material_fields(self, request):
         return dict(event=self.event, team=self.team, comment=request.POST.get('comment', ''),
                     confirmed=self.request.user.is_assistant)
+
+
+class LoadTeamMaterialsAssistant(BaseLoadMaterialsResults, LoadTeamMaterials):
+    template_name = 'load_team_materials.html'
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        roles_formset = UserRoleFormset(initial=UserRole.get_initial_data_for_team_result(self.team, serializable=False))
+        data.update({
+            'team': self.team,
+            'result_form': TeamResultForm(initial={'event': self.event, 'team': self.team}),
+            'roles_formset': roles_formset,
+        })
+        return data
+
+    def get_result_for_request(self, request):
+        return TeamResult.objects.filter(id=request.POST.get('result_id')).first()
+
+    def get_result_objects(self):
+        qs = self.material_model.objects.filter(team=self.team, trace__isnull=True)
+        self.set_initiator_users_to_qs(qs)
+        return qs
+
+    def get_results(self):
+        results = TeamResult.objects.filter(event=self.event, team=self.team).order_by('id')
+        data = defaultdict(list)
+        for item in self.get_result_objects():
+            data[item.result_id].append(item)
+        res = []
+        for result in results:
+            res.append({'result': result, 'links': data.get(result.id, [])})
+        return res
+
+    def check_event_has_result(self, result_id):
+        return TeamResult.objects.filter(event=self.event, team=self.team, id=result_id).exists()
+
+    def _delete_item(self, material_id):
+        material = EventTeamMaterial.objects.filter(
+            event=self.event, team=self.team, id=material_id
+        ).first()
+        if not material:
+            return JsonResponse({}, status=400)
+        material.delete()
+        logging.warning('User %s has deleted file %s for team %s' %
+                        (self.request.user.username, material.get_url(), self.team.id))
+        return JsonResponse({})
 
 
 class LoadEventMaterials(BaseLoadMaterials):
@@ -1127,7 +1173,7 @@ class TransferView(GetEventMixin, View):
             obj = model.objects.get(id=request.POST.get('material_id'), event=self.event)
         except (model.DoesNotExist, TypeError, ValueError):
             return JsonResponse({}, status=404)
-        if model == EventMaterial and not obj.trace:
+        if not obj.trace:
             return JsonResponse({}, status=404)
         if model == EventMaterial and not EventEntry.objects.filter(event=self.event, user=obj.user_id).exists():
             return JsonResponse({}, status=400)
@@ -1226,7 +1272,7 @@ class BaseCreateResult(GetEventMixin, View):
                 instance = result
             except (ValueError, TypeError, self.result_model.DoesNotExist, AssertionError):
                 return JsonResponse({}, status=400)
-        form = self.form_class(data=request.POST, instance=instance)
+        form = self.get_form(request, instance)
         if form.is_valid():
             item = form.save()
             res = item.to_json(as_object=True)
@@ -1244,7 +1290,44 @@ class BaseCreateResult(GetEventMixin, View):
     def additional_assertion(self, result):
         pass
 
+    def get_form(self, request, instance):
+        return self.form_class(data=request.POST, instance=instance)
+
 
 class CreateUserResult(BaseCreateResult):
     def additional_assertion(self, result):
         assert result.user.unti_id == self.kwargs['unti_id']
+
+
+class CreateTeamResult(BaseCreateResult):
+    form_class = TeamResultForm
+    result_model = TeamResult
+
+    def additional_assertion(self, result):
+        assert result.team_id == self.kwargs['team_id']
+
+    def get_form(self, request, instance):
+        team = get_object_or_404(Team, id=self.kwargs['team_id'])
+        return self.form_class(data=request.POST, instance=instance, initial={'team': team})
+
+
+class RolesFormsetRender(GetEventMixin, TemplateView):
+    """
+    отрисовка формсета с ролями пользователей, нужно для того чтобы без проблем менять
+    формсеты на форме редактирования результата при нажатии кнопки редактирования
+    """
+    template_name = '_user_roles_formset.html'
+
+    def get_context_data(self, **kwargs):
+        if not self.request.user.is_assistant:
+            raise PermissionDenied
+        try:
+            result = TeamResult.objects.get(id=self.request.GET.get('id'))
+        except (TeamResult.DoesNotExist, ValueError, TypeError):
+            raise Http404
+        formset = UserRoleFormset(
+            initial=UserRole.get_initial_data_for_team_result(result.team, result.id, serializable=False)
+        )
+        return {
+            'roles_formset': formset,
+        }
