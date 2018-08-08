@@ -8,7 +8,23 @@
     </a>
     {% csrf_token %}
     <div class="clearfix"></div>
-
+        <div class="modal fade" id="modal_link_preview" tabindex="-1" role="dialog" aria-labelledby="" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="modal_link_preview_title"></h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div class="modal-body">
+              <div class="preview"></div>
+              </div>
+              <div class="modal-footer" id="modal_link_preview_footer">
+              </div>
+            </div>
+          </div>
+        </div>
     {% if request.user.is_assistant and event_upload %}
         <div class="modal fade text-left" tabindex="-1" role="dialog" id="transfer-modal">
           <div class="modal-dialog">
@@ -74,7 +90,7 @@
             <ul class="list-group list-group-flush">
                 {% for link in trace.links %}
                     <li class="list-group-item {% if link.confirmed and team_upload and not link.initiator_user.is_assistant %}confirmed-team-link{% elif team_upload and link.initiator_user.is_assistant %}assistant-team-link{% endif %}">
-                        <a href="{{ link.get_url }}" {{ link.render_metadata }}>{{ link.get_name }}</a>&nbsp;
+                        <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata }}>{{ link.get_name }}</a>&nbsp;
                         {% if can_set_public %}
                             <label>Публичный
                             <input type="checkbox" data-link-id="{{ link.id }}" class="upload_is_public"  {% if link.is_public %}checked{% endif %}>
@@ -174,6 +190,64 @@
 
 {% block js %}
     {{ block.super }}
+    <script type="text/javascript">
+    $(document).ready(function() {
+        $('.list-group-item a.link_preview').each(function (i, element) {
+            $(element).html('<i class ="fa ' + element.dataset.icon.substring(1, element.dataset.icon.length-1) +'" ></i> ' + element.text);
+
+        })
+        $('.list-group-item a.link_preview').click(
+            function(e){
+                e.preventDefault();
+                e.target.dataset.target='#modal_link_preview';
+                e.target.dataset.toggle='modal';
+                if (element) {delete element}
+                $('#modal_link_preview_footer').text('')
+                //$('#modal_link_preview_footer').text(e.target.dataset.fio + " " + e.target.dataset.size + " " + e.target.dataset.icon);
+
+                if (e.target.dataset.file_type == '"pdf"'){
+                    var element = document.createElement("object");
+                    element.data = e.target.href;
+                    element.type = "application/pdf";
+                    element.width = "100%";
+                    element.height = element.width;
+                }
+                 if (e.target.dataset.file_type == '"image"') {
+                     var element = document.createElement('img');
+                     element.src = e.target.href;
+                     element.style.width = "100%"
+                 }
+                 if (e.target.dataset.file_type == '"video"') {
+                     var element = document.createElement('video');
+                     element.src = e.target.href;
+                     element.controls = 'true';
+                     element.preload = 'metadata';
+                     element.muted = 'true';
+                     element.playsinline = 'true';
+                     element.style.width = "100%";
+                 }
+                if (e.target.dataset.file_type == '"audio"') {
+                     var element = document.createElement('audio');
+                     element.src = e.target.href;
+                     element.controls = 'true';
+                     element.style.width = "100%"
+                 }
+                if (e.target.dataset.file_type == '"other"') {
+                     var element = document.createElement('a');
+                     element.innerText = "Скачать файл";
+                     $(element).addClass('btn');
+                     element.href = e.target.href;
+                     element.style.width = "100%"
+                 }
+                $('#modal_link_preview_title').html(e.target.innerHTML)
+                document.querySelector('div.preview').innerHTML = '';
+                document.querySelector('div.preview').appendChild(element);
+
+            }
+            );
+    })
+
+    </script>
     <script type="text/javascript">
         $('body').delegate('.my-material-btn', 'click', function(e) {
             e.preventDefault();
