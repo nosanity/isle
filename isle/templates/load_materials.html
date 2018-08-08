@@ -218,6 +218,12 @@
                      element.preload = 'metadata'
                      element.style.width = "100%"
                  }
+                if (e.target.dataset.file_type == '"audio"') {
+                     var element = document.createElement('audio');
+                     element.src = e.target.href;
+                     element.controls = 'true';
+                     element.style.width = "100%"
+                 }
                 $('#modal_link_preview_title').text("Preview: " +e.target.innerHTML)
                 document.querySelector('div.preview').innerHTML = '';
                 document.querySelector('div.preview').appendChild(element);
