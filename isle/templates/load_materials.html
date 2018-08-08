@@ -20,7 +20,7 @@
               <div class="modal-body">
               <div class="preview"></div>
               </div>
-              <div class="modal-footer">
+              <div class="modal-footer" id="modal_link_preview_footer">
               </div>
             </div>
           </div>
@@ -192,12 +192,18 @@
     {{ block.super }}
     <script type="text/javascript">
     $(document).ready(function() {
+        $('.list-group-item a.link_preview').each(function (i, element) {
+            $(element).html('<i class ="fa ' + element.dataset.icon.substring(1, element.dataset.icon.length-1) +'" ></i> ' + element.text);
+
+        })
         $('.list-group-item a.link_preview').click(
             function(e){
                 e.preventDefault();
                 e.target.dataset.target='#modal_link_preview';
                 e.target.dataset.toggle='modal';
                 if (element) {delete element}
+                $('#modal_link_preview_footer').text('')
+                $('#modal_link_preview_footer').text(e.target.dataset.fio + " " + e.target.dataset.size + " " + e.target.dataset.icon);
 
                 if (e.target.dataset.file_type == '"pdf"'){
                     var element = document.createElement("object");
@@ -215,8 +221,10 @@
                      var element = document.createElement('video');
                      element.src = e.target.href;
                      element.controls = 'true';
-                     element.preload = 'metadata'
-                     element.style.width = "100%"
+                     element.preload = 'metadata';
+                     element.muted = 'true';
+                     element.playsinline = 'true';
+                     element.style.width = "100%";
                  }
                 if (e.target.dataset.file_type == '"audio"') {
                      var element = document.createElement('audio');
