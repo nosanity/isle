@@ -13,11 +13,7 @@
     </div>
     </div>
     <div class="row"><h3>Структура мероприятия</h3></div>
-    <div class="row">
-        <p>
-            Длительность в минутах - название блока - тип блока
-        <p>
-    </div>
+    <br>
     <div>
         <table class="table">
             {% for b in blocks %}
@@ -35,19 +31,21 @@
             {% endfor %}
         </table>
     </div>
-    <form method="post" class="form-inline" id="blocks-form">
+    <form method="post" id="blocks-form">
         {% csrf_token %}
         {{ formset.management_form }}
         {% for form in formset %}
-            <div>
-            <div class="row form-row spacer">
-            {% for field in form %}
-                {{ field|add_class:"form-control" }}
-            {% endfor %}
-            </div>
+            <div class="form-inline">
+                <div>
+                    <div class="row form-row spacer">
+                        {% for field in form %}
+                            {{ field|add_class:"form-control"|set_placeholder:field.label }}
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
         {% endfor %}
-        <div class="row">
+        <div class="row" style="margin-top: 20px">
             <button id="save-blocks" class="btn btn-danger" style="margin-left: 10px">Сохранить</button>
         </div>
     </form>
@@ -99,6 +97,9 @@
         }
         .delete-formset-btn:first-of-type {
             display: none;
+        }
+        .delete-formset-btn {
+            margin: auto 10px;
         }
     </style>
 {% endblock %}

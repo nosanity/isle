@@ -44,6 +44,9 @@ class EventBlockForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['event'].required = False
         self.fields['duration'].min_value = 0
+        # замена дефолтного варианта ('', '----') на вариант с нужным текстом
+        self.fields['block_type'].choices.pop(0)
+        self.fields['block_type'].choices = [('', 'Тип блока')] + list(self.fields['block_type'].choices)
 
 
 class BaseResultForm:

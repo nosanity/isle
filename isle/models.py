@@ -195,8 +195,8 @@ class BlockType:
 
 class EventBlock(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
-    duration = models.IntegerField()
-    title = models.CharField(max_length=255)
+    duration = models.IntegerField(verbose_name='Минут')
+    title = models.CharField(max_length=255, verbose_name='Название блока')
     block_type = models.SmallIntegerField(choices=BlockType.type_choices)
 
 
