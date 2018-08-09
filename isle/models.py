@@ -275,9 +275,9 @@ class ResultAbstract(models.Model):
     RESULT_OK = 2
     RESULT_GREAT = 3
     RESULT_CHOICES = (
-        (RESULT_WEAK, 'слабый результат'),
-        (RESULT_OK, 'нормальный результат'),
-        (RESULT_GREAT, 'отличный результат'),
+        (RESULT_WEAK, '1 – слабый результат'),
+        (RESULT_OK, '2 – нормальный результат'),
+        (RESULT_GREAT, '3 – отличный результат'),
     )
 
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
