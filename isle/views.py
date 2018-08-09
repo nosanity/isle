@@ -812,7 +812,7 @@ class ResultTypeAutocomplete(autocomplete.Select2QuerySetView):
         return BlockType.result_types_for_event(event)
 
     def get_result_label(self, result):
-        return '{} – {}'.format(*result)
+        return result[1]
 
     def get_result_value(self, result):
         return result[0]
