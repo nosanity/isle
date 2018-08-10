@@ -199,6 +199,9 @@ class EventBlock(models.Model):
     title = models.CharField(max_length=255, verbose_name='Название блока')
     block_type = models.SmallIntegerField(choices=BlockType.type_choices)
 
+    def __str__(self):
+        return '{} - {} - {}'.format(self.duration, self.title, self.get_block_type_display())
+
 
 class Trace(models.Model):
     """
@@ -533,9 +536,28 @@ class EventOnlyMaterial(AbstractMaterial):
     comment = models.CharField(default='', max_length=255)
     owners = models.ManyToManyField(User)
 
+    event_block = models.ForeignKey(EventBlock, on_delete=models.SET_NULL, null=True, default=None, blank=True)
+    related_users = models.ManyToManyField(User, related_name='connected_materials', blank=True)
+    related_teams = models.ManyToManyField(Team, related_name='connected_materials', blank=True)
+
     class Meta:
         verbose_name = _(u'Материал мероприятия')
         verbose_name_plural = _(u'Материалы мероприятий')
+
+    def render_related_users(self):
+        return ', '.join(i.get_full_name() for i in self.related_users.all())
+
+    def render_related_teams(self):
+        return ', '.join(i.name for i in self.related_teams.all())
+
+    def get_info_string(self):
+        parts = [
+            self.event_block and str(self.event_block),
+            self.render_related_users(),
+            self.render_related_teams(),
+            self.comment
+        ]
+        return ' | '.join(filter(None, parts))
 
     @classmethod
     def copy_from_object(cls, material):
