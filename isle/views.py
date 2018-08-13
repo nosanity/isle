@@ -605,6 +605,7 @@ class LoadEventMaterials(BaseLoadMaterials):
         data.update({
             'event_users': get_event_participants(self.event),
             'event_teams': Team.objects.filter(event=self.event).order_by('name'),
+            'blocks_form': EventMaterialForm(event=self.event),
         })
         return data
 

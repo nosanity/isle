@@ -2,7 +2,6 @@
     {% if custom_form_prefix %}
         <input type="hidden" name="custom_form_prefix" value="{{ custom_form_prefix }}">
     {% endif %}
-    {{ blocks_form.event }}
     <div class="row">
         <div class="col-sm-6">
             {{ blocks_form.event_block|add_class:'form-control' }}
