@@ -23,7 +23,8 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from social_django.models import UserSocialAuth
-from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset
+from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset, \
+    EventMaterialForm
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole
 from isle.serializers import AttendanceSerializer
@@ -303,9 +304,13 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
             'data_attrs': material.render_metadata(),
             'can_set_public': self._can_set_public()
         }
+        self.update_add_item_response(resp, material, trace)
         if self.extra_context and self.extra_context.get('team_upload'):
             resp['uploader_name'] = request.user.fio
         return JsonResponse(resp)
+
+    def update_add_item_response(self, resp, material, trace):
+        pass
 
     def get_material_fields(self, request):
         return {}
@@ -367,6 +372,11 @@ class LoadMaterials(BaseLoadMaterials):
     """
     material_model = EventMaterial
     extra_context = {'with_public_checkbox': True, 'user_upload': True}
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        data.update({'other_materials': self.user.connected_materials.order_by('id')})
+        return data
 
     def _can_set_public(self):
         return self.request.user.unti_id == int(self.kwargs['unti_id'])
@@ -478,7 +488,7 @@ class LoadTeamMaterials(BaseLoadMaterials):
         for u in users:
             u.materials_num = num.get(u.id, 0)
         data.update({'students': users, 'event': self.event, 'team_name': getattr(self.team, 'name', ''),
-                     'team': self.team})
+                     'team': self.team, 'other_materials': self.team.connected_materials.order_by('id')})
         return data
 
     @cached_property
@@ -600,6 +610,7 @@ class LoadEventMaterials(BaseLoadMaterials):
         data.update({
             'event_users': get_event_participants(self.event),
             'event_teams': Team.objects.filter(event=self.event).order_by('name'),
+            'blocks_form': EventMaterialForm(event=self.event),
         })
         return data
 
@@ -611,7 +622,8 @@ class LoadEventMaterials(BaseLoadMaterials):
                 item.ownership_url = reverse('event-material-owner', kwargs={
                     'uid': self.event.uid, 'material_id': item.id})
         self.set_initiator_users_to_qs(qs)
-        return qs
+        return qs.prefetch_related('related_users', 'related_teams', 'related_teams__users').\
+            select_related('event_block')
 
     def _delete_item(self, trace, material_id):
         material = EventOnlyMaterial.objects.filter(
@@ -629,6 +641,14 @@ class LoadEventMaterials(BaseLoadMaterials):
 
     def get_material_fields(self, request):
         return dict(event=self.event, comment=request.POST.get('comment', ''))
+
+    def update_add_item_response(self, resp, material, trace):
+        form = EventMaterialForm(instance=material, data=self.request.POST, prefix=str(trace.id), event=self.event)
+        if form.is_valid():
+            material = form.save()
+        resp['info_string'] = material.get_info_string()
+        logging.info('User %s created block info for material %s: %s' %
+                     (self.request.user.username, material.id, resp['info_string']))
 
 
 class RefreshDataView(View):
@@ -775,15 +795,21 @@ class UserAutocomplete(autocomplete.Select2QuerySetView):
             id__in=EventEntry.objects.filter(event_id=event_id).values_list('user_id', flat=True)
         ).filter(id__in=UserSocialAuth.objects.all().values_list('user__id', flat=True))
         if self.q:
-            if len(self.q.split()) == 1:
+            qs = self.search_user(qs, self.q)
+        return qs
+
+    @staticmethod
+    def search_user(qs, query):
+        if query:
+            if len(query.split()) == 1:
                 qs = qs.filter(
-                    Q(email__icontains=self.q) | Q(username__icontains=self.q) |
-                    Q(last_name__icontains=self.q) | Q(first_name__icontains=self.q) |
-                    Q(second_name__icontains=self.q)
+                    Q(email__icontains=query) | Q(username__icontains=query) |
+                    Q(last_name__icontains=query) | Q(first_name__icontains=query) |
+                    Q(second_name__icontains=query)
                 )
             else:
                 filters = []
-                q_parts = self.q.split()
+                q_parts = query.split()
                 fields = ['last_name', 'first_name', 'second_name']
                 for p_len in range(1, min(len(fields), len(q_parts)) + 1):
                     indexes = filter(lambda c: c[0] == 0, combinations(range(len(q_parts)), p_len))
@@ -816,6 +842,46 @@ class ResultTypeAutocomplete(autocomplete.Select2QuerySetView):
 
     def get_result_value(self, result):
         return result[0]
+
+
+class EventItemAutocompleteBase(autocomplete.Select2QuerySetView):
+    model = None
+
+    def get_queryset(self):
+        exclude = self.forwarded.get('exclude') or []
+        event_id = str(self.forwarded.get('event'))
+        if not event_id.isdigit() or not (self.request.user.is_authenticated and self.request.user.is_assistant):
+            return self.model.objects.none()
+        return self.model.objects.filter(**self.get_filters(event_id)).exclude(id__in=exclude)
+
+    def get_filters(self, event_id):
+        return {}
+
+
+class EventUserAutocomplete(EventItemAutocompleteBase):
+    model = User
+
+    def get_filters(self, event_id):
+        return {'id__in': EventEntry.objects.filter(event_id=event_id).values_list('user_id', flat=True)}
+
+    def get_queryset(self):
+        return UserAutocomplete.search_user(super().get_queryset(), self.q)
+
+
+class EventTeamAutocomplete(EventItemAutocompleteBase):
+    model = Team
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.q:
+            qs = qs.filter(name__icontains=self.q)
+        return qs.prefetch_related('users')
+
+    def get_filters(self, event_id):
+        return {'event_id': event_id}
+
+    def get_result_label(self, result):
+        return '{} ({})'.format(result.name, ', '.join([i.last_name for i in result.users.all()]))
 
 
 class Paginator(PageNumberPagination):
@@ -1331,3 +1397,58 @@ class RolesFormsetRender(GetEventMixin, TemplateView):
         return {
             'roles_formset': formset,
         }
+
+
+class AddEventBlockToMaterial(GetEventMixin, View):
+    def post(self, request, **kwargs):
+        """
+        изменение блока, пользователей и команд у файла мероприятия ассистентом
+        """
+        pref = request.POST.get('custom_form_prefix')
+        if not request.user.is_assistant or not pref:
+            raise PermissionDenied
+        try:
+            material = EventOnlyMaterial.objects.get(id=EventBlockEditRenderer.parse_material_id_from_prefix(pref))
+        except (TypeError, EventOnlyMaterial.DoesNotExist):
+            return JsonResponse({}, status=400)
+        form = EventMaterialForm(instance=material, data=request.POST, prefix=pref, event=self.event)
+        if not form.is_valid():
+            return JsonResponse({}, status=400)
+        instance = form.save()
+        info_str = instance.get_info_string()
+        logging.info('User %s changed block info for material %s: %s' %
+                     (self.request.user.username, material.id, info_str))
+        return JsonResponse({'info_string': info_str})
+
+
+class EventBlockEditRenderer(GetEventMixin, TemplateView):
+    """
+    форма редактирования блоков, пользователей и команд для файла мероприятия
+    """
+    template_name = '_material_event_block.html'
+
+    def get_context_data(self, **kwargs):
+        if not self.request.user.is_assistant:
+            raise PermissionDenied
+        try:
+            material = EventOnlyMaterial.objects.get(id=self.request.GET.get('id'))
+        except (EventOnlyMaterial, TypeError, ValueError):
+            raise Http404
+        data = super().get_context_data(**kwargs)
+        prefix = self.make_prefix(material.id)
+        data.update({
+            'blocks_form': EventMaterialForm(instance=material, event=self.event, prefix=prefix),
+            'custom_form_prefix': prefix,
+        })
+        return data
+
+    @staticmethod
+    def make_prefix(material_id):
+        return 'edit-{}'.format(material_id)
+
+    @staticmethod
+    def parse_material_id_from_prefix(prefix):
+        try:
+            return int(prefix.split('-')[1])
+        except:
+            pass

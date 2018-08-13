@@ -1,6 +1,6 @@
 from django import forms
 from dal import autocomplete, forward
-from isle.models import Team, User, EventBlock, BlockType, UserResult, TeamResult, UserRole
+from isle.models import Team, User, EventBlock, EventOnlyMaterial, UserResult, TeamResult, UserRole, EventEntry
 
 
 class CreateTeamForm(forms.ModelForm):
@@ -145,3 +145,33 @@ EventBlockFormset = forms.modelformset_factory(
         'event': forms.HiddenInput
     }
 )
+
+
+class EventMaterialForm(forms.ModelForm):
+    class Meta:
+        model = EventOnlyMaterial
+        fields = ('event_block', 'related_users', 'related_teams')
+        widgets = {
+            'related_users': autocomplete.ModelSelect2Multiple(
+                url='event-user-autocomplete', attrs={'data-placeholder': 'Отметить людей'}
+            ),
+            'related_teams': autocomplete.ModelSelect2Multiple(
+                url='event-team-autocomplete', attrs={'data-placeholder': 'Отметить команды'}
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        self.event = kwargs.pop('event')
+        super().__init__(*args, **kwargs)
+        self.fields['event_block'].empty_label = 'Блок мероприятия'
+        self.fields['event_block'].queryset = EventBlock.objects.filter(event=self.event)
+        self.fields['related_users'].queryset = User.objects.filter(
+            id__in=EventEntry.objects.filter(event=self.event).values_list('user_id', flat=True)
+        )
+        self.fields['related_teams'].queryset = Team.objects.filter(event=self.event)
+        self.fields['related_users'].widget.forward = [
+            forward.Const(self.event.id, 'event'), forward.Field('related_users', 'exclude')
+        ]
+        self.fields['related_teams'].widget.forward = [
+            forward.Const(self.event.id, 'event'), forward.Field('related_teams', 'exclude')
+        ]

@@ -1,7 +1,9 @@
 $(document).ready(function() {
     var forms = $('form.trace-form');
     for (var i = 0; i < forms.length; i++){
-        $(forms[i]).areYouSure();
+        $(forms[i]).areYouSure({
+            fieldSelector: ':input:not(input[type=submit]):not(input[type=button]):not(.btn)'
+        });
     }
 
     COUNTER = 0;
@@ -84,10 +86,18 @@ $(document).ready(function() {
                                 '&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button></li>' +
                                 '<div><span>' + comment + '</span></div>';
                         }
-                        else {
+                        else if (!IS_ASSISTANT) {
                             s = '<li class="list-group-item ' + (data.uploader_name && IS_ASSISTANT ? 'assistant-team-link' : '') + '"><a href="' + url + '">' + name + '</a>&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button>' +
                                 (data.uploader_name ? ('<div>(' + data.uploader_name + ')</div>') : '') +
                                 '<div><span>' + comment + '</span></div></li>';
+                        }
+                        else {
+                            s = '<li class="list-group-item ' + (data.uploader_name && IS_ASSISTANT ? 'assistant-team-link' : '') + '">' +
+                                '<a href="' + url + '">' + name + '</a>' +
+                                '&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button>' +
+                                '&nbsp;<button value="' + m_id + '" class="btn btn-success btn-sm pull-right edit-event-block-material">Редактировать</button>' +
+                                (data.uploader_name ? ('<div>(' + data.uploader_name + ')</div>') : '') +
+                                '<div><span class="text-muted assistant-info-string">' + data.info_string + '</span></div><div class="info-string-edit"></div></li>';
                         }
                         item.before($(s));
                     },
@@ -108,10 +118,23 @@ $(document).ready(function() {
         form.find('span.file-name').html('');
         form.find('input[name=url_field]').val('');
         form.find('input[name=file_field]').val('');
-        form.find('input[name=comment]').val('');
+        form.find('[name=comment]').val('');
         form.find('input[name=is_public]').prop('checked', false);
+        try {
+            form.find('[name$=event_block]').val('');
+            clearAutocompleteChoice(form.find('[name$=related_users]'));
+            clearAutocompleteChoice(form.find('[name$=related_teams]'));
+        }
+        catch (e) {}
 
     });
+
+    function clearAutocompleteChoice(select) {
+        $(select).data("suppressChange", true);
+        select.find("option").remove();
+        $(select).val(null).trigger('change');
+        $(select).data("suppressChange", false);
+    }
 
     $('body').delegate('button.delete-material-btn', 'click', function(e) {
 

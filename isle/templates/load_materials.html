@@ -98,15 +98,28 @@
                                 {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
                             </button>
                         {% endif %}
+                        {% if event_upload and request.user.is_assistant %}
+                            <button value="{{ link.id }}" class="btn btn-success btn-sm pull-right edit-event-block-material">
+                                Редактировать
+                            </button>
+                        {% endif %}
                         {% if link.initiator_user and team_upload %}<div>({{ link.initiator_user.fio }})</div>{% endif %}
-                        <div><span>{{ link.comment }}</span></div>
+                        {% if not request.user.is_assistant %}<div><span>{{ link.comment }}</span></div>{% endif %}
                         {% endif %}
                         {% if show_owners and not request.user.is_assistant and not can_upload %}
                             <button value="{{ link.id }}" class="btn {% if link.is_owner %}btn-danger{% else %}btn-success{% endif %} btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
                                 {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
                             </button>
                         {% endif %}
+                        {% if request.user.is_assistant %}
+                            <div>
+                                <span class="text-muted assistant-info-string">
+                                    {{ link.get_info_string }}
+                                </span>
+                            </div>
+                        {% endif %}
                         {% if show_owners %}<div><span class="material-owners">{% if link.get_owners %}Связан с: {% endif %}{{ link.get_owners|join:', ' }}</span></div>{% endif %}
+                        <div class="info-string-edit"></div>
                     </li>
                 {% endfor %}
                 {% if not trace.links and not can_upload %}
@@ -121,6 +134,7 @@
                         <a class="btn btn-block" data-toggle="collapse" href="#collapseExample-{{ trace.trace.id }}" role="button" aria-expanded="false" aria-controls="collapseExample" >+ Добавить новые материалы </a>
 
                     <div class="row collapse" id="collapseExample-{{ trace.trace.id }}" style="margin-top: 10px;">
+                        {% render_event_block_form trace.trace.id|stringformat:'i' event %}
                         <div class="col-sm-12 col-md-3" style="margin-bottom: 10px;">
                         <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
                           <a class="nav-link active" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы</a>
@@ -166,6 +180,24 @@
             </ul>
         </form>
     {% endfor %}
+
+    {% if user_upload or team_upload %}
+        <h4>Отдельные файлы</h4>
+        <div class="row">
+            <ul class="list-group list-group-flush" style="width: 100%">
+                {% for link in other_materials %}
+                    <li class="list-group-item">
+                        <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata }}>{{ link.get_name }}</a>&nbsp;
+                    </li>
+                {% endfor %}
+                {% if not other_materials %}
+                    <p class="materials-form-no-files" style="padding-left: 15px">
+                        Пока материалов не загружено
+                    </p>
+                {% endif %}
+            </ul>
+        </div>
+    {% endif %}
     <a href="{% url 'event-view' uid=event.uid %}">
         <button class="btn btn-light margin-top">К странице мероприятия</button>
     </a>
@@ -298,5 +330,82 @@
         </script>
     {% endif %}
     {% endif %}
+    {% if request.user.is_assistant and event_upload %}
+        <script type="text/javascript">
+            $(document).ready(function() {
+                $('body').delegate('.edit-event-block-material', 'click', function(e) {
+                    e.preventDefault();
+                    var id = $(this).val();
+                    var self = $(this);
+                    $.get({
+                        url: "{% url 'event-block-edit-renderer' uid=event.uid %}",
+                        method: 'GET',
+                        data: {id: id},
+                        success: function(data) {
+                            var s = '<div><button class="save-edited-block btn btn-sm btn-danger">Сохранить</button> <button class="cancel-block-edit btn btn-sm btn-gray">Отменить</button></div>'
+                            self.parents('li').find('div.info-string-edit').html(data).append($(s));
+                        },
+                        error: function() {
+                            alert('error');
+                        }
+                    })
+                }).delegate('.cancel-block-edit', 'click', function(e) {
+                    e.preventDefault();
+                    $(this).parents('div.info-string-edit').html('');
+                }).delegate('.save-edited-block', 'click', function(e) {
+                    e.preventDefault();
+                    var data = $(this).parents('form').serialize();
+                    var self = $(this);
+                    $.post({
+                        url: "{% url 'add-event-block' uid=event.uid %}",
+                        method: 'POST',
+                        data: data,
+                        success: function(data) {
+                            self.parents('li').find('span.assistant-info-string').html(data.info_string);
+                            self.parents('div.info-string-edit').html('');
+                        },
+                        error: function() {
+                            alert('error');
+                        }
+                    })
+                })
+            });
+        </script>
+    {% endif %}
     {% include "link_preview.html" %}
+{% endblock %}
+
+{% block css %}
+    {{ block.super }}
+    <style>
+    .edit-event-block-material {
+        margin-right: 10px;
+    }
+    .btn-gray {
+        background-color: #737373;
+    }
+    .material-event-block-wrapper {
+        width: 100%;
+    }
+    .material-event-block-wrapper div.row {
+        margin-right: 10px;
+        margin-bottom: 15px;
+    }
+    .material-event-block-wrapper div.row:first-of-type {
+        margin-top: 15px;
+    }
+    .collapse .select2-container {
+        width: 100% !important;
+    }
+    .collapse .select2-container input.select2-search__field {
+        width: 100% !important;
+    }
+    .collapse select.form-control {
+        width: 100% !important;
+    }
+    </style>
+{% endblock %}
+
+{% block footer %}
+    {{ blocks_form.media }}
 {% endblock %}

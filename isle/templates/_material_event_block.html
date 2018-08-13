@@ -1,0 +1,18 @@
+<div class="material-event-block-wrapper" style="display: block !important;">
+    {% if custom_form_prefix %}
+        <input type="hidden" name="custom_form_prefix" value="{{ custom_form_prefix }}">
+    {% endif %}
+    <div class="row">
+        <div class="col-sm-6">
+            {{ blocks_form.event_block|add_class:'form-control' }}
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-6">
+            {{ blocks_form.related_users|add_class:'form-control' }}
+        </div>
+        <div class="col-sm-6">
+            {{ blocks_form.related_teams|add_class:'form-control' }}
+        </div>
+    </div>
+</div>
