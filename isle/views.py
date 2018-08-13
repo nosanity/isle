@@ -373,6 +373,11 @@ class LoadMaterials(BaseLoadMaterials):
     material_model = EventMaterial
     extra_context = {'with_public_checkbox': True, 'user_upload': True}
 
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        data.update({'other_materials': self.user.connected_materials.order_by('id')})
+        return data
+
     def _can_set_public(self):
         return self.request.user.unti_id == int(self.kwargs['unti_id'])
 
@@ -483,7 +488,7 @@ class LoadTeamMaterials(BaseLoadMaterials):
         for u in users:
             u.materials_num = num.get(u.id, 0)
         data.update({'students': users, 'event': self.event, 'team_name': getattr(self.team, 'name', ''),
-                     'team': self.team})
+                     'team': self.team, 'other_materials': self.team.connected_materials.order_by('id')})
         return data
 
     @cached_property

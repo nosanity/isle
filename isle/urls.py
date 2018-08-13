@@ -13,7 +13,7 @@ urlpatterns = [
     path('create-team/<str:uid>/', views.CreateTeamView.as_view(), name='create-team'),
     path('confirm-team/<str:uid>/', views.ConfirmTeamView.as_view(), name='confirm-team'),
     path('load-team/<str:uid>/<int:team_id>/',
-         views.choose_view(views.LoadTeamMaterialsAssistant, views.LoadTeamMaterials.as_view()),
+         views.choose_view(views.LoadTeamMaterialsAssistant, views.LoadTeamMaterials),
          name='load-team-materials'),
     path('confirm-team-material/<str:uid>/<int:team_id>/', views.ConfirmTeamMaterial.as_view(),
          name='confirm-team-material'),
