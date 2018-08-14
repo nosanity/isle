@@ -1,3 +1,37 @@
+$('#i-was-here').click(() => { 
+    $('.approve-text').removeClass('d-none');
+});
+
+$('.hide-text-btn').click(() => {
+    $('.approve-text').addClass('d-none');
+});
+
+$('.approve-text-btn').click(() => {
+    e.preventDefault();
+    approveTextButton();
+});
+
+if (isAssistant) {
+    $('#refresh, #refresh-check-ins').on('click', (e) => {
+        e.preventDefault();
+        refresh(e.target);
+    });
+
+    $('.btn-confirm-team').on('click', (e) => {
+        e.preventDefault();
+        confirmTeam(e.target);
+    });
+
+    $('input.attendance').on('change', (e) => {
+        inputAttendanceChange(e.target);
+    });
+
+    $('#event-users-table').delegate('.btn-delete-attendance', 'click', (e) => {
+        e.preventDefault();
+        deleteAttendance(e.target);
+    });
+}
+
 function refresh(obj) {
     const $obj = $(obj);
     $obj.prop('disabled', true);

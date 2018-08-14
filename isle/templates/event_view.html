@@ -3,31 +3,42 @@
 
 {% block content %}
     <div class="row">
-        <div class="col-lg-12"><h2>{{ event.title }}</h2></div>
+        <div class="col-lg-12">
+            <h2>{{ event.title }}</h2>
+        </div>
     </div>
-    <div><h6>{{ event.get_authors|join:', '|safe }}</h6></div>
-    <h6>
-        {{ event.dt_start|date:'d E, H:i' }} - {{ event.dt_end|date:'H:i' }};&nbsp;
-	{% if request.user.is_assistant %}
-            ID: {{ event.ext_id }}, Run_ID: {{ event.data.run.ext_id }}, Activity_ID: {{ event.data.activity.ext_id }}
-	{% endif %}
-    </h6>
+    <div>
+        <h6>{{ event.get_authors|join:', '|safe }}</h6>
+    </div>
+    <div>
+        <h6>
+            {{ event.dt_start|date:'d E, H:i' }} - {{ event.dt_end|date:'H:i' }};
+            {% if request.user.is_assistant %}
+                ID: {{ event.ext_id }}, 
+                Run_ID: {{ event.data.run.ext_id }}, 
+                Activity_ID: {{ event.data.activity.ext_id }}
+            {% endif %}
+        </h6>
+    </div>
+
     {% csrf_token %}
 
     {% if not event_entry.approved %}
       <div class="approve-text d-none">
-      <div class="alert alert-warning">
-        Ваше присутствие на мероприятии не подтверждено!
-        В окне ввода ниже укажите обстоятельства, подтверждающие что Вы присутствовали на мероприятии.
-        Если у вас есть фотографии с мероприятия, которые могут это подтвердить - пожалуйста,
-        загрузите их в качестве своего цифрового следа.
-      </div>
-        <div class="p-2">
-          <textarea class="form-control" id="approve_text_data" rows="3">{{ event_entry.approve_text }}</textarea>
+        <div class="alert alert-warning">
+            Ваше присутствие на мероприятии не подтверждено!
+            В окне ввода ниже укажите обстоятельства, подтверждающие что Вы присутствовали на мероприятии.
+            Если у вас есть фотографии с мероприятия, которые могут это подтвердить - пожалуйста,
+            загрузите их в качестве своего цифрового следа.
         </div>
         <div class="p-2">
-          <button class="btn btn-outline-secondary approve-text-btn">Сохранить</button>
-          <button class="btn btn-outline-secondary hide-text-btn pull-right">Скрыть</button>
+            <textarea class="form-control" id="approve_text_data" rows="3">
+                {{ event_entry.approve_text }}
+            </textarea>
+        </div>
+        <div class="p-2">
+            <button class="btn btn-outline-secondary approve-text-btn">Сохранить</button>
+            <button class="btn btn-outline-secondary hide-text-btn pull-right">Скрыть</button>
         </div>
         <div class="clearfix"></div>
         </div>
@@ -35,85 +46,83 @@
 
     {% if request.user.is_assistant %}
         <nav class="nav nav-pills nav-justified">
-            <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'create-blocks' uid=event.uid %}">Структура мероприятия</a>
-            <a class="nav-item btn btn-primary" style="margin:2px" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
+            <a class="nav-item btn btn-primary item-margin" href="{% url 'create-blocks' uid=event.uid %}">Структура мероприятия</a>
+            <a class="nav-item btn btn-primary item-margin" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
         </nav>
     {% endif %}
     <nav class="nav nav-pills nav-justified">
-        <a class="nav-item btn btn-success" style="margin:2px" href="{% url 'create-team' uid=event.uid %}">Создать команду</a>
+        <a class="nav-item btn btn-success item-margin" href="{% url 'create-team' uid=event.uid %}">Создать команду</a>
         {% if not request.user.is_assistant and not event_entry.approved %}
-            <a class="nav-item btn btn-primary text-white" style="margin:2px" id="i-was-here">
-                {% if event_entry.approve_text %}
-                    Изменить подтверждение присутствия
-                {% else %}
-                    Я тут точно был!
-                {% endif %}
-            </a>
+            <a class="nav-item btn btn-primary text-white item-margin" id="i-was-here">
+                {% if event_entry.approve_text %}Изменить подтверждение присутствия{% else %}Я тут точно был!{% endif %}
+            </a>      
         {% endif %}
     </nav>
+
     <div class="row">
-    <div class="col">
-        <h3 class="add-margin-top">Участники</h3>
-    {% if request.user.is_assistant %}
-    <p>
-        <b>Важно: обязательно проверьте список участников.</b>
-        <br>
-        Поставьте отметки присутствия и добавьте недостающих участников.
-    </p>
-    {% endif %}
-        <div style="overflow: scroll">
-    <table id="event-users-table" class="table table-hover table-bordered table-striped">
-        <thead class="thead-light">
-            <tr>
-                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">ФИО</th>
-                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Фото</th>
-                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Элементов следа</th>
-                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Чекин</th>
-                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Присутствие</th>
-                <th class="text-center align-middle" style="padding: .25rem .75rem;" scope="col">Результаты</th>
-                {% if request.user.is_assistant %}
-                    <th scope="col"></th>
-                {% endif %}
-            </tr>
-        </thead>
-        {% for student in students %}
-            <tr {% if student.can_delete %}class="tr-added-user"{% elif student.added_by_chat_bot %}class="tr-added-chatbot-user"{% endif %}>
-                <td class="align-middle" style="padding: .25rem .75rem;">
-                    <a href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{{ student.get_full_name }}</a>
-                </td>
-                <td class="text-center align-middle" style="padding: .25rem .75rem;">{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
-                <td class="text-center align-middle" style="padding: .25rem .75rem;">{{ student.materials_num }}</td>
-                <td class="text-center align-middle" style="padding: .25rem .75rem;"><input type="checkbox" data-user="{{ student.id }}" class="check-in"
-                           {% if student.checked_in %}checked{% endif %} disabled>
-                </td>
-                <td class="text-center align-middle" style="padding: .25rem .75rem;"><input type="checkbox" data-user="{{ student.id }}" class="attendance"
-                           {% if student.attend %}checked {% endif %}
-                           {% if not request.user.is_assistant %} disabled{% endif %}>
-                </td>
-                <td>
-                    {% if event.is_active %}
-                    {% if student.unti_id == request.user.unti_id or request.user.is_assistant %}
-                    <a class="btn btn-primary btn-sm btn-block" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
-                    {% endif %}
-                    {% endif %}
-                </td>
-                {% if request.user.is_assistant %}
-                    <td>
-                        {% if student.can_delete %}
-                            <button class="btn btn-danger btn-sm btn-delete-attendance" data-user-id="{{ student.id }}">
-                                Удалить
-                            </button>
-                        {% endif %}
-                    </td>
-                {% endif %}
-            </tr>
-        {% endfor %}
-    </table>
-    </div></div></div>
+        <div class="col">
+            <h3 class="add-margin-top">Участники</h3>
+            {% if request.user.is_assistant %}
+                <p>
+                    <b>Важно: обязательно проверьте список участников.</b>
+                    <br>
+                    Поставьте отметки присутствия и добавьте недостающих участников.
+                </p>
+            {% endif %}
+            <div class="overflow-scroll">
+                <table id="event-users-table" class="table table-hover table-bordered table-striped">
+                    <thead class="thead-light">
+                        <tr>
+                            <th class="text-center align-middle table-item" scope="col">ФИО</th>
+                            <th class="text-center align-middle table-item" scope="col">Фото</th>
+                            <th class="text-center align-middle table-item" scope="col">Элементов следа</th>
+                            <th class="text-center align-middle table-item" scope="col">Чекин</th>
+                            <th class="text-center align-middle table-item" scope="col">Присутствие</th>
+                            <th class="text-center align-middle table-item" scope="col">Результаты</th>
+                            {% if request.user.is_assistant %}
+                                <th scope="col"></th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    {% for student in students %}
+                        <tr {% if student.can_delete %}class="tr-added-user"{% elif student.added_by_chat_bot %}class="tr-added-chatbot-user"{% endif %}>
+                            <td class="align-middle table-item">
+                                <a href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{{ student.get_full_name }}</a>
+                            </td>
+                            <td class="text-center align-middle table-item">{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
+                            <td class="text-center align-middle table-item">{{ student.materials_num }}</td>
+                            <td class="text-center align-middle table-item"><input type="checkbox" data-user="{{ student.id }}" class="check-in"
+                                    {% if student.checked_in %}checked{% endif %} disabled>
+                            </td>
+                            <td class="text-center align-middle table-item"><input type="checkbox" data-user="{{ student.id }}" class="attendance"
+                                    {% if student.attend %}checked {% endif %}
+                                    {% if not request.user.is_assistant %} disabled{% endif %}>
+                            </td>
+                            <td>
+                                {% if event.is_active %}
+                                {% if student.unti_id == request.user.unti_id or request.user.is_assistant %}
+                                <a class="btn btn-primary btn-sm btn-block" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
+                                {% endif %}
+                                {% endif %}
+                            </td>
+                            {% if request.user.is_assistant %}
+                                <td>
+                                    {% if student.can_delete %}
+                                        <button class="btn btn-danger btn-sm btn-delete-attendance" data-user-id="{{ student.id }}">
+                                            Удалить
+                                        </button>
+                                    {% endif %}
+                                </td>
+                            {% endif %}
+                        </tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+    </div>
+
     {% if not students %}
-	<div class="alert alert-danger" role="alert">
-             Нет записей на данное мероприятие
-	</div>
+	    <div class="alert alert-danger" role="alert">Нет записей на данное мероприятие</div>
     {% endif %}
 
     {% if teams %}
@@ -139,9 +148,9 @@
                     <td>{{ team.traces_number }}</td>
                     <td>
                         {% if event.is_active %}
-                        {% if request.user.is_assistant or team.id in user_teams %}
-                        <a class="btn btn-primary btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
-                        {% endif %}
+                            {% if request.user.is_assistant or team.id in user_teams %}
+                                <a class="btn btn-primary btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
+                            {% endif %}
                         {% endif %}
                     </td>
                     {% if request.user.is_assistant %}
@@ -156,20 +165,19 @@
         </table>
     {% endif %}
     <nav class="nav nav-pills nav-justified add-margin-top">
-        <a class="nav-item btn btn-success" style="margin:2px" href="{% url 'load-event-materials' uid=event.uid %}">
+        <a class="nav-item btn btn-success item-margin" href="{% url 'load-event-materials' uid=event.uid %}">
             Материалы презентации спикера, фотографии, аудио, видео{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
     </nav>
     {% if request.user.is_assistant %}
         <nav class="nav nav-pills nav-justified">
-            <button class="nav-item btn btn-primary" style="margin:2px" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
-            <button class="nav-item btn btn-primary" style="margin:2px" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
+            <button class="nav-item btn btn-primary item-margin" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
+            <button class="nav-item btn btn-primary item-margin" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
         </nav>
     {% endif %}
 {% endblock %}
 
 {% block js %}
-    {{ block.super }}
-    <script type="text/javascript" src="{% static 'js/events.js' %}"></script>
+    {{ block.super }}  
     <script type="text/javascript">
         const isAssistant = eval("{{ request.user.is_assistant|lower }}");
         const updateAttendanceViewUrl = "{% url 'update-attendance-view' uid=event.uid %}";
@@ -177,41 +185,9 @@
         const removeUserUrl = "{% url 'remove-user' uid=event.uid %}";
         const approveTextEdit = "{% url 'approve-text-edit' event_entry_id=event_entry_id %}"
         const csrfmiddlewaretoken = $('input[name=csrfmiddlewaretoken]').val();
-
-        $('#i-was-here').click(() => { 
-            $('.approve-text').removeClass('d-none');
-        });
-
-        $('.hide-text-btn').click(() => {
-            $('.approve-text').addClass('d-none');
-        });
-
-        $('.approve-text-btn').click(() => {
-            e.preventDefault();
-            approveTextButton();
-        });
-
-        if (isAssistant) {
-            $('#refresh, #refresh-check-ins').on('click', (e) => {
-                e.preventDefault();
-                refresh(e.target);
-            });
-
-            $('.btn-confirm-team').on('click', (e) => {
-                e.preventDefault();
-                confirmTeam(e.target);
-            });
-
-            $('input.attendance').on('change', (e) => {
-                inputAttendanceChange(e.target);
-            });
-
-            $('#event-users-table').delegate('.btn-delete-attendance', 'click', (e) => {
-                e.preventDefault();
-                deleteAttendance(e.target);
-            });
-        }
     </script>
+    <!-- event handlers of buttons are binded in js file below -->
+    <script type="text/javascript" src="{% static 'js/events.js' %}"></script>
 {% endblock %}
 
 {% block css %}
