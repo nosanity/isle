@@ -346,7 +346,7 @@ class UserRole(models.Model):
         """
         users = team.users.order_by('last_name', 'first_name', 'second_name')
         if team_result_id:
-            roles = dict(cls.objects.filter(team_result__team_id=team.id, user__in=users).
+            roles = dict(cls.objects.filter(team_result_id=team_result_id, user__in=users).
                          values_list('user_id', 'role'))
         else:
             roles = {}
