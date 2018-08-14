@@ -58,6 +58,7 @@ target/
 
 .env/
 .idea/
+.vscode/
 *.sqlite
 
 celerybeat-schedule

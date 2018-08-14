@@ -632,7 +632,7 @@ class LoadEventMaterials(BaseLoadMaterials):
 
 
 class RefreshDataView(View):
-    def get(self, request, uid=None):
+    def get(self, request, uid=None): 
         if not request.user.is_assistant:
             success = False
         else:

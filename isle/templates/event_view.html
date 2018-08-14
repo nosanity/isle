@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load i18n %}
+{% load static i18n %}
 
 {% block content %}
     <div class="row">
@@ -169,147 +169,52 @@
 
 {% block js %}
     {{ block.super }}
-    {% if request.user.is_assistant %}
-        {% include 'refresh_script.html' %}
-
+    <script type="text/javascript" src="{% static 'js/events.js' %}"></script>
     <script type="text/javascript">
-        $(document).ready(function() {
-            $('#refresh-check-ins').click(function(e) {
-                e.preventDefault();
-                var btn = $(this);
-                btn.attr('disabled', 'disabled').prop('disabled', true);
-                $.ajax({
-                    url: btn.data('url'),
-                    type: 'GET',
-                    success: function(data) {
-                        if (data.success) {
-                            window.location.reload();
-                        }
-                    },
-                    complete: function(xhr, status) {
-                        btn.removeAttr('disabled', 'disabled').prop('disabled', false);
-                    }
-                })
-            });
+        const isAssistant = eval("{{ request.user.is_assistant|lower }}");
+        const updateAttendanceViewUrl = "{% url 'update-attendance-view' uid=event.uid %}";
+        const confirmTeamUrl = "{% url 'confirm-team' uid=event.uid %}";
+        const removeUserUrl = "{% url 'remove-user' uid=event.uid %}";
+        const approveTextEdit = "{% url 'approve-text-edit' event_entry_id=event_entry_id %}"
+        const csrfmiddlewaretoken = $('input[name=csrfmiddlewaretoken]').val();
 
-{#            $('input.check-in').change(function() {#}
-{#                if (!this.checked) {#}
-{#                    this.checked = !this.checked;#}
-{#                    return;#}
-{#                }#}
-{#                var checked = this.checked;#}
-{#                var box = this;#}
-{#                var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), user_id: $(this).data('user'), status: checked};#}
-{#                $.ajax({#}
-{#                    url: "{% url 'refresh-checkin-view' uid=event.uid %}",#}
-{#                    method: 'POST',#}
-{#                    data: data,#}
-{#                    success: function(data) {#}
-{#                        if (!data.success) {#}
-{#                            box.checked = !checked;#}
-{#                        }#}
-{#                    },#}
-{#                    error: function() {#}
-{#                        alert('error');#}
-{#                        box.checked = !checked;#}
-{#                    }#}
-{#                })#}
-{#            });#}
-
-            $('input.attendance').change(function() {
-                var checked = this.checked;
-                var box = this;
-                var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), user_id: $(this).data('user'), status: checked};
-                $.ajax({
-                    url: "{% url 'update-attendance-view' uid=event.uid %}",
-                    method: 'POST',
-                    data: data,
-                    success: function(data) {
-                        if (!data.success) {
-                            box.checked = !checked;
-                        }
-                    },
-                    error: function() {
-                        alert('error');
-                        box.checked = !checked;
-                    }
-                })
-            });
-
-            $('body').delegate('.btn-delete-attendance', 'click', function(e) {
-                e.preventDefault();
-                var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), user_id: $(this).data('user-id')};
-                $.ajax({
-                    url: "{% url 'remove-user' uid=event.uid %}",
-                    method: 'POST',
-                    data: data,
-                    success: function() {
-                        window.location.reload();
-                    },
-                    error: function() {
-                        alert('error');
-                    }
-                })
-            });
-
-            $('.btn-confirm-team').click(function(e) {
-                e.preventDefault();
-                var data = {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), team_id: $(this).val()};
-                var self = $(this);
-                $.ajax({
-                    url: "{% url 'confirm-team' uid=event.uid %}",
-                    method: 'POST',
-                    data: data,
-                    success: function() {
-                        self.parents('tr').addClass('confirmed-team-link');
-                        self.remove();
-                    },
-                    error: function() {
-                        alert('error');
-                    }
-                })
-            });
-
+        $('#i-was-here').click(() => { 
+            $('.approve-text').removeClass('d-none');
         });
-    </script>
-    {% endif %}
 
-    <script type="text/javascript">
-        $(document).ready(function() {
-            $('#i-was-here').click(function(e){
-                $('.approve-text').removeClass('d-none');
-            });
-            $('.hide-text-btn').click(function(e){
-                $('.approve-text').addClass('d-none');
-            });
+        $('.hide-text-btn').click(() => {
+            $('.approve-text').addClass('d-none');
+        });
 
-            $('.approve-text-btn').click(function(e){
+        $('.approve-text-btn').click(() => {
+            e.preventDefault();
+            approveTextButton();
+        });
+
+        if (isAssistant) {
+            $('#refresh, #refresh-check-ins').on('click', (e) => {
                 e.preventDefault();
-                var text_data = $('#approve_text_data').val();
-                var data = {approve_text: text_data, csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()};
-                $.ajax({
-                    url: "{% url 'approve-text-edit' event_entry_id=event_entry_id %}",
-                    method: 'POST',
-                    data: data,
-                    success: function() {
-                        console.log('success');
-                        $('.approve-text').addClass('d-none');
-                    },
-                    error: function() {
-                        alert('error');
-                    }
-                })
+                refresh(e.target);
             });
-        })
-    </script>
 
+            $('.btn-confirm-team').on('click', (e) => {
+                e.preventDefault();
+                confirmTeam(e.target);
+            });
+
+            $('input.attendance').on('change', (e) => {
+                inputAttendanceChange(e.target);
+            });
+
+            $('#event-users-table').delegate('.btn-delete-attendance', 'click', (e) => {
+                e.preventDefault();
+                deleteAttendance(e.target);
+            });
+        }
+    </script>
 {% endblock %}
 
 {% block css %}
     {{ block.super }}
-    <style>
-    .add-margin-top {
-        margin-top: 40px;
-    }
-    </style>
+    <link href="{% static 'css/events.css' %}" rel="stylesheet">
 {% endblock %}

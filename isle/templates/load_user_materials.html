@@ -280,7 +280,7 @@
         IS_ASSISTANT = {% if request.user.is_assistant %}true{% else %}false{% endif %};
         FORMSET_RENDER_URL = '{% block formset_render_url %}{% endblock %}'
     </script>
-    <script type="text/javascript" src="{% static 'js/jquery.are-you-sure.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'js/libs/jquery.are-you-sure.min.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/result-file-upload.js' %}"></script>
     {% if request.user.is_assistant and team_upload %}
         <script type="text/javascript">
