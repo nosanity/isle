@@ -32,36 +32,6 @@
 
 {% block js %}
     {{ block.super }}
-    <script type="text/javascript">
-        $(document).ready(function() {
-            function form_valid() {
-                var form = $('#team-form');
-                return !!form.find('input[name=name]').val() && form.find('input[name=users]:checked').length;
-            }
-
-            function submit_btn_control() {
-                var btn = $('#submit');
-                form_valid() ? btn.removeAttr('disabled').prop('disabled', false) : btn.attr('disabled', 'disabled').prop('disabled', true);
-            }
-
-            $('input[name=name]').on('keyup change', submit_btn_control);
-            $('input[name=users]').on('change', submit_btn_control);
-
-            $('#team-form').submit(function(e) {
-                e.preventDefault();
-                if (!form_valid()) return;
-                var formData = new FormData(this);
-                $.ajax({
-                    method: 'POST',
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    success: function(data) {
-                        window.location = data.redirect;
-                    },
-                    error: function (xhr, err) {alert('error')}
-                })
-            })
-        });
-    </script>
+    <!-- event handlers of buttons are binded in js file below -->
+    <script type="text/javascript" src="{% static 'js/pages/teams.js' %}"></script>
 {% endblock %}

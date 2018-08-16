@@ -61,12 +61,12 @@ function inputAttendanceChange(obj) {
         url: updateAttendanceViewUrl,
         method: 'POST',
         data: data,
-        success: function(data) {
+        success: (data) => {
             if (!data.success) {
                 $obj.prop('checked', !isChecked);
             }
         },
-        error: function() {
+        error: () => {
             // TODO show appropriate message
             alert('error');
             $obj.prop('checked', !isChecked);
@@ -84,11 +84,11 @@ function confirmTeam(obj) {
         url: confirmTeamUrl,
         method: 'POST',
         data: data,
-        success: function() {
+        success: () => {
             $obj.parents('tr').addClass('confirmed-team-link');
             $obj.remove();
         },
-        error: function() {
+        error: () => {
             // TODO show appropriate message
             alert('error');
         }
@@ -105,10 +105,10 @@ function deleteAttendance(obj) {
         url: removeUserUrl,
         method: 'POST',
         data: data,
-        success: function() {
+        success: () => {
             window.location.reload();
         },
-        error: function() {
+        error: () => {
             // TODO show appropriate message
             alert('error');
         }
@@ -124,10 +124,10 @@ function approveTextButton() {
         url: approveTextEdit,
         method: 'POST',
         data: data,
-        success: function() {
+        success: () => {
             $('.approve-text').addClass('d-none');
         },
-        error: function() {
+        error: () => {
             // TODO show appropriate message
             alert('error');
         }

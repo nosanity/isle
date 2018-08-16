@@ -3,17 +3,19 @@
 
 {% block content %}
     <div class="row">
-    <div class="col">
-        <h2>{{ event.title }}</h2>
-        <div class="pull-right">
-            <a href="{% url 'event-view' uid=event.uid %}">
-                <button class="btn btn-light">К странице мероприятия</button>
-            </a>
+        <div class="col">
+            <h2>{{ event.title }}</h2>
+            <div class="pull-right">
+                <a href="{% url 'event-view' uid=event.uid %}">
+                    <button class="btn btn-light">К странице мероприятия</button>
+                </a>
+            </div>
         </div>
     </div>
+    <div class="row">
+        <h3>Структура мероприятия</h3>
     </div>
-    <div class="row"><h3>Структура мероприятия</h3></div>
-    <br>
+    <!-- TODO use margin intead of br --> <br>
     <div>
         <table class="table">
             {% for b in blocks %}
@@ -45,8 +47,8 @@
                 </div>
             </div>
         {% endfor %}
-        <div class="row" style="margin-top: 20px">
-            <button id="save-blocks" class="btn btn-danger" style="margin-left: 10px">Сохранить</button>
+        <div class="row" class="margin-top">
+            <button id="save-blocks" class="btn btn-danger" class="margin-left">Сохранить</button>
         </div>
     </form>
 
@@ -55,51 +57,10 @@
 {% block js %}
     {{ block.super }}
     <script src="{% static 'js/libs/jquery.formset.js' %}"></script>
-    <script type="text/javascript">
-
-    function check_form_row(form_row) {
-        var inputs = [form_row.find('input[name$=duration]'), form_row.find('input[name$=title]'), form_row.find('select[name$=block_type]')];
-        for (var i = 0; i < inputs.length; i++) {
-            if (!$(inputs[i]).val())
-                $(inputs[i]).addClass('field-error');
-        }
-    }
-
-    $(document).ready(function() {
-        $('.form-row').formset({
-            addText: '<span class="glyphicon glyphicon-plus-sign"></span> Добавить',
-            addCssClass: 'add-formset-btn',
-            deleteText: 'Удалить',
-            deleteCssClass: 'delete-formset-btn'
-        });
-
-        $('#blocks-form').on('submit', function(e) {
-            var rows = $(this).find('.form-row');
-            $('.field-error').removeClass('field-error');
-            for (var i = 0; i < rows.length; i++) {
-                check_form_row($(rows[i]));
-            }
-            if ($('.field-error').length) {
-                e.preventDefault();
-                return false;
-            }
-        });
-    })
-    </script>
+    <script src="{% static 'js/pages/blocks.js' %}"></script>
 {% endblock %}
 
 {% block css %}
     {{ block.super }}
     <link href="{% static 'css/bootstrap-glyphicons.min.css' %}" rel="stylesheet">
-    <style>
-        .field-error {
-            border-color: red;
-        }
-        .delete-formset-btn:first-of-type {
-            display: none;
-        }
-        .delete-formset-btn {
-            margin: auto 10px;
-        }
-    </style>
 {% endblock %}

@@ -306,28 +306,7 @@
         </script>
     {% endif %}
     {% endif %}
-    {% include "link_preview.html" %}
-{% endblock %}
-
-{% block css %}
-    {{ block.super }}
-    <style>
-    #results-jumper {
-        margin-top: 60px;
-    }
-    .result-anchor-text {
-        margin-bottom: 4px;
-    }
-    .result-entry {
-        margin-top: 30px;
-    }
-    .no-left-padding {
-        padding-left: 0;
-    }
-    .nav-link.active {
-        background-color: #737373 !important;
-    }
-    </style>
+    {% include "includes/_link_preview.html" %}
 {% endblock %}
 
 {% block footer %}
