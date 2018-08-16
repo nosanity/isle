@@ -24,22 +24,6 @@ nav.navbar {
     display: inline-block !important;
 }
 
-.margin-bottom {
-    margin-bottom: 20px;
-}
-
-.margin-top {
-    margin-top: 20px;
-}
-
-.margin-left {
-    margin-left: 10px;
-}
-
-.margin-bottom {
-    margin-bottom: 10px;
-}
-
 .navbar-brand img {
     height: 50px;
 }
@@ -108,6 +92,42 @@ nav.navbar {
     overflow: scroll;
 }
 
+.full-width {
+    width: 100%;
+}
+
+.hidden {
+    display: none;
+}
+
+.mb-20 {
+    margin-bottom: 20px;
+}
+
+.margin-left {
+    margin-left: 10px;
+}
+
+.mb-6 {
+    margin-bottom: 6px;
+}
+
+.mb-10 {
+    margin-bottom: 10px;
+}
+
+.mt-10 {
+    margin-top: 10px;
+}
+
+.mt-20 {
+    margin-top: 20px;
+}
+
+.mt-40 {
+    margin-top: 40px;
+}
+
 /* index */
 
 .activity-badge {
@@ -129,10 +149,6 @@ nav.navbar {
 }
 
 /* events */
-
-.add-margin-top {
-    margin-top: 40px;
-}
 
 .item-margin {
     margin: 2px;
@@ -176,4 +192,17 @@ nav.navbar {
 
 .delete-formset-btn {
     margin: auto 10px;
+}
+
+/* load materials */
+
+.list-group-border {
+    border: 1px solid #e6e6e6;
+    border-radius: 4px;
+    margin: 10px 20px; 
+}
+
+.label-overflow {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }

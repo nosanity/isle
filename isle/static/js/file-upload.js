@@ -30,8 +30,8 @@ $(document).ready(function() {
         if (!form_valid(form)) return;
         var files_len = form.find('input[name=file_field]')[0].files;
         files_len = files_len ? files_len.length : 0;
-        if ((UPLOADS.length + files_len) > MAX_PARALLEL_UPLOADS && files_len) {
-            alert('Максимальное количество одновременно загружаемых файлов не может превышать ' + MAX_PARALLEL_UPLOADS);
+        if ((UPLOADS.length + files_len) > maxParallelUploads && files_len) {
+            alert('Максимальное количество одновременно загружаемых файлов не может превышать ' + maxParallelUploads);
             return;
         };
 
@@ -85,7 +85,7 @@ $(document).ready(function() {
                                 '<div><span>' + comment + '</span></div>';
                         }
                         else {
-                            s = '<li class="list-group-item ' + (data.uploader_name && IS_ASSISTANT ? 'assistant-team-link' : '') + '"><a href="' + url + '">' + name + '</a>&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button>' +
+                            s = '<li class="list-group-item ' + (data.uploader_name && isAssistant ? 'assistant-team-link' : '') + '"><a href="' + url + '">' + name + '</a>&nbsp;<button name="material_id" value="' + m_id + '" class="btn btn-warning btn-sm pull-right delete-material-btn">Удалить</button>' +
                                 (data.uploader_name ? ('<div>(' + data.uploader_name + ')</div>') : '') +
                                 '<div><span>' + comment + '</span></div></li>';
                         }
@@ -137,9 +137,9 @@ $(document).ready(function() {
     });
 
     $('body').delegate('form.trace-form input[type=file]', 'change', function(e) {
-        if (window.FileReader && this.files && this.files[0] && this.files[0].size > MAX_SIZE * 1024 * 1024) {
+        if (window.FileReader && this.files && this.files[0] && this.files[0].size > maxSize * 1024 * 1024) {
             $(this).val('');
-            alert("Максимальный размер файла не должен превышать " + MAX_SIZE + "Мб");
+            alert("Максимальный размер файла не должен превышать " + maxSize + "Мб");
         }
     });
 
@@ -164,7 +164,7 @@ $(document).ready(function() {
         var trace_id = $(this).data('link-id');
         var self = this;
         $.ajax({
-            url: CHANGE_STATE,
+            url: changeState,
             method: 'POST',
             data: {csrfmiddlewaretoken: token, trace_id: trace_id, is_public: is_public},
             error: function () {

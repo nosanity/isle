@@ -61,7 +61,7 @@
 
     <div class="row">
         <div class="col">
-            <h3 class="add-margin-top">Участники</h3>
+            <h3 class="mt-40">Участники</h3>
             {% if request.user.is_assistant %}
                 <p>
                     <b>Важно: обязательно проверьте список участников.</b>
@@ -126,7 +126,7 @@
     {% endif %}
 
     {% if teams %}
-        <h3 class="add-margin-top">Команды</h3>
+        <h3 class="mt-40">Команды</h3>
         <table class="table table-hover table-bordered">
             <thead class="thead-light">
                 <tr>
@@ -164,7 +164,7 @@
             {% endfor %}
         </table>
     {% endif %}
-    <nav class="nav nav-pills nav-justified add-margin-top">
+    <nav class="nav nav-pills nav-justified mt-40">
         <a class="nav-item btn btn-success item-margin" href="{% url 'load-event-materials' uid=event.uid %}">
             Материалы презентации спикера, фотографии, аудио, видео{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
     </nav>
