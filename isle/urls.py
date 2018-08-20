@@ -1,6 +1,6 @@
+from django.conf import settings
 from django.urls import path
 from isle import views
-
 
 urlpatterns = [
     path('', views.Index.as_view(), name='index'),
@@ -42,11 +42,10 @@ urlpatterns = [
          name='load-materials'),
 ]
 
-# from django.conf.urls import url
-# from django.views.static import serve
-# from django.conf import settings
-# if settings.DEBUG:
-#     urlpatterns += [
-#         url(r'^media/(?P<path>.*)$', serve, {
-#             'document_root': settings.MEDIA_ROOT,
-#         })]
+if settings.DEBUG:
+    from django.conf.urls import url
+    from django.views.static import serve
+    urlpatterns += [
+        url(r'^media/(?P<path>.*)$', serve, {
+            'document_root': settings.MEDIA_ROOT,
+        })]

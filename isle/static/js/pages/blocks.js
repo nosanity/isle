@@ -12,12 +12,11 @@ $('#blocks-form').on('submit', (e) => {
 });
 
 function isBlockFormReadyToSubmit(obj) {
-    const $fieldError = $('.field-error');
-    $fieldError.removeClass('field-error');
+    $('.field-error').removeClass('field-error');
     for (row of $(obj).find('.form-row')) {
         blockCheckFormRow(row);
     }
-    return ($fieldError.length ? false : true);
+    return ($('.field-error').length ? false : true);
 }
 
 function blockCheckFormRow(formRow) {

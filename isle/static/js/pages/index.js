@@ -22,14 +22,15 @@ function queryStringUrlReplacement(url, param, value) {
     const re = new RegExp(`[\\?&]${param}=([^&#]*)`, "i");
     const match = re.exec(url);
 
+    let newString = null;
     if (match === null) {
         // append new param
         const hasQuestionMark = /\?/.test(url);
         const delimiter = hasQuestionMark ? "&" : "?";
-        const newString = `${url}${delimiter}${param}=${value}`;
+        newString = `${url}${delimiter}${param}=${value}`;
     } else {
         const delimiter = match[0].charAt(0);
-        const newString = url.replace(re, `${delimiter}${param}=${value}`);
+        newString = url.replace(re, `${delimiter}${param}=${value}`);
     }
 
     return newString;
