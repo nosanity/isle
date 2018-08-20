@@ -1,5 +1,6 @@
 from django import forms
 from dal import autocomplete, forward
+from social_django.models import UserSocialAuth
 from isle.models import Team, User, EventBlock, EventOnlyMaterial, UserResult, TeamResult, UserRole, EventEntry
 
 
@@ -31,8 +32,18 @@ class AddUserForm(forms.Form):
 
     def __init__(self, **kwargs):
         event = kwargs.pop('event')
+        self.event = event
         super().__init__(**kwargs)
         self.fields['user'].widget.forward = [forward.Const(event.id, 'event_id')]
+
+    def clean_user(self):
+        val = self.cleaned_data.get('user')
+        if val:
+            if val.is_assistant or not UserSocialAuth.objects.filter(user=val).exists():
+                raise forms.ValidationError('Этого пользователя нельзя добавить')
+            if EventEntry.objects.filter(user=val, event=self.event).exists():
+                raise forms.ValidationError('Пользователь уже записан на мероприятие')
+        return val
 
 
 class EventBlockForm(forms.ModelForm):
