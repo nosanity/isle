@@ -136,6 +136,10 @@ nav.navbar {
     padding-top: 5px;
 }
 
+.pl-15 {
+    padding-left: 15px;
+}
+
 /* index */
 
 .activity-badge {
@@ -213,4 +217,37 @@ nav.navbar {
 .label-overflow {
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.edit-event-block-material {
+    margin-right: 10px;
+}
+
+.btn-gray {
+    background-color: #737373;
+}
+
+.material-event-block-wrapper {
+    width: 100%;
+}
+
+.material-event-block-wrapper div.row {
+    margin-right: 10px;
+    margin-bottom: 15px;
+}
+
+.material-event-block-wrapper div.row:first-of-type {
+    margin-top: 15px;
+}
+
+.collapse .select2-container {
+    width: 100% !important;
+}
+
+.collapse .select2-container input.select2-search__field {
+    width: 100% !important;
+}
+
+.collapse select.form-control {
+    width: 100% !important;
 }

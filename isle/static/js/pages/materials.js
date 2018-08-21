@@ -33,7 +33,56 @@ if (isAssistant) {
                     $('#transfer-modal').modal('hide');
                 }
             );
-        });           
+        }); 
+        $('body').delegate('.edit-event-block-material', 'click', (e) => {
+            e.preventDefault();
+            const $obj = $(e.target);
+            const id = $obj.val();
+            $.get({
+                url: eventBlockEditRendererUrl,
+                method: 'GET',
+                data: { 
+                    id: id 
+                },
+                success: (data) => {
+                    const html = `
+                        <div>
+                            <button class="save-edited-block btn btn-sm btn-danger">
+                                Сохранить
+                            </button> 
+                            <button class="cancel-block-edit btn btn-sm btn-gray">
+                                Отменить
+                            </button>
+                        </div>
+                    `;
+                    $obj.parents('li').find('div.info-string-edit').html(data).append($(s));
+                },
+                error: () => {
+                    // TODO show appropriate message
+                    alert('error');
+                }
+            })
+            }).delegate('.cancel-block-edit', 'click', (e) => {
+                e.preventDefault();
+                $(e.target).parents('div.info-string-edit').html('');
+            }).delegate('.save-edited-block', 'click', (e) => {
+                e.preventDefault();
+                const $obj = $(e.target);
+                const data = $obj.parents('form').serialize();
+                $.post({
+                    url: addEventBlockUrl,
+                    method: 'POST',
+                    data: data,
+                    success: (data) => {
+                        $obj.parents('li').find('span.assistant-info-string').html(data.info_string);
+                        $obj.parents('div.info-string-edit').html('');
+                    },
+                    error: () => {
+                        // TODO show appropriate message
+                        alert('error');
+                    }
+                })
+        });
     } else {
         $('.transfer-material-btn').on('click', (e) => {
             e.preventDefault();

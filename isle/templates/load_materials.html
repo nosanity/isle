@@ -106,15 +106,28 @@
                                 {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
                             </button>
                         {% endif %}
+                        {% if event_upload and request.user.is_assistant %}
+                            <button value="{{ link.id }}" class="btn btn-success btn-sm pull-right edit-event-block-material">
+                                Редактировать
+                            </button>
+                        {% endif %}
                         {% if link.initiator_user and team_upload %}<div>({{ link.initiator_user.fio }})</div>{% endif %}
-                        <div><span>{{ link.comment }}</span></div>
+                        {% if not request.user.is_assistant %}<div><span>{{ link.comment }}</span></div>{% endif %}
                         {% endif %}
                         {% if show_owners and not request.user.is_assistant and not can_upload %}
                             <button value="{{ link.id }}" class="btn {% if link.is_owner %}btn-danger{% else %}btn-success{% endif %} btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
                                 {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
                             </button>
                         {% endif %}
+                        {% if request.user.is_assistant %}
+                            <div>
+                                <span class="text-muted assistant-info-string">
+                                    {{ link.get_info_string }}
+                                </span>
+                            </div>
+                        {% endif %}
                         {% if show_owners %}<div><span class="material-owners">{% if link.get_owners %}Связан с: {% endif %}{{ link.get_owners|join:', ' }}</span></div>{% endif %}
+                        <div class="info-string-edit"></div>
                     </li>
                 {% endfor %}
                 {% if not trace.links and not can_upload %}
@@ -126,6 +139,7 @@
                     <li class="list-group-item form-inline list-group-border">
                         <a class="btn btn-block" data-toggle="collapse" href="#collapseExample-{{ trace.trace.id }}" role="button" aria-expanded="false" aria-controls="collapseExample" >+ Добавить новые материалы </a>
                         <div class="row collapse mt-10" id="collapseExample-{{ trace.trace.id }}">
+                            {% render_event_block_form trace.trace.id|stringformat:'i' event %}
                             <div class="col-sm-12 col-md-3 mb-10">
                                 <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
                                     <a class="nav-link active" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы</a>
@@ -163,6 +177,24 @@
             </ul>
         </form>
     {% endfor %}
+
+    {% if user_upload or team_upload %}
+        <h4>Отдельные файлы</h4>
+        <div class="row">
+            <ul class="list-group list-group-flush full-width">
+                {% for link in other_materials %}
+                    <li class="list-group-item">
+                        <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata }}>{{ link.get_name }}</a>&nbsp;
+                    </li>
+                {% endfor %}
+                {% if not other_materials %}
+                    <p class="materials-form-no-files pl-15">
+                        Пока материалов не загружено
+                    </p>
+                {% endif %}
+            </ul>
+        </div>
+    {% endif %}
     <a href="{% url 'event-view' uid=event.uid %}">
         <button class="btn btn-light mt-20">К странице мероприятия</button>
     </a>
@@ -180,6 +212,8 @@
         const csrfmiddlewaretoken = $('[name=csrfmiddlewaretoken]').val();
         const transferUrl = "{% url 'transfer' uid=event.uid %}";
         const confirmTeamUpload = "{% url 'confirm-team-material' uid=event.uid team_id=team.id %}";
+        const addEventBlockUrl = "{% url 'add-event-block' uid=event.uid %}";
+        const eventBlockEditRendererUrl = "{% url 'event-block-edit-renderer' uid=event.uid %}";
         if (canUpload) {
             const maxSize = parseInt("{{ max_size }}");
             const maxParallelUploads = parseInt("{{ max_uploads }}");
@@ -192,5 +226,9 @@
     {% endif %}
     <!-- event handlers of buttons are binded in js file below -->
     <script type="text/javascript" src="{% static 'js/pages/materials.js' %}"></script>
-    {% include "includes/_link_preview.html" %}
+    {% include "link_preview.html" %}
+{% endblock %}
+
+{% block footer %}
+    {{ blocks_form.media }}
 {% endblock %}

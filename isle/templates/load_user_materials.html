@@ -126,7 +126,7 @@
 
     <h4 class="mt-60">Отдельные файлы</h4>
 
-    {% if not links %}
+    {% if not links and not other_materials %}
         <div><p>Нет загруженных файлов</p></div>
     {% endif %}
 
@@ -167,6 +167,11 @@
                     </button>
                 {% endif %}
                 {% if show_owners %}<div><span class="material-owners">{% if link.get_owners %}Связан с: {% endif %}{{ link.get_owners|join:', ' }}</span></div>{% endif %}
+            </li>
+        {% endfor %}
+        {% for link in other_materials %}
+            <li class="list-group-item">
+                <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata }}>{{ link.get_name }}</a>&nbsp;
             </li>
         {% endfor %}
     </ul>
