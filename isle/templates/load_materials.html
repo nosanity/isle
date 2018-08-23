@@ -16,14 +16,22 @@
                 <h5>Участники:</h5>
                 <ul class="list-group list-group-flush">
                   {% for user in event_users %}
-                    <li class="list-group-item">{{ user.fio }}&nbsp;<button class="btn btn-sm btn-success pull-right transfer-from-event" data-type-to="user" value="{{ user.id }}">Переместить</button></li>
+                    <li class="list-group-item">{{ user.fio }}&nbsp;
+                        <button class="btn btn-sm btn-success pull-right transfer-from-event" data-type-to="user" value="{{ user.id }}">
+                            Переместить
+                        </button>
+                    </li>
                   {% endfor %}
                 </ul>
                 <br>
                 <h5>Команды:</h5>
                 <ul class="list-group list-group-flush">
                   {% for team in event_teams %}
-                    <li class="list-group-item">{{ team.name }}&nbsp;<button class="btn btn-sm btn-success pull-right transfer-from-event" data-type-to="team" value="{{ team.id }}">Переместить</button></li>
+                    <li class="list-group-item">{{ team.name }}&nbsp;
+                        <button class="btn btn-sm btn-success pull-right transfer-from-event" data-type-to="team" value="{{ team.id }}">
+                            Переместить
+                        </button>
+                    </li>
                   {% endfor %}
                 </ul>
               </div>
@@ -39,7 +47,7 @@
 
     {% if team_upload %}
         <h4> Команда: '{{ team_name }}' </h4>
-        <table class="table table-hover table-bordered table-striped margin-top">
+        <table class="table table-hover table-bordered table-striped mt-20">
             <thead class="thead-light">
                 <tr>
                   <th scope="col">ФИО</th>
@@ -55,9 +63,9 @@
                     <td>{{ student.materials_num }}</td>
                     <td>
                         {% if event.is_active %}
-                        {% if student.unti_id == request.user.unti_id or request.user.is_assistant %}
-                        <a class="btn btn-primary btn-sm" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
-                        {% endif %}
+                            {% if student.unti_id == request.user.unti_id or request.user.is_assistant %}
+                                <a class="btn btn-primary btn-sm" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
+                            {% endif %}
                         {% endif %}
                     </td>
                 </tr>
@@ -70,7 +78,7 @@
         <form method="post" class="trace-form">
             {% csrf_token %}
             <input name="trace_name" type="hidden" value="{{ trace.trace.id }}">
-            <ul class="list-group list-group-flush">
+            <ul id="trace-ul" class="list-group list-group-flush">
                 {% for link in trace.links %}
                     <li class="list-group-item {% if link.confirmed and team_upload and not link.initiator_user.is_assistant %}confirmed-team-link{% elif team_upload and link.initiator_user.is_assistant %}assistant-team-link{% endif %}">
                         <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata }}>{{ link.get_name }}</a>&nbsp;
@@ -128,54 +136,43 @@
                     </p>
                 {% endif %}
                 {% if can_upload %}
-
-                <li class="list-group-item form-inline" style="border: 1px solid #e6e6e6;margin: 10px 20px; border-radius: 4px">
-
+                    <li class="list-group-item form-inline list-group-border">
                         <a class="btn btn-block" data-toggle="collapse" href="#collapseExample-{{ trace.trace.id }}" role="button" aria-expanded="false" aria-controls="collapseExample" >+ Добавить новые материалы </a>
-
-                    <div class="row collapse" id="collapseExample-{{ trace.trace.id }}" style="margin-top: 10px;">
-                        {% render_event_block_form trace.trace.id|stringformat:'i' event %}
-                        <div class="col-sm-12 col-md-3" style="margin-bottom: 10px;">
-                        <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
-                          <a class="nav-link active" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы</a>
-                          <a class="nav-link" id="v-pills-profile-tab" data-toggle="pill" href="#v-pills-profile-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-profile" aria-selected="false">Ссылки</a>
-                        </div>
-                      </div>
-                      <div class="col-sm-12 col-md-9">
-                        <div class="tab-content" id="v-pills-tabContent">
-                          <div class="tab-pane fade show active" id="v-pills-home-{{ trace.trace.id }}" role="tabpanel" aria-labelledby="v-pills-home-tab">                  {% if allow_file_upload %}
-                            <label class="btn btn-block btn-success btn-file border" style="overflow: hidden;text-overflow: ellipsis">
-                                {% trans "Выберите файлы для загрузки" %}
-                                <input type="file" multiple name="file_field" style="display: none;" class="form-control">
-                            </label>
-                            {% endif %}
-                              <div><span class="file-name"></span></div>
-                            <div class="uploads">
+                        <div class="row collapse mt-10" id="collapseExample-{{ trace.trace.id }}">
+                            {% render_event_block_form trace.trace.id|stringformat:'i' event %}
+                            <div class="col-sm-12 col-md-3 mb-10">
+                                <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
+                                    <a class="nav-link active" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы</a>
+                                    <a class="nav-link" id="v-pills-profile-tab" data-toggle="pill" href="#v-pills-profile-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-profile" aria-selected="false">Ссылки</a>
+                                </div>
                             </div>
-                          </div>
-                          <div class="tab-pane fade" id="v-pills-profile-{{ trace.trace.id }}" role="tabpanel" aria-labelledby="v-pills-profile-tab">
-
-                              <input type="url" name="url_field" class="form-control" id="url" style="width: 100%" placeholder="Укажите URL-ссылку на материал">
-                          </div>
-                                            {% if with_public_checkbox %}
-                        <label for="is_public">Публичный</label>
-                        <input id="is_public" type="checkbox" name="is_public" class="form-control">
-                    {% endif %}
-
-                    <div class="materials-form-comment-div">
-
-                        <textarea id="description" maxlength="255" name="comment" class="form-control" style="width: 100%;margin-bottom: 6px" placeholder="Введите описание"></textarea>
-                    </div>
-                                        <button name="add_btn" type="submit" class="btn btn-primary btn-block add-material-btn" disabled="disabled">{% trans "Добавить" %}</button>
-
+                            <div class="col-sm-12 col-md-9">
+                                <div class="tab-content" id="v-pills-tabContent">
+                                    <div class="tab-pane fade show active" id="v-pills-home-{{ trace.trace.id }}" role="tabpanel" aria-labelledby="v-pills-home-tab">                  
+                                        {% if allow_file_upload %}
+                                            <label class="btn btn-block btn-success btn-file border label-overflow">
+                                                {% trans "Выберите файлы для загрузки" %}
+                                                <input type="file" multiple name="file_field" class="form-control hidden">
+                                            </label>
+                                        {% endif %}
+                                        <div><span class="file-name"></span></div>
+                                        <div class="uploads"></div>
+                                    </div>
+                                    <div class="tab-pane fade" id="v-pills-profile-{{ trace.trace.id }}" role="tabpanel" aria-labelledby="v-pills-profile-tab">
+                                        <input type="url" name="url_field" class="form-control full-width" id="url" placeholder="Укажите URL-ссылку на материал">
+                                    </div>
+                                    {% if with_public_checkbox %}
+                                        <label for="is_public">Публичный</label>
+                                        <input id="is_public" type="checkbox" name="is_public" class="form-control">
+                                    {% endif %}
+                                    <div class="materials-form-comment-div">
+                                        <textarea id="description" maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Введите описание"></textarea>
+                                    </div>
+                                    <button name="add_btn" type="submit" class="btn btn-primary btn-block add-material-btn" disabled="disabled">{% trans "Добавить" %}</button>
+                                </div>
+                            </div>
                         </div>
-                      </div>
-                    </div>
-
-
-
-
-                </li>
+                    </li>
                 {% endif %}
             </ul>
         </form>
@@ -184,14 +181,14 @@
     {% if user_upload or team_upload %}
         <h4>Отдельные файлы</h4>
         <div class="row">
-            <ul class="list-group list-group-flush" style="width: 100%">
+            <ul class="list-group list-group-flush full-width">
                 {% for link in other_materials %}
                     <li class="list-group-item">
                         <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata }}>{{ link.get_name }}</a>&nbsp;
                     </li>
                 {% endfor %}
                 {% if not other_materials %}
-                    <p class="materials-form-no-files" style="padding-left: 15px">
+                    <p class="materials-form-no-files pl-15">
                         Пока материалов не загружено
                     </p>
                 {% endif %}
@@ -199,211 +196,37 @@
         </div>
     {% endif %}
     <a href="{% url 'event-view' uid=event.uid %}">
-        <button class="btn btn-light margin-top">К странице мероприятия</button>
+        <button class="btn btn-light mt-20">К странице мероприятия</button>
     </a>
 {% endblock %}
 
 {% block js %}
     {{ block.super }}
     <script type="text/javascript">
-        $('body').delegate('.my-material-btn', 'click', function(e) {
-            e.preventDefault();
-            var is_owner = this.hasAttribute('data-owner');
-            var self = $(this);
-            var data = {csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val(), confirm: !is_owner};
-            $.ajax({
-                url: self.data('url'),
-                method: 'POST',
-                data: data,
-                success: function(data) {
-                    if (data.is_owner) {
-                        self.attr('data-owner', '').text('Это не мое').addClass('btn-danger').removeClass('btn-success');
-                    }
-                    else {
-                        self.removeAttr('data-owner').text('Это мое').addClass('btn-success').removeClass('btn-danger');
-                    }
-                    if (data.owners) {
-                        self.parents('li').find('.material-owners').html('Связан с: ' + data.owners);
-                    }
-                    else {
-                        self.parents('li').find('.material-owners').html('');
-                    }
-                }
-            })
-        });
+        const pageType = "loadMaterials";
+        const isAssistant = eval("{{ request.user.is_assistant|lower }}");
+        const eventUpload = eval("{{ event_upload|lower }}");
+        const teamUpload = eval("{{ team_upload|lower }}");
+        const fromUser = eval("{{ user_upload|lower }}");
+        const canUpload = eval("{{ can_upload|lower }}");
+        const csrfmiddlewaretoken = $('[name=csrfmiddlewaretoken]').val();
+        const transferUrl = "{% url 'transfer' uid=event.uid %}";
+        const confirmTeamUpload = "{% url 'confirm-team-material' uid=event.uid team_id=team.id %}";
+        const addEventBlockUrl = "{% url 'add-event-block' uid=event.uid %}";
+        const eventBlockEditRendererUrl = "{% url 'event-block-edit-renderer' uid=event.uid %}";
+        if (canUpload) {
+            const maxSize = parseInt("{{ max_size }}");
+            const maxParallelUploads = parseInt("{{ max_uploads }}");
+            const changeState = "{% url 'is-material-public' uid=event.uid %}";
+        }
     </script>
-    {% if request.user.is_assistant %}
-        <script type="text/javascript">
-            $(document).ready(function() {
-                var EVENT_UPLOAD = {% if event_upload %}true{% else %}false{% endif %};
-                {% if event_upload %}
-                $('.transfer-material-btn').click(function(e) {
-                    e.preventDefault();
-                    $('#transfer-modal').data('material-id', $(this).val()).modal('show');
-                });
-
-                $('.transfer-from-event').click(function(e) {
-                    e.preventDefault();
-                    var msg = 'Вы уверены, что хотите переместить файл?';
-                    var self = $(this);
-                    if (confirm(msg)) {
-                        data = {
-                            csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
-                            material_id: $('#transfer-modal').data('material-id'),
-                            dest_id: self.val(),
-                            type: self.data('type-to')
-                        };
-                        $.ajax({
-                            url: "{% url 'transfer' uid=event.uid %}",
-                            method: 'POST',
-                            data: data,
-                            success: function() {
-                                $('.transfer-material-btn[value=' + data.material_id + ']').parents('li').remove();
-                                $('#transfer-modal').modal('hide');
-                            },
-                            error: function() {
-                                alert('error');
-                            }
-                        })
-                    }
-                });
-                {% else %}
-                $('.transfer-material-btn').click(function(e) {
-                    e.preventDefault();
-                    $('#transfer-modal').data('material-id', $(this).val()).modal('show');
-                    var msg = 'Вы уверены, что хотите переместить этот файл в файлы мероприятия?';
-                    var self = $(this);
-                    var data = {
-                        csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
-                        material_id: self.val(),
-                        type: 'event',
-                        from_user: {% if user_upload %}true{% else %}false{% endif %}
-                    };
-                    if (confirm(msg)) {
-                        $.ajax({
-                            url: "{% url 'transfer' uid=event.uid %}",
-                            method: 'POST',
-                            data: data,
-                            success: function() {
-                                self.parents('li').remove();
-                            },
-                            error: function() {
-                                alert('error');
-                            }
-                        })
-                    }
-                });
-                {% endif %}
-            })
-        </script>
-    {% endif %}
     {% if can_upload %}
-    <script type="text/javascript">
-        MAX_SIZE = {{ max_size }};
-        MAX_PARALLEL_UPLOADS = {{ max_uploads }};
-        CHANGE_STATE = "{% url 'is-material-public' uid=event.uid %}";
-        IS_ASSISTANT = {% if request.user.is_assistant %}true{% else %}false{% endif %};
-    </script>
-    <script type="text/javascript" src="{% static 'js/jquery.are-you-sure.min.js' %}"></script>
-    <script type="text/javascript" src="{% static 'js/file-upload.js' %}"></script>
-    {% if request.user.is_assistant and team_upload %}
-        <script type="text/javascript">
-            $(document).ready(function() {
-                $('.confirm-material-btn').click(function(e) {
-                    e.preventDefault();
-                    var self = $(this);
-                    var data = {material_id: self.val(), csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()};
-                    $.ajax({
-                        url: "{% url 'confirm-team-material' uid=event.uid team_id=team.id %}",
-                        method: 'POST',
-                        data: data,
-                        success: function() {
-                            self.parents('li').addClass('confirmed-team-link');
-                            self.remove();
-                        },
-                        error: function() {
-                            alert('error');
-                        }
-                    })
-                });
-            })
-        </script>
+        <script type="text/javascript" src="{% static 'js/libs/jquery.are-you-sure.min.js' %}"></script>  
+        <script type="text/javascript" src="{% static 'js/upload.js' %}"></script>
     {% endif %}
-    {% endif %}
-    {% if request.user.is_assistant and event_upload %}
-        <script type="text/javascript">
-            $(document).ready(function() {
-                $('body').delegate('.edit-event-block-material', 'click', function(e) {
-                    e.preventDefault();
-                    var id = $(this).val();
-                    var self = $(this);
-                    $.get({
-                        url: "{% url 'event-block-edit-renderer' uid=event.uid %}",
-                        method: 'GET',
-                        data: {id: id},
-                        success: function(data) {
-                            var s = '<div><button class="save-edited-block btn btn-sm btn-danger">Сохранить</button> <button class="cancel-block-edit btn btn-sm btn-gray">Отменить</button></div>'
-                            self.parents('li').find('div.info-string-edit').html(data).append($(s));
-                        },
-                        error: function() {
-                            alert('error');
-                        }
-                    })
-                }).delegate('.cancel-block-edit', 'click', function(e) {
-                    e.preventDefault();
-                    $(this).parents('div.info-string-edit').html('');
-                }).delegate('.save-edited-block', 'click', function(e) {
-                    e.preventDefault();
-                    var data = $(this).parents('form').serialize();
-                    var self = $(this);
-                    $.post({
-                        url: "{% url 'add-event-block' uid=event.uid %}",
-                        method: 'POST',
-                        data: data,
-                        success: function(data) {
-                            self.parents('li').find('span.assistant-info-string').html(data.info_string);
-                            self.parents('div.info-string-edit').html('');
-                        },
-                        error: function() {
-                            alert('error');
-                        }
-                    })
-                })
-            });
-        </script>
-    {% endif %}
+    <!-- event handlers of buttons are binded in js file below -->
+    <script type="text/javascript" src="{% static 'js/pages/materials.js' %}"></script>
     {% include "link_preview.html" %}
-{% endblock %}
-
-{% block css %}
-    {{ block.super }}
-    <style>
-    .edit-event-block-material {
-        margin-right: 10px;
-    }
-    .btn-gray {
-        background-color: #737373;
-    }
-    .material-event-block-wrapper {
-        width: 100%;
-    }
-    .material-event-block-wrapper div.row {
-        margin-right: 10px;
-        margin-bottom: 15px;
-    }
-    .material-event-block-wrapper div.row:first-of-type {
-        margin-top: 15px;
-    }
-    .collapse .select2-container {
-        width: 100% !important;
-    }
-    .collapse .select2-container input.select2-search__field {
-        width: 100% !important;
-    }
-    .collapse select.form-control {
-        width: 100% !important;
-    }
-    </style>
 {% endblock %}
 
 {% block footer %}

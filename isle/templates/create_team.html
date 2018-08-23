@@ -1,11 +1,12 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block content %}
     <form method="post" id="team-form" class="form-inline">
         {% csrf_token %}
         <label>Название команды</label>
         <input type="text" name="name" class="form-control">
-        <table class="table table-hover table-bordered table-striped margin-top">
+        <table class="table table-hover table-bordered table-striped mt-20">
             <thead class="thead-light">
                 <tr>
                   <th scope="col">ФИО</th>
@@ -26,42 +27,12 @@
         <button class="btn btn-primary" id="submit" type="submit" disabled>Создать</button>
     </form>
     <a href="{% url 'event-view' uid=event.uid %}">
-        <button class="btn btn-default margin-top">К странице мероприятия</button>
+        <button class="btn btn-default mt-20">К странице мероприятия</button>
     </a>
 {% endblock %}
 
 {% block js %}
     {{ block.super }}
-    <script type="text/javascript">
-        $(document).ready(function() {
-            function form_valid() {
-                var form = $('#team-form');
-                return !!form.find('input[name=name]').val() && form.find('input[name=users]:checked').length;
-            }
-
-            function submit_btn_control() {
-                var btn = $('#submit');
-                form_valid() ? btn.removeAttr('disabled').prop('disabled', false) : btn.attr('disabled', 'disabled').prop('disabled', true);
-            }
-
-            $('input[name=name]').on('keyup change', submit_btn_control);
-            $('input[name=users]').on('change', submit_btn_control);
-
-            $('#team-form').submit(function(e) {
-                e.preventDefault();
-                if (!form_valid()) return;
-                var formData = new FormData(this);
-                $.ajax({
-                    method: 'POST',
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    success: function(data) {
-                        window.location = data.redirect;
-                    },
-                    error: function (xhr, err) {alert('error')}
-                })
-            })
-        });
-    </script>
+    <!-- event handlers of buttons are binded in js file below -->
+    <script type="text/javascript" src="{% static 'js/pages/teams.js' %}"></script>
 {% endblock %}

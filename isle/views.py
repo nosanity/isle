@@ -652,7 +652,7 @@ class LoadEventMaterials(BaseLoadMaterials):
 
 
 class RefreshDataView(View):
-    def get(self, request, uid=None):
+    def get(self, request, uid=None): 
         if not request.user.is_assistant:
             success = False
         else:
@@ -1425,7 +1425,7 @@ class EventBlockEditRenderer(GetEventMixin, TemplateView):
     """
     форма редактирования блоков, пользователей и команд для файла мероприятия
     """
-    template_name = '_material_event_block.html'
+    template_name = 'includes/_material_event_block.html'
 
     def get_context_data(self, **kwargs):
         if not self.request.user.is_assistant:
