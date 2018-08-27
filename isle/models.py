@@ -378,6 +378,7 @@ class AbstractMaterial(models.Model):
     deleted = models.BooleanField(default=False)
     file_type = models.CharField(max_length=1000, default='')
     file_size = models.PositiveIntegerField(default=None, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     objects = NotDeletedEntries()
     all_objects = models.Manager()
@@ -422,6 +423,7 @@ class AbstractMaterial(models.Model):
             'file_type': file_type,
             'icon': icon,
             'size': self.file_size or '',
+            'created': self.created_at and self.created_at.isoformat() or '',
         }
 
     def render_metadata(self):
