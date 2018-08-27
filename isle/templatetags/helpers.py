@@ -21,7 +21,7 @@ def set_placeholder(value, arg):
     return value
 
 
-@register.inclusion_tag('_material_event_block.html')
+@register.inclusion_tag('includes/_material_event_block.html')
 def render_event_block_form(prefix, event):
     """
     отрисовка форм с различными префиксами, чтобы автокомплиты не конфликтовали
