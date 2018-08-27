@@ -1301,24 +1301,64 @@ class CreateEventBlocks(GetEventMixin, TemplateView):
             'formset': EventBlockFormset(queryset=EventBlock.objects.none()),
             'event': self.event,
             'blocks': EventBlock.objects.filter(event=self.event).order_by('id'),
+            'import_events': Event.objects.filter(activity_id=self.event.activity_id).exclude(id=self.event.id).
+                order_by('ext_id').annotate(num_blocks=Count('eventblock')),
         })
         return data
 
     def post(self, request, **kwargs):
         formset = EventBlockFormset(request.POST)
         if formset.is_valid():
+            # если происходит импорт блоков из другого мероприятия, все ранее созданные блоки удаляются
+            if any(form.save(commit=False).id for form in formset.forms):
+                EventBlock.objects.filter(event=self.event).delete()
             for form in formset.forms:
                 b = form.save(commit=False)
                 b.event = self.event
+                # всегда создается новый блок
+                b.id = None
                 b.save()
         return redirect('create-blocks', uid=self.event.uid)
 
 
+class ImportEventBlocks(GetEventMixin, TemplateView):
+    template_name = 'includes/_blocks_form.html'
+
+    def get_context_data(self, **kwargs):
+        if not self.request.user.is_assistant:
+            raise PermissionDenied
+        try:
+            event = Event.objects.get(id=self.request.GET.get('id'), activity_id=self.event.activity_id)
+        except (Event.DoesNotExist, TypeError, ValueError):
+            raise Http404
+        return {'formset': EventBlockFormset(queryset=EventBlock.objects.filter(event=event).order_by('id'))}
+
+
+class CheckEventBlocks(GetEventMixin, View):
+    """
+    проверка того, что для текущей структуры мероприятия нет файлов мероприятия, привязанных к блокам
+    """
+    def get(self, request, **kwargs):
+        if request.user.is_assistant:
+            return JsonResponse({
+                'blocks_with_materials': EventOnlyMaterial.objects.filter(event_block__event=self.event).exists(),
+            })
+        raise PermissionDenied
+
+
 class DeleteEventBlock(GetEventMixin, View):
+    def get(self, request, **kwargs):
+        if request.user.is_authenticated and request.user.is_assistant:
+            block = EventBlock.objects.filter(id=kwargs['block_id']).first()
+            if not block:
+                raise Http404
+            return JsonResponse({'has_materials': EventOnlyMaterial.objects.filter(event_block=block).exists()})
+        raise PermissionDenied
+
     def post(self, request, **kwargs):
         if request.user.is_authenticated and request.user.is_assistant:
             EventBlock.objects.filter(id=kwargs['block_id']).delete()
-            return redirect('create-blocks', uid=self.event.uid)
+            return JsonResponse({'redirect': reverse('create-blocks', kwargs={'uid': self.event.uid})})
         raise PermissionDenied
 
 

@@ -2,6 +2,44 @@
 {% load static %}
 
 {% block content %}
+    <div class="modal fade text-left" tabindex="-1" role="dialog" id="import-structure-modal">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h4>Импорт структуры из другого мероприятия</h4>
+          </div>
+          <div class="modal-body">
+            <p>Выберите мероприятие, из которого импортируется структура. <br>
+                После импорта вы сможете ее отредактировать. Текущая структура мероприятия будет удалена</p>
+            <div>
+              <form method="get" id="import-structure-form" action="{% url 'import-blocks' uid=event.uid %}">
+                <ul class="no-left-padding no-bullets">
+                  {% for ev in import_events %}
+                    <li><label><input type="radio" name="id" value="{{ ev.id }}"> {{ ev.dt_start|date:'d E, H:i' }} - {{ ev.dt_end|date:'H:i' }}; ID: {{ ev.ext_id }}, блоков в структуре: {{ ev.num_blocks }}</label></li>
+                  {% endfor %}
+                </ul>
+                <button type="submit" class="btn btn-success">Импортировать</button>
+                <span data-dismiss="modal" class="btn btn-danger">Отменить</span>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade text-left" tabindex="-1" role="dialog" id="info-block-modal">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-body">
+            <p class="modal-info"></p>
+            <button type="submit" class="btn btn-danger btn-confirm-delete">Удалить</button>
+            <button type="submit" class="btn btn-danger btn-confirm-import">Импортировать</button>
+            <span data-dismiss="modal" class="btn btn-success">Отменить</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="row">
         <div class="col">
             <h2>{{ event.title }}</h2>
@@ -13,7 +51,12 @@
         </div>
     </div>
     <div class="row">
-        <h3>Структура мероприятия</h3>
+        <div class="col">
+            <h3 class="pull-left">Структура мероприятия</h3>
+            <div class="pull-right import-div">
+                <span id="open-import-popup"><span class="fa fa-clone"></span>&nbsp;Импортировать</span>
+            </div>
+        </div>
     </div>
     <!-- TODO use margin intead of br --> <br>
     <div>
@@ -24,7 +67,7 @@
                     <td>{{ b.title }}</td>
                     <td>{{ b.get_block_type_display }}</td>
                     <td>
-                        <form action="{% url 'delete-block' uid=event.uid block_id=b.id %}" method="post">
+                        <form class="delete-block-form" action="{% url 'delete-block' uid=event.uid block_id=b.id %}" method="post">
                             {% csrf_token %}
                             <button class="btn btn-danger" type="submit">Удалить</button>
                         </form>
@@ -33,29 +76,15 @@
             {% endfor %}
         </table>
     </div>
-    <form method="post" id="blocks-form">
-        {% csrf_token %}
-        {{ formset.management_form }}
-        {% for form in formset %}
-            <div class="form-inline">
-                <div>
-                    <div class="row form-row spacer">
-                        {% for field in form %}
-                            {{ field|add_class:"form-control"|set_placeholder:field.label }}
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        {% endfor %}
-        <div class="row" class="mt-20">
-            <button id="save-blocks" class="btn btn-danger" class="margin-left">Сохранить</button>
-        </div>
-    </form>
+    {% include 'includes/_blocks_form.html' %}
 
 {% endblock %}
 
 {% block js %}
     {{ block.super }}
+    <script type="text/javascript">
+        const hasBlocksWithMaterialsUrl = "{% url 'check-blocks' uid=event.uid %}";
+    </script>
     <script src="{% static 'js/libs/jquery.formset.js' %}"></script>
     <script src="{% static 'js/pages/blocks.js' %}"></script>
 {% endblock %}
