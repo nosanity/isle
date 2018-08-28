@@ -97,7 +97,7 @@ nav.navbar {
 }
 
 .hidden {
-    display: none;
+    display: none !important;
 }
 
 .mb-20 {
@@ -133,7 +133,7 @@ nav.navbar {
 }
 
 .pt-5 {
-    padding-top: 5px;
+    padding-top: 5px !important;
 }
 
 .pl-15 {

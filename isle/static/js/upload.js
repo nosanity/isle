@@ -435,7 +435,7 @@ function completeProcessFile(num, $form = null) {
     }  
 }
 
-function errorProcessFile(xhr, err) {
+function errorProcessFile() {
     // TODO show appropriate message
     alert('error');
 }
@@ -458,7 +458,17 @@ function processFile(form, file, filesLength) {
         processData: false,
         contentType: false,
         xhr: () => {
-            xhrProcessFile(num);
+            // xhrProcessFile(num);
+            const xhr = new window.XMLHttpRequest();
+            if (num > -1) {
+                xhr.upload.addEventListener("progress", (e) => {
+                    if (e.lengthComputable) {
+                        const percentComplete = parseInt((e.loaded / e.total) * 100);
+                        $(`div.upload-row[data-row-number="${num}"]`).find('.progress-bar').css('width', percentComplete + '%');
+                    }
+                }, false);
+            }  
+            return xhr;            
         },
         success: (data) => {
             successProcessFile(data, $form);
@@ -466,9 +476,7 @@ function processFile(form, file, filesLength) {
         complete: () => {
             completeProcessFile(num, $form);
         },
-        error: () => {
-            errorProcessFile();
-        }
+        error: errorProcessFile
     })
 }
 
