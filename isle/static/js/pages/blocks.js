@@ -9,6 +9,7 @@ function init_formset() {
 init_formset();
 
 $('body').delegate('#blocks-form', 'submit', (e) => {
+
     if (!isBlockFormReadyToSubmit(e.target)) {
         e.preventDefault();
     }

@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import urllib
 from functools import reduce
 from django.contrib.auth.models import AbstractUser
@@ -101,6 +102,13 @@ class Event(models.Model):
             traces = Trace.objects.filter(event_type=self.event_type)
             return sorted(traces, key=lambda x: order.get(x.name, 0))
         return Trace.objects.none()
+
+    def get_event_structure_trace(self):
+        """
+        попытка выбрать трейс со структурой эвента
+        """
+        traces = list(filter(lambda x: re.search(r'разметк(а|и)', x.name.lower()), self.get_traces()))
+        return traces and traces[0]
 
     @property
     def entry_count(self):

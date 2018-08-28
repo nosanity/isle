@@ -1297,12 +1297,20 @@ class CreateEventBlocks(GetEventMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
+        trace = self.event.get_event_structure_trace()
+        materials = []
+        if trace:
+            materials = EventOnlyMaterial.objects.filter(event=self.event, trace=trace)
         data.update({
             'formset': EventBlockFormset(queryset=EventBlock.objects.none()),
             'event': self.event,
             'blocks': EventBlock.objects.filter(event=self.event).order_by('id'),
             'import_events': Event.objects.filter(activity_id=self.event.activity_id).exclude(id=self.event.id).
                 order_by('ext_id').annotate(num_blocks=Count('eventblock')),
+            'trace': trace,
+            'materials': materials,
+            'max_size': settings.MAXIMUM_ALLOWED_FILE_SIZE,
+            'max_uploads': settings.MAX_PARALLEL_UPLOADS,
         })
         return data
 

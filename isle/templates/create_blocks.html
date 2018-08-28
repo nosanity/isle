@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static i18n %}
 
 {% block content %}
     <div class="modal fade text-left" tabindex="-1" role="dialog" id="import-structure-modal">
@@ -78,15 +78,74 @@
     </div>
     {% include 'includes/_blocks_form.html' %}
 
+    {% if trace %}
+        <div class="mt-40">
+            <h5>Файл разметки модуля</h5>
+            <form method="post" class="trace-form">
+                {% csrf_token %}
+                <input name="trace_name" type="hidden" value="{{ trace.id }}">
+                <ul id="trace-ul" class="list-group list-group-flush">
+                    {% for link in materials %}
+                        <li class="list-group-item">
+                            <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata }}>{{ link.get_name }}</a>&nbsp;
+                            <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
+                                {% blocktrans %}Удалить{% endblocktrans %}
+                            </button>
+                            {% if not request.user.is_assistant %}<div><span>{{ link.comment }}</span></div>{% endif %}
+                        </li>
+                    {% endfor %}
+                    <li class="list-group-item form-inline list-group-border">
+                        <a class="btn btn-block" data-toggle="collapse" href="#collapseExample-{{ trace.id }}" role="button" aria-expanded="false" aria-controls="collapseExample" >+ Добавить файл разметки модуля </a>
+                        <div class="row collapse mt-10" id="collapseExample-{{ trace.id }}">
+                            <div class="col-sm-12 col-md-3 mb-10">
+                                <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
+                                    <a class="nav-link active" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home-{{ trace.id }}" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы</a>
+                                    <a class="nav-link" id="v-pills-profile-tab" data-toggle="pill" href="#v-pills-profile-{{ trace.id }}" role="tab" aria-controls="v-pills-profile" aria-selected="false">Ссылки</a>
+                                </div>
+                            </div>
+                            <div class="col-sm-12 col-md-9">
+                                <div class="tab-content" id="v-pills-tabContent">
+                                    <div class="tab-pane fade show active" id="v-pills-home-{{ trace.id }}" role="tabpanel" aria-labelledby="v-pills-home-tab">
+                                        <label class="btn btn-block btn-success btn-file border label-overflow">
+                                            {% trans "Выберите файлы для загрузки" %}
+                                            <input type="file" multiple name="file_field" style="display: none;" class="form-control hidden">
+                                        </label>
+                                        <div><span class="file-name"></span></div>
+                                        <div class="uploads"></div>
+                                    </div>
+                                    <div class="tab-pane fade" id="v-pills-profile-{{ trace.id }}" role="tabpanel" aria-labelledby="v-pills-profile-tab">
+                                        <input type="url" name="url_field" class="form-control full-width" id="url" placeholder="Укажите URL-ссылку на материал">
+                                    </div>
+                                    <div class="materials-form-comment-div">
+                                        <textarea id="description" maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Введите описание"></textarea>
+                                    </div>
+                                    <button name="add_btn" type="submit" class="btn btn-primary btn-block add-material-btn" disabled="disabled">{% trans "Добавить" %}</button>
+                                </div>
+                            </div>
+                        </div>
+                    </li>
+                </ul>
+            </form>
+        </div>
+    {% endif %}
+
 {% endblock %}
 
 {% block js %}
     {{ block.super }}
     <script type="text/javascript">
         const hasBlocksWithMaterialsUrl = "{% url 'check-blocks' uid=event.uid %}";
+        const pageType = 'eventStructure';
+        const fileBlocksUploadUrl = "{% url 'load-event-materials' uid=event.uid %}";
+        const maxSize = parseInt("{{ max_size }}");
+        const maxParallelUploads = parseInt("{{ max_uploads }}");
+        const isAssistant = true;
     </script>
     <script src="{% static 'js/libs/jquery.formset.js' %}"></script>
+    <script type="text/javascript" src="{% static 'js/libs/jquery.are-you-sure.min.js' %}"></script>
+    <script src="{% static 'js/upload.js' %}"></script>
     <script src="{% static 'js/pages/blocks.js' %}"></script>
+    {% include "includes/_link_preview.html" %}
 {% endblock %}
 
 {% block css %}
