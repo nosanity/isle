@@ -211,22 +211,26 @@
         const canUpload = eval("{{ can_upload|lower }}");
         const csrfmiddlewaretoken = $('[name=csrfmiddlewaretoken]').val();
         const transferUrl = "{% url 'transfer' uid=event.uid %}";
-        const confirmTeamUpload = "{% url 'confirm-team-material' uid=event.uid team_id=team.id %}";
         const addEventBlockUrl = "{% url 'add-event-block' uid=event.uid %}";
         const eventBlockEditRendererUrl = "{% url 'event-block-edit-renderer' uid=event.uid %}";
-        if (canUpload) {
+    </script>
+    {% if team.id %}
+        <script type="text/javascript">
+            const confirmTeamUpload = "{% url 'confirm-team-material' uid=event.uid team_id=team.id %}";
+        </script>
+    {% endif %}
+    {% if can_upload %}
+        <script type="text/javascript">
             const maxSize = parseInt("{{ max_size }}");
             const maxParallelUploads = parseInt("{{ max_uploads }}");
             const changeState = "{% url 'is-material-public' uid=event.uid %}";
-        }
-    </script>
-    {% if can_upload %}
+        </script>
         <script type="text/javascript" src="{% static 'js/libs/jquery.are-you-sure.min.js' %}"></script>  
         <script type="text/javascript" src="{% static 'js/upload.js' %}"></script>
     {% endif %}
     <!-- event handlers of buttons are binded in js file below -->
     <script type="text/javascript" src="{% static 'js/pages/materials.js' %}"></script>
-    {% include "link_preview.html" %}
+    {% include "includes/_link_preview.html" %}
 {% endblock %}
 
 {% block footer %}

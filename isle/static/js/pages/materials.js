@@ -133,7 +133,7 @@ function setOwnership(obj) {
 function confirmTeamUpload(obj) {
     const $obj = $(obj);
     $.ajax({
-        url: confirmTeamUpload,
+        url: confirmTeamUploadUrl,
         method: 'POST',
         data: {
             material_id: $obj.val(),
