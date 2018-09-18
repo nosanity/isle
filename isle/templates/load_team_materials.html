@@ -27,7 +27,3 @@
         {% endif %}
     {% endfor %}
 {% endblock %}
-
-{% block formset_render_url %}
-    {% url 'roles-formset-render' uid=event.uid team_id=team.id %}
-{% endblock %}

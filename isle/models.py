@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import urllib
 from functools import reduce
 from django.contrib.auth.models import AbstractUser
@@ -101,6 +102,13 @@ class Event(models.Model):
             traces = Trace.objects.filter(event_type=self.event_type)
             return sorted(traces, key=lambda x: order.get(x.name, 0))
         return Trace.objects.none()
+
+    def get_event_structure_trace(self):
+        """
+        попытка выбрать трейс со структурой эвента
+        """
+        traces = list(filter(lambda x: re.search(r'разметк(а|и)', x.name.lower()), self.get_traces()))
+        return traces and traces[0]
 
     @property
     def entry_count(self):
@@ -378,6 +386,7 @@ class AbstractMaterial(models.Model):
     deleted = models.BooleanField(default=False)
     file_type = models.CharField(max_length=1000, default='')
     file_size = models.PositiveIntegerField(default=None, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     objects = NotDeletedEntries()
     all_objects = models.Manager()
@@ -422,6 +431,7 @@ class AbstractMaterial(models.Model):
             'file_type': file_type,
             'icon': icon,
             'size': self.file_size or '',
+            'created': self.created_at and self.created_at.isoformat() or '',
         }
 
     def render_metadata(self):
