@@ -168,5 +168,8 @@ LABS_TRACES_API_URL = 'https://labs.u2035dev.ru/api/v1/tracetype?app_token=7at0h
 LABS_URL = 'SET-ME-PLEASE'
 LABS_TOKEN = 'SET-ME-PLEASE'
 
+# базовый урл uploads
+BASE_URL = 'https://uploads.2035.university'
+
 from .local_settings import *
 
