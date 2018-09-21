@@ -8,12 +8,15 @@ from django.utils.encoding import force_str
 from isle.models import EventOnlyMaterial, EventTeamMaterial, EventMaterial
 
 ALL = '__all__'
+LINK = '__link__'
 
 
 def get_type(m):
+    if m.url:
+        return LINK
     s = urlparse(force_str(m.get_url())).path.rstrip('/').split('/')[-1]
     if '.' in s:
-        return s.split('.')[-1]
+        return s.split('.')[-1].lower()
     return ''
 
 
@@ -24,7 +27,8 @@ def get_row(event_id, data, all_types):
         event_data.get('activity', {}).get('ext_id'),
         event_data.get('run', {}).get('ext_id'),
         data['event'].ext_id,
-    ] + [data['types'].get(t, 0) for t in all_types] + [data['types'].get(ALL, 0)]
+    ] + [data['types'].get(t, 0) for t in all_types] + \
+        [data['types'].get(LINK, 0), data['types'].get(ALL, 0)]
     return res
 
 
@@ -44,14 +48,15 @@ class Command(BaseCommand):
                         'types': defaultdict(int)
                     }
                 ctype = get_type(m)
-                all_types.add(ctype)
+                if ctype != LINK:
+                    all_types.add(ctype)
                 result[m.event_id]['types'][ctype] += 1
                 result[m.event_id]['types'][ALL] += 1
 
         all_types = sorted(all_types)
         headers = ['Ссылка на мероприятие', 'Activity ID', 'Run ID', 'Event ID'] + \
                   ['Количество %s файлов' % ('.{}'.format(i) if i else '?') for i in all_types] + \
-                  ['Всего файлов']
+                  ['links', 'Всего файлов']
         with open(options['out'], 'w') as f:
             writer = csv.writer(f, delimiter=';')
             writer.writerow(headers)
