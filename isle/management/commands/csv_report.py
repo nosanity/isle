@@ -4,13 +4,14 @@ from urllib.parse import urlparse
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.urls import reverse
+from django.utils.encoding import force_str
 from isle.models import EventOnlyMaterial, EventTeamMaterial, EventMaterial
 
 ALL = '__all__'
 
 
 def get_type(m):
-    s = urlparse(m.get_url()).path.rstrip().split('/')[-1]
+    s = urlparse(force_str(m.get_url())).path.rstrip('/').split('/')[-1]
     if '.' in s:
         return s.split('.')[-1]
     return ''
