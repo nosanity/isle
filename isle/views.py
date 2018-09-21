@@ -652,18 +652,9 @@ class LoadEventMaterials(BaseLoadMaterials):
 
 
 class RefreshDataView(View):
-    def get(self, request, uid=None): 
-        if not request.user.is_assistant:
-            success = False
-        else:
-            if uid:
-                if not Event.objects.filter(uid=uid).exists():
-                    success = False
-                else:
-                    success = refresh_events_data(force=True, refresh_participants=True, refresh_for_events=[uid])
-            else:
-                success = refresh_events_data(force=True)
-        return JsonResponse({'success': bool(success)})
+    def get(self, request, uid=None):
+        # TODO: починить когда появится ручка получения информации аналогичной ассайнментам/чекинам из ile
+        return JsonResponse({'success': False})
 
 
 class CreateTeamView(GetEventMixin, TemplateView):

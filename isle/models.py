@@ -50,7 +50,6 @@ class EventType(models.Model):
 
 class Activity(models.Model):
     uid = models.CharField(max_length=255, unique=True)
-    ile_id = models.PositiveIntegerField(default=None, verbose_name='id в ILE')
     ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS', db_index=True)
     title = models.CharField(max_length=1000)
     main_author = models.CharField(max_length=500, default='')
@@ -74,7 +73,6 @@ class Event(models.Model):
     title = models.CharField(max_length=1000, default='', verbose_name='Название')
     event_type = models.ForeignKey(EventType, on_delete=models.SET_NULL, verbose_name='Тип мероприятия',
                                    blank=True, null=True, default=None)
-    ile_id = models.PositiveIntegerField(default=None, verbose_name='id в ILE')
     ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS')
 
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, default=None, null=True)
