@@ -14,27 +14,25 @@ function linkPreview(obj) {
     
     obj.dataset.target = '#modal_link_preview';
     obj.dataset.toggle = 'modal';
-    
-    if (element) {
-        delete element;
-    }
 
     $('#modal-link-preview-footer').text('');
 
+    let element = null;
+    
     if (obj.dataset.file_type == '"pdf"') {
-        const element = document.createElement("object");
+        element = document.createElement("object");
         element.data = obj.href;
         element.type = "application/pdf";
         element.width = "100%";
         element.height = element.width;
     }
     if (obj.dataset.file_type == '"image"') {
-        const element = document.createElement('img');
+        element = document.createElement('img');
         element.src = obj.href;
         element.style.width = "100%";
     }
     if (obj.dataset.file_type == '"video"') {
-        const element = document.createElement('video');
+        element = document.createElement('video');
         element.src = obj.href;
         element.controls = 'true';
         element.preload = 'metadata';
@@ -43,13 +41,13 @@ function linkPreview(obj) {
         element.style.width = "100%";
     }
     if (obj.dataset.file_type == '"audio"') {
-        const element = document.createElement('audio');
+        element = document.createElement('audio');
         element.src = obj.href;
         element.controls = 'true';
         element.style.width = "100%";
     }
     if (obj.dataset.file_type == '"other"') {
-        const element = document.createElement('a');
+        element = document.createElement('a');
         element.innerText = "Скачать файл";
         $(element).addClass('btn');
         element.href = obj.href;
