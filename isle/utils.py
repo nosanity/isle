@@ -114,6 +114,7 @@ def update_events_traces():
     """
     обновление трейсов по всем эвентам
     """
+    return
     events = {e.uid: e for e in Event.objects.all()}
     try:
         resp = requests.get(settings.LABS_TRACES_API_URL, timeout=settings.CONNECTION_TIMEOUT)
