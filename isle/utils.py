@@ -1,5 +1,6 @@
 import csv
 import logging
+from io import StringIO
 from datetime import datetime
 from django.conf import settings
 from django.core.cache import caches
@@ -178,9 +179,12 @@ def recalculate_user_chart_data(user):
         if not item.file:
             logging.error('%s api data file has no file associated with it' % item.id)
             continue
-        with default_storage.open(item.file, 'r') as f:
+        with default_storage.open(item.file.name, 'rb') as f:
             try:
-                reader = csv.reader(f, delimiter=delimiter)
+                s = StringIO()
+                s.write(f.read().decode('utf8'))
+                s.seek(0)
+                reader = csv.reader(s, delimiter=delimiter)
                 for row in reader:
                     if not any(i.strip() for i in [j.strip() for j in row]):
                         # пустая строка
