@@ -22,13 +22,15 @@ from rest_framework.generics import ListAPIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
 from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset, \
     EventMaterialForm
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
-    Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole
+    Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart
 from isle.serializers import AttendanceSerializer
-from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in
+from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
+    recalculate_user_chart_data
 
 
 def login(request):
@@ -631,6 +633,8 @@ class LoadEventMaterials(BaseLoadMaterials):
         ).first()
         if not material:
             return JsonResponse({}, status=400)
+        if self.event.uid == getattr(settings, 'API_DATA_EVENT', ''):
+            ApiUserChart.objects.update(updated=None)
         material.delete()
         logging.warning('User %s has deleted file %s for event %s' %
                         (self.request.user.username, material.get_url(), self.event.uid))
@@ -1491,3 +1495,37 @@ class EventBlockEditRenderer(GetEventMixin, TemplateView):
             return int(prefix.split('-')[1])
         except:
             pass
+
+
+class UserChartApiView(APIView):
+    """
+    **Описание**
+
+        Запрос данных для отрисовки чарта пользовательских компетенций
+
+    **Пример запроса**
+
+        GET /api/user-chart/?user_id=123
+
+    **Параметры запроса**
+
+        * user_id - leader id пользователя
+
+    **Пример ответа**
+
+        * 200 успешно
+        * 400 неполный запрос
+        * 404 пользователь не найден
+    """
+
+    permission_classes = ()
+
+    def get(self, request):
+        user_id = request.GET.get('user_id')
+        if not user_id:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        user = User.objects.filter(leader_id=user_id).first()
+        if not user:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        data = recalculate_user_chart_data(user)
+        return Response(data)
