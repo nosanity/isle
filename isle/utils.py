@@ -56,7 +56,7 @@ def refresh_events_data():
                     if author.get('is_main'):
                         main_author = author.get('title')
                         break
-                Activity.objects.update_or_create(
+                current_activity = Activity.objects.update_or_create(
                     uid=activity_uid,
                     defaults={
                         'ext_id': activity.get('id'),
@@ -64,7 +64,9 @@ def refresh_events_data():
                         'main_author': main_author,
                         'is_deleted': bool(activity.get('is_deleted')),
                     }
-                )
+                )[0]
+            else:
+                continue
             if activity_type and activity_type.get('id'):
                 event_type = event_types.get(int(activity_type['id']))
                 if not event_type:
@@ -90,6 +92,7 @@ def refresh_events_data():
                     e = Event.objects.update_or_create(uid=uid, defaults={
                         'is_active': is_active,
                         'ext_id': event.get('id'),
+                        'activity': current_activity,
                         'data': {'event': event_json, 'run': run_json, 'activity': activity_json},
                         'dt_start': dt_start, 'dt_end': dt_end, 'title': title, 'event_type': event_type})[0]
                     fetched_events.add(e.uid)
