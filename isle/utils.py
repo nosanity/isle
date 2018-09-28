@@ -93,7 +93,7 @@ def refresh_events_data():
                         'data': {'event': event_json, 'run': run_json, 'activity': activity_json},
                         'dt_start': dt_start, 'dt_end': dt_end, 'title': title, 'event_type': event_type})[0]
                     fetched_events.add(e.uid)
-        delete_events = existing_uids - fetched_events
+        delete_events = existing_uids - fetched_events - {getattr(settings, 'API_DATA_EVENT', '')}
         Event.objects.filter(uid__in=delete_events).update(is_active=False)
         # если произошли изменения в списке будущих эвентов
         dt = timezone.now() + timezone.timedelta(days=1)
