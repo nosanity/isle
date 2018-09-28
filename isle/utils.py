@@ -1,12 +1,14 @@
+import csv
 import logging
 from datetime import datetime
 from django.conf import settings
 from django.core.cache import caches
+from django.core.files.storage import default_storage
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 import requests
 from isle.api import Api, ApiError, ApiNotFound, LabsApi
-from isle.models import Event, EventEntry, User, Trace, EventType, Activity
+from isle.models import Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -136,3 +138,76 @@ def set_check_in(event, user, confirmed):
         return True
     except ApiError:
         return False
+
+
+def recalculate_user_chart_data(user):
+    """
+    обновление данных для чарта компетенций пользователя
+    """
+    if not getattr(settings, 'API_DATA_EVENT', ''):
+        logging.error('settings do not define API_DATA_EVENT')
+        return []
+
+    try:
+        api_event = Event.objects.get(uid=settings.API_DATA_EVENT)
+    except Event.DoesNotExist:
+        logging.error('event for api chart data does not exist')
+        return []
+
+    existing_data = ApiUserChart.objects.filter(user=user, event=api_event).first()
+    # выбираем материалы, добавленные позже даты последнего обновления данных для чарта, или все, в случае,
+    # если данные еще не были посчитаны, или параметр updated == None
+    if not existing_data or not existing_data.updated:
+        files = EventOnlyMaterial.objects.filter(event=api_event)
+        append = False
+    else:
+        files = EventOnlyMaterial.objects.filter(event=api_event, created_at__gt=existing_data.updated)
+        append = True
+
+    event_ids = {}
+    delimiter = getattr(settings, 'API_CHART_DATA_DELIMITER', ';')
+    result = []
+    headers = ['user_id', 'group_user_ids', 'event_id', 'act_event_title', 'url', 'comment', 'audio', 'level',
+               'sector', 'tool', 'sublevel', 'group']
+    update_time = timezone.now()
+    for item in files:
+        if not item.file:
+            logging.error('%s api data file has no file associated with it' % item.id)
+            continue
+        with default_storage.open(item.file, 'r') as f:
+            try:
+                reader = csv.reader(f, delimiter=delimiter)
+                for row in reader:
+                    if not any(i.strip() for i in [j.strip() for j in row]):
+                        # пустая строка
+                        continue
+                    line = dict(zip(headers, row))
+                    user_id = line.get('user_id')
+                    group_user_ids = [i.strip() for i in line.get('group_user_ids', '').split(',')]
+                    event_id = line.get('event_id')
+                    if not event_id or not event_id.isdigit():
+                        logging.error('api chart data got wrong event_id: %s' % event_id)
+                        continue
+                    if not event_id in event_ids:
+                        event = Event.objects.filter(ext_id=event_id).first()
+                        if not event:
+                            logging.error('api chart data error: event with ext_id %s does not exist' % event_id)
+                            continue
+                        event_ids[event_id] = event
+                    if user_id and user_id == str(user.leader_id) or str(user.leader_id) in group_user_ids:
+                        result.append(line)
+            except UnicodeDecodeError:
+                logging.error('api chart data file %s contains bad csv file' % item.id)
+
+    # оставляем значимые поля
+    exclude = ['user_id', 'group_user_ids', 'audio']
+    for item in result:
+        for field in exclude:
+            item.pop(field, None)
+        item['event_title'] = event_ids[item['event_id']].title
+
+    user_data = existing_data.data if append else []
+    user_data.extend(result)
+    ApiUserChart.objects.update_or_create(user=user, event=api_event,
+                                          defaults={'data': user_data, 'updated': update_time})
+    return user_data

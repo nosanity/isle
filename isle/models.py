@@ -603,3 +603,13 @@ class EventOnlyMaterial(AbstractMaterial):
             return new_obj
         else:
             raise NotImplementedError
+
+
+class ApiUserChart(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    data = JSONField()
+    updated = models.DateTimeField(null=True)
+
+    class Meta:
+        unique_together = ('user', 'event')

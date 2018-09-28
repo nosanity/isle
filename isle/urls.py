@@ -26,6 +26,7 @@ urlpatterns = [
     path('autocomplete/event-user/', views.EventUserAutocomplete.as_view(), name='event-user-autocomplete'),
     path('autocomplete/event-team/', views.EventTeamAutocomplete.as_view(), name='event-team-autocomplete'),
     path('api/attendance/', views.AttendanceApi.as_view()),
+    path('api/user-chart/', views.UserChartApiView.as_view()),
     path('owner/team-material/<str:uid>/<int:team_id>/<int:material_id>/', views.TeamMaterialOwnership.as_view(),
          name='team-material-owner'),
     path('owner/event-material/<str:uid>/<int:material_id>/', views.EventMaterialOwnership.as_view(),

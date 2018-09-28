@@ -171,5 +171,8 @@ LABS_TOKEN = 'SET-ME-PLEASE'
 # базовый урл uploads
 BASE_URL = 'https://uploads.2035.university'
 
+# uuid эвента, в который будут грузиться данные для чартов
+API_DATA_EVENT = ''
+
 from .local_settings import *
 
