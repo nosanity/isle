@@ -36,6 +36,7 @@ class EventType(models.Model):
     ext_id = models.PositiveIntegerField(unique=True, verbose_name='Внешний id')
     title = models.CharField(max_length=500, verbose_name='Название')
     description = models.TextField(verbose_name='Описание', blank=True, default='')
+    visible = models.BooleanField(verbose_name='Отображать в списке мероприятий', default=True)
     trace_data = JSONField(blank=True, help_text='JSON в виде списка из объектов с ключами trace_type и name. '
                                                  'Например, [{"trace_type": "Презентация", "name": '
                                                  '"Презентация продукта"}]')

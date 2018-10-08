@@ -16,11 +16,7 @@ EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
 
 
 def get_allowed_event_type_ids():
-    ids = DEFAULT_CACHE.get(EVENT_TYPES_CACHE_KEY)
-    if ids is None:
-        ids = [i.id for i in EventType.objects.all() if i.title.lower() in settings.VISIBLE_EVENT_TYPES]
-        DEFAULT_CACHE.set(EVENT_TYPES_CACHE_KEY, ids)
-    return ids
+    return list(EventType.objects.filter(visible=True).values_list('id', flat=True))
 
 
 def refresh_events_data():

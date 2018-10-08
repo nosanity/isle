@@ -74,6 +74,7 @@ class EventTypeForm(forms.ModelForm):
 class EventTypeAdmin(RemoveDeleteActionMixin, admin.ModelAdmin):
     readonly_fields = ('ext_id', 'title', 'description')
     form = EventTypeForm
+    list_display = ('title', 'visible')
 
     def save_model(self, request, obj, form, change):
         obj.save()
