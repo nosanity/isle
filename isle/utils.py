@@ -1,5 +1,6 @@
 import csv
 import logging
+import pytz
 from io import StringIO
 from datetime import datetime
 from django.conf import settings
@@ -9,7 +10,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 import requests
 from isle.api import Api, ApiError, ApiNotFound, LabsApi
-from isle.models import Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart
+from isle.models import Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -219,3 +220,35 @@ def recalculate_user_chart_data(user):
     ApiUserChart.objects.update_or_create(user=user, event=api_event,
                                           defaults={'data': user_data, 'updated': update_time})
     return user_data
+
+
+def update_contexts():
+    """
+    апдейт контекстов и привязка к ним эвентов
+    """
+    try:
+        data = LabsApi().get_contexts()
+    except ApiError:
+        return
+    try:
+        for context in data:
+            timezone = context.get('timezone')
+            uuid = context.get('uuid')
+            if not timezone:
+                logging.error('context has no timezone')
+                continue
+            try:
+                pytz.timezone(timezone)
+            except pytz.UnknownTimeZoneError:
+                logging.error('unknown timezone %s' % timezone)
+                continue
+            c = Context.objects.update_or_create(uuid=uuid, defaults={'timezone': timezone})[0]
+            events = []
+            for run in (context.get('runs') or []):
+                for event in (run.get('events') or []):
+                    uuid = event.get('uuid')
+                    if uuid:
+                        events.append(uuid)
+            Event.objects.filter(uid__in=events).update(context=c)
+    except Exception:
+        logging.exception('Failed to parse contexts')

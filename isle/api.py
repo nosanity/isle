@@ -166,3 +166,6 @@ class LabsApi:
 
     def get_types(self):
         return self.make_request('/api/v1/type')
+
+    def get_contexts(self):
+        return self.make_request('/api/v2/context')

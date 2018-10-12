@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static tz %}
 {% block content %}
     <div class="row">
         <div class="col">
@@ -77,12 +77,14 @@
                         <td><a href="{% url 'event-view' uid=event.uid %}">{{ event.title }}</a></td>
                                 <td>{{ event.get_authors|join:', ' }}</td>
                             {% endif %}
+                            {% localtime off %}
                             <td>
-                                <span class="nowrap">{{ event.dt_start|date:"d E, H:i" }}</span>
+                                <span class="nowrap">{{ event.get_dt_start|date:"d E, H:i" }}</span>
                             </td>
                             <td>
-                                <span class="nowrap">{{ event.dt_end|date:"d E, H:i" }}</span>
+                                <span class="nowrap">{{ event.get_dt_end|date:"d E, H:i" }}</span>
                             </td>
+                            {% endlocaltime %}
                             {% if request.user.is_assistant %}
                                 <td class="text-center">{{ event.prop_enrollments }} / {{ event.prop_checkins }}</td>
                                 <td class="text-center">{{ event.trace_count }}</td>
