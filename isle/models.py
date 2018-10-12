@@ -1,8 +1,10 @@
 import json
 import os
+import pytz
 import re
 import urllib
 from functools import reduce
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -64,6 +66,11 @@ class ActivityEnrollment(models.Model):
         unique_together = ('user', 'activity')
 
 
+class Context(models.Model):
+    timezone = models.CharField(max_length=255)
+    uuid = models.CharField(max_length=255, unique=True)
+
+
 class Event(models.Model):
     uid = models.CharField(max_length=255, unique=True, verbose_name=_(u'UID события'))
     data = JSONField()
@@ -76,6 +83,7 @@ class Event(models.Model):
     ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS')
 
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, default=None, null=True)
+    context = models.ForeignKey(Context, on_delete=models.SET_NULL, null=True, default=None)
 
     class Meta:
         verbose_name = _(u'Событие')
@@ -88,6 +96,25 @@ class Event(models.Model):
             end = timezone.localtime(self.dt_end)
             return '%s (%s - %s)' % (self.title or self.uid, start.strftime(fmt), end.strftime(fmt))
         return self.uid
+
+    def get_dt_start(self):
+        return self._get_dt('dt_start')
+
+    def get_dt_end(self):
+        return self._get_dt('dt_end')
+
+    def _get_dt(self, dt_field_name):
+        val = getattr(self, dt_field_name)
+        if not val:
+            return
+        default = timezone.get_default_timezone()
+        if not self.context_id:
+            return val.astimezone(default)
+        try:
+            tz = pytz.timezone(self.context.timezone)
+        except pytz.UnknownTimeZoneError:
+            tz = default
+        return val.astimezone(tz)
 
     def is_author(self, user):
         return user.is_assistant

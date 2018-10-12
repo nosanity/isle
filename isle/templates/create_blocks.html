@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static i18n %}
+{% load static i18n tz %}
 
 {% block content %}
     <div class="modal fade text-left" tabindex="-1" role="dialog" id="import-structure-modal">
@@ -15,7 +15,9 @@
               <form method="get" id="import-structure-form" action="{% url 'import-blocks' uid=event.uid %}">
                 <ul class="no-left-padding no-bullets">
                   {% for ev in import_events %}
-                    <li><label><input type="radio" name="id" value="{{ ev.id }}"> {{ ev.dt_start|date:'d E, H:i' }} - {{ ev.dt_end|date:'H:i' }}; ID: {{ ev.ext_id }}, блоков в структуре: {{ ev.num_blocks }}</label></li>
+                    {% localtime off %}
+                    <li><label><input type="radio" name="id" value="{{ ev.id }}"> {{ ev.get_dt_start|date:'d E, H:i' }} - {{ ev.get_dt_end|date:'H:i' }}; ID: {{ ev.ext_id }}, блоков в структуре: {{ ev.num_blocks }}</label></li>
+                    {% endlocaltime %}
                   {% endfor %}
                 </ul>
                 <button type="submit" class="btn btn-success">Импортировать</button>

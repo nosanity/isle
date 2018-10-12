@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from isle.utils import refresh_events_data, update_events_traces
+from isle.utils import refresh_events_data, update_events_traces, update_contexts
 
 
 class Command(BaseCommand):
@@ -8,3 +8,4 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         refresh_events_data()
         update_events_traces()
+        update_contexts()
