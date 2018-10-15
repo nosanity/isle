@@ -198,6 +198,19 @@ nav.navbar {
     border-color: red;
 }
 
+.import-div {
+    color: red;
+    margin-top: 10px;
+}
+
+#open-import-popup {
+    cursor: pointer;
+}
+
+.no-bullets {
+    list-style-type: none;
+}
+
 .delete-formset-btn:first-of-type {
     display: none;
 }

@@ -1,7 +1,10 @@
 import json
 import os
+import pytz
+import re
 import urllib
 from functools import reduce
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -49,7 +52,6 @@ class EventType(models.Model):
 
 class Activity(models.Model):
     uid = models.CharField(max_length=255, unique=True)
-    ile_id = models.PositiveIntegerField(default=None, verbose_name='id в ILE')
     ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS', db_index=True)
     title = models.CharField(max_length=1000)
     main_author = models.CharField(max_length=500, default='')
@@ -64,6 +66,11 @@ class ActivityEnrollment(models.Model):
         unique_together = ('user', 'activity')
 
 
+class Context(models.Model):
+    timezone = models.CharField(max_length=255)
+    uuid = models.CharField(max_length=255, unique=True)
+
+
 class Event(models.Model):
     uid = models.CharField(max_length=255, unique=True, verbose_name=_(u'UID события'))
     data = JSONField()
@@ -73,10 +80,10 @@ class Event(models.Model):
     title = models.CharField(max_length=1000, default='', verbose_name='Название')
     event_type = models.ForeignKey(EventType, on_delete=models.SET_NULL, verbose_name='Тип мероприятия',
                                    blank=True, null=True, default=None)
-    ile_id = models.PositiveIntegerField(default=None, verbose_name='id в ILE')
     ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS')
 
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, default=None, null=True)
+    context = models.ForeignKey(Context, on_delete=models.SET_NULL, null=True, default=None)
 
     class Meta:
         verbose_name = _(u'Событие')
@@ -90,6 +97,25 @@ class Event(models.Model):
             return '%s (%s - %s)' % (self.title or self.uid, start.strftime(fmt), end.strftime(fmt))
         return self.uid
 
+    def get_dt_start(self):
+        return self._get_dt('dt_start')
+
+    def get_dt_end(self):
+        return self._get_dt('dt_end')
+
+    def _get_dt(self, dt_field_name):
+        val = getattr(self, dt_field_name)
+        if not val:
+            return
+        default = timezone.get_default_timezone()
+        if not self.context_id:
+            return val.astimezone(default)
+        try:
+            tz = pytz.timezone(self.context.timezone)
+        except pytz.UnknownTimeZoneError:
+            tz = default
+        return val.astimezone(tz)
+
     def is_author(self, user):
         return user.is_assistant
 
@@ -101,6 +127,13 @@ class Event(models.Model):
             traces = Trace.objects.filter(event_type=self.event_type)
             return sorted(traces, key=lambda x: order.get(x.name, 0))
         return Trace.objects.none()
+
+    def get_event_structure_trace(self):
+        """
+        попытка выбрать трейс со структурой эвента
+        """
+        traces = list(filter(lambda x: re.search(r'разметк(а|и)', x.name.lower()), self.get_traces()))
+        return traces and traces[0]
 
     @property
     def entry_count(self):
@@ -378,6 +411,7 @@ class AbstractMaterial(models.Model):
     deleted = models.BooleanField(default=False)
     file_type = models.CharField(max_length=1000, default='')
     file_size = models.PositiveIntegerField(default=None, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     objects = NotDeletedEntries()
     all_objects = models.Manager()
@@ -422,6 +456,7 @@ class AbstractMaterial(models.Model):
             'file_type': file_type,
             'icon': icon,
             'size': self.file_size or '',
+            'created': self.created_at and self.created_at.isoformat() or '',
         }
 
     def render_metadata(self):
@@ -595,3 +630,13 @@ class EventOnlyMaterial(AbstractMaterial):
             return new_obj
         else:
             raise NotImplementedError
+
+
+class ApiUserChart(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    data = JSONField()
+    updated = models.DateTimeField(null=True)
+
+    class Meta:
+        unique_together = ('user', 'event')

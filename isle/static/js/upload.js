@@ -3,7 +3,7 @@ const uploads = [];
 
 let maxSizeSelector = null;
 
-if (pageType == 'loadMaterials') {
+if (pageType == 'loadMaterials' || pageType == 'eventStructure') {
     maxSizeSelector = 'form.trace-form input[type=file]';
 
     const $forms = $('form.trace-form');
@@ -112,7 +112,7 @@ function isFormValid($form) {
 
 function setActivateButton($form) {
     let selector = null;
-    if (pageType == 'loadMaterials') {
+    if (pageType == 'loadMaterials' || pageType == 'eventStructure') {
         selector = '.add-material-btn';
     } else if (pageType == 'loadUserMaterials') {
         selector = '.save-result-btn';
@@ -153,9 +153,14 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
                 trace_name: $obj.parents('form.trace-form').children('input[name=trace_name]').val(),
                 material_id: $obj.val()
             }
+            try {
+                requestUrl = fileBlocksUploadUrl;
+            }
+            catch(e) { requestUrl = ''; }
             $.ajax({
                 type: 'POST',
                 data: data,
+                url: requestUrl,
                 success: (data) => {
                     $obj.parent('li').remove();
                 },
@@ -182,7 +187,7 @@ $('body').delegate('input[name=file_field]', 'change', (e) => {
     let $button = null;
     let parentSelector = null;
     
-    if (pageType == 'loadMaterials') {
+    if (pageType == 'loadMaterials' || pageType == 'eventStructure') {
         $button = $obj.parents('form.trace-form');
         parentSelector = 'li';
     } else if (pageType == 'loadUserMaterials') {
@@ -378,24 +383,41 @@ function successProcessFile(data, $form) {
             </li>
         `;
     } else {
-        html = `
-            <li class="list-group-item ${data.uploader_name && isAssistant ? 'assistant-team-link' : ''}">
-                <a href="${url}">${name}</a>
-                &nbsp;
-                <button name="material_id" value="${mId}" class="btn btn-warning btn-sm pull-right delete-material-btn">
-                    Удалить
-                </button>
-                &nbsp;
-                <button value="${mId}" class="btn btn-success btn-sm pull-right edit-event-block-material">
-                    Редактировать
-                </button>
-                ${data.uploader_name ? '<div>(' + data.uploader_name + ')</div>' : ''}
-                <div>
-                    <span class="text-muted assistant-info-string">${data.info_string}</span>
-                </div>
-                <div class="info-string-edit"></div>
-            </li>
-        `;
+        if (pageType == 'eventStructure') {
+            html = `
+                <li class="list-group-item ${data.uploader_name && isAssistant ? 'assistant-team-link' : ''}">
+                    <a href="${url}">${name}</a>
+                    &nbsp;
+                    <button name="material_id" value="${mId}" class="btn btn-warning btn-sm pull-right delete-material-btn">
+                        Удалить
+                    </button>
+                    &nbsp;
+                    ${data.uploader_name ? '<div>(' + data.uploader_name + ')</div>' : ''}
+                    <div>
+                        <span class="text-muted assistant-info-string">${data.info_string}</span>
+                    </div>
+                </li>
+            `;
+        } else {
+            html = `
+                <li class="list-group-item ${data.uploader_name && isAssistant ? 'assistant-team-link' : ''}">
+                    <a href="${url}">${name}</a>
+                    &nbsp;
+                    <button name="material_id" value="${mId}" class="btn btn-warning btn-sm pull-right delete-material-btn">
+                        Удалить
+                    </button>
+                    &nbsp;
+                    <button value="${mId}" class="btn btn-success btn-sm pull-right edit-event-block-material">
+                        Редактировать
+                    </button>
+                    ${data.uploader_name ? '<div>(' + data.uploader_name + ')</div>' : ''}
+                    <div>
+                        <span class="text-muted assistant-info-string">${data.info_string}</span>
+                    </div>
+                    <div class="info-string-edit"></div>
+                </li>
+            `;
+        }
     }
     item.before($(html));    
     if (pageType == 'loadUserMaterials') {
@@ -452,11 +474,16 @@ function processFile(form, file, filesLength) {
     formData.append('add_btn', '');
     const num = filesLength ? addUploadProgress($form, file) : null;
     setActivateButton($form);
+    try {
+        requestUrl = fileBlocksUploadUrl;
+    }
+    catch(e) { requestUrl = ''; }
     $.ajax({
         type: 'POST',
         data: formData,
         processData: false,
         contentType: false,
+        url: requestUrl,
         xhr: () => {
             // xhrProcessFile(num);
             const xhr = new window.XMLHttpRequest();
