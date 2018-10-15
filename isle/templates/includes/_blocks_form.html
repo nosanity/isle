@@ -1,0 +1,18 @@
+<form method="post" id="blocks-form">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    {% for form in formset %}
+        <div class="form-inline">
+            <div>
+                <div class="row form-row spacer">
+                    {% for field in form %}
+                        {{ field|add_class:"form-control"|set_placeholder:field.label }}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+    <div class="row" class="mt-20">
+        <button id="save-blocks" class="btn btn-danger" class="margin-left">Сохранить</button>
+    </div>
+</form>

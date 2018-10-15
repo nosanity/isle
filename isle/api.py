@@ -15,6 +15,10 @@ class ApiNotFound(ApiError):
     pass
 
 
+class BadApiResponse(ApiError):
+    pass
+
+
 class Api:
     """
     класс, реализующий запрос к ручке ILE с поддержкой получения и хранения токена, а также
@@ -140,3 +144,28 @@ class Api:
                 settings.ILE_BASE_URL, unti_id, event_id, int(bool(confirmed))),
             method='post'
         )
+
+
+class LabsApi:
+    def make_request(self, url, method='GET'):
+        url = '{}{}'.format(settings.LABS_URL.rstrip('/'), url)
+        try:
+            resp = requests.request(method, url, params={'app_token': settings.LABS_TOKEN},
+                                    timeout=settings.CONNECTION_TIMEOUT)
+            assert resp.ok, 'status_code %s' % resp.status_code
+            return resp.json()
+        except (ValueError, TypeError, AssertionError):
+            logging.exception('Unexpected labs response for url %s: %s' % (url, resp.content.decode('utf8')))
+            raise BadApiResponse
+        except AssertionError:
+            logging.exception('Labs connection error')
+            raise ApiError
+
+    def get_activities(self):
+        return self.make_request('/api/v1/activity')
+
+    def get_types(self):
+        return self.make_request('/api/v1/type')
+
+    def get_contexts(self):
+        return self.make_request('/api/v2/context')

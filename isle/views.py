@@ -22,13 +22,15 @@ from rest_framework.generics import ListAPIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
 from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset, \
     EventMaterialForm
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
-    Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole
+    Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart
 from isle.serializers import AttendanceSerializer
-from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in
+from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
+    recalculate_user_chart_data
 
 
 def login(request):
@@ -631,6 +633,8 @@ class LoadEventMaterials(BaseLoadMaterials):
         ).first()
         if not material:
             return JsonResponse({}, status=400)
+        if self.event.uid == getattr(settings, 'API_DATA_EVENT', ''):
+            ApiUserChart.objects.update(updated=None)
         material.delete()
         logging.warning('User %s has deleted file %s for event %s' %
                         (self.request.user.username, material.get_url(), self.event.uid))
@@ -652,18 +656,9 @@ class LoadEventMaterials(BaseLoadMaterials):
 
 
 class RefreshDataView(View):
-    def get(self, request, uid=None): 
-        if not request.user.is_assistant:
-            success = False
-        else:
-            if uid:
-                if not Event.objects.filter(uid=uid).exists():
-                    success = False
-                else:
-                    success = refresh_events_data(force=True, refresh_participants=True, refresh_for_events=[uid])
-            else:
-                success = refresh_events_data(force=True)
-        return JsonResponse({'success': bool(success)})
+    def get(self, request, uid=None):
+        # TODO: починить когда появится ручка получения информации аналогичной ассайнментам/чекинам из ile
+        return JsonResponse({'success': False})
 
 
 class CreateTeamView(GetEventMixin, TemplateView):
@@ -1297,28 +1292,76 @@ class CreateEventBlocks(GetEventMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
+        trace = self.event.get_event_structure_trace()
+        materials = []
+        if trace:
+            materials = EventOnlyMaterial.objects.filter(event=self.event, trace=trace)
         data.update({
             'formset': EventBlockFormset(queryset=EventBlock.objects.none()),
             'event': self.event,
             'blocks': EventBlock.objects.filter(event=self.event).order_by('id'),
+            'import_events': Event.objects.filter(activity_id=self.event.activity_id).exclude(id=self.event.id).
+                order_by('ext_id').annotate(num_blocks=Count('eventblock')),
+            'trace': trace,
+            'materials': materials,
+            'max_size': settings.MAXIMUM_ALLOWED_FILE_SIZE,
+            'max_uploads': settings.MAX_PARALLEL_UPLOADS,
         })
         return data
 
     def post(self, request, **kwargs):
         formset = EventBlockFormset(request.POST)
         if formset.is_valid():
+            # если происходит импорт блоков из другого мероприятия, все ранее созданные блоки удаляются
+            if any(form.save(commit=False).id for form in formset.forms):
+                EventBlock.objects.filter(event=self.event).delete()
             for form in formset.forms:
                 b = form.save(commit=False)
                 b.event = self.event
+                # всегда создается новый блок
+                b.id = None
                 b.save()
         return redirect('create-blocks', uid=self.event.uid)
 
 
+class ImportEventBlocks(GetEventMixin, TemplateView):
+    template_name = 'includes/_blocks_form.html'
+
+    def get_context_data(self, **kwargs):
+        if not self.request.user.is_assistant:
+            raise PermissionDenied
+        try:
+            event = Event.objects.get(id=self.request.GET.get('id'), activity_id=self.event.activity_id)
+        except (Event.DoesNotExist, TypeError, ValueError):
+            raise Http404
+        return {'formset': EventBlockFormset(queryset=EventBlock.objects.filter(event=event).order_by('id'))}
+
+
+class CheckEventBlocks(GetEventMixin, View):
+    """
+    проверка того, что для текущей структуры мероприятия нет файлов мероприятия, привязанных к блокам
+    """
+    def get(self, request, **kwargs):
+        if request.user.is_assistant:
+            return JsonResponse({
+                'blocks_with_materials': EventOnlyMaterial.objects.filter(event_block__event=self.event).exists(),
+            })
+        raise PermissionDenied
+
+
 class DeleteEventBlock(GetEventMixin, View):
+    def get(self, request, **kwargs):
+        if request.user.is_authenticated and request.user.is_assistant:
+            block = EventBlock.objects.filter(id=kwargs['block_id']).first()
+            if not block:
+                raise Http404
+            return JsonResponse({'has_materials': EventOnlyMaterial.objects.filter(event_block=block).exists()})
+        raise PermissionDenied
+
     def post(self, request, **kwargs):
         if request.user.is_authenticated and request.user.is_assistant:
             EventBlock.objects.filter(id=kwargs['block_id']).delete()
-            return redirect('create-blocks', uid=self.event.uid)
+            return JsonResponse({'redirect': reverse('create-blocks', kwargs={'uid': self.event.uid})})
         raise PermissionDenied
 
 
@@ -1452,3 +1495,37 @@ class EventBlockEditRenderer(GetEventMixin, TemplateView):
             return int(prefix.split('-')[1])
         except:
             pass
+
+
+class UserChartApiView(APIView):
+    """
+    **Описание**
+
+        Запрос данных для отрисовки чарта пользовательских компетенций
+
+    **Пример запроса**
+
+        GET /api/user-chart/?user_id=123
+
+    **Параметры запроса**
+
+        * user_id - leader id пользователя
+
+    **Пример ответа**
+
+        * 200 успешно
+        * 400 неполный запрос
+        * 404 пользователь не найден
+    """
+
+    permission_classes = ()
+
+    def get(self, request):
+        user_id = request.GET.get('user_id')
+        if not user_id:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        user = User.objects.filter(leader_id=user_id).first()
+        if not user:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        data = recalculate_user_chart_data(user)
+        return Response(data)
