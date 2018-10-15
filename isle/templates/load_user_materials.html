@@ -195,7 +195,7 @@
     </script>
     {% if team.id %}
         <script type="text/javascript">
-            const confirmTeamUpload = "{% url 'confirm-team-material' uid=event.uid team_id=team.id %}";
+            const isTeamUploadConfirmed = "{% url 'confirm-team-material' uid=event.uid team_id=team.id %}";
             const formsetRenderUrl = "{% url 'roles-formset-render' uid=event.uid team_id=team.id %}";
         </script>
     {% else %}

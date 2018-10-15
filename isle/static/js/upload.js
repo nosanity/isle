@@ -421,10 +421,8 @@ function successProcessFile(data, $form) {
     }
     item.before($(html));    
     if (pageType == 'loadUserMaterials') {
-        if (num < 0) {
-            $('.save-result-btn').prop('disabled', false);
-            clearForm($form); 
-        }
+        $('.save-result-btn').prop('disabled', false);
+        clearForm($form); 
     }
 }
 
