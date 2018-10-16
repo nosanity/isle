@@ -119,8 +119,7 @@ class Index(TemplateView):
         else:
             events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user).
                                           values_list('event_id', flat=True))
-        if settings.VISIBLE_EVENT_TYPES:
-            events = events.filter(event_type_id__in=get_allowed_event_type_ids())
+        events = events.filter(event_type_id__in=get_allowed_event_type_ids())
         date = self.get_date()
         if date:
             min_dt = timezone.make_aware(timezone.datetime.combine(date, timezone.datetime.min.time()))
