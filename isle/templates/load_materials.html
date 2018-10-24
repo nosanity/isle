@@ -216,7 +216,7 @@
     </script>
     {% if team.id %}
         <script type="text/javascript">
-            const confirmTeamUpload = "{% url 'confirm-team-material' uid=event.uid team_id=team.id %}";
+            const isTeamUploadConfirmed = "{% url 'confirm-team-material' uid=event.uid team_id=team.id %}";
         </script>
     {% endif %}
     {% if can_upload %}
