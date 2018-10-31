@@ -13,11 +13,6 @@
     <div>
         <h6>
             {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }} - {{ event.get_dt_end|date:'H:i' }}{% endlocaltime %};
-            {% if request.user.is_assistant %}
-                ID: {{ event.ext_id }}, 
-                Run_ID: {{ event.data.run.ext_id }}, 
-                Activity_ID: {{ event.data.activity.ext_id }}
-            {% endif %}
         </h6>
     </div>
 
@@ -46,7 +41,6 @@
 
     {% if request.user.is_assistant %}
         <nav class="nav nav-pills nav-justified">
-            <a class="nav-item btn btn-primary item-margin" href="{% url 'create-blocks' uid=event.uid %}">Структура мероприятия</a>
             <a class="nav-item btn btn-primary item-margin" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
         </nav>
     {% endif %}

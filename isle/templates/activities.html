@@ -22,7 +22,6 @@
         <table id="main-events-table" class="table table-striped table-bordered table-hover">
             <thead class="thead-light">
                 <tr>
-                    <th>Activity ID</th>
                     <th>Название активности</th>
                     <th>Главный лектор</th>
                     <th>Тип активности</th>
@@ -33,8 +32,7 @@
             </thead>
             {% for activity in objects %}
                 <tr>
-                    <td>{{ activity.ext_id }}</td>
-                    <td><a href="{% url 'index' %}?activity={{ activity.ext_id }}">{{ activity.title }}</a></td>
+                    <td><a href="{% url 'index' %}?activity={{ activity.id }}">{{ activity.title }}</a></td>
                     <td>{{ activity.main_author }}</td>
                     <td>{{ activity.activity_type }}</td>
                     <td>{{ activity.event_count }}</td>

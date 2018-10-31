@@ -105,6 +105,20 @@ if (isAssistant) {
     }    
 }
 
+$('.load-results-btn').on('click', (e) => {
+    e.preventDefault();
+    let div = $(e.target).parents('.material-result-div');
+    div.find('form').removeClass('hidden');
+    $(e.target).hide();
+    div.find('textarea[name="comment"]').val(div.find('.result-comment').text().trim());
+});
+
+$('.hide-results-form-btn').on('click', (e) => {
+    e.preventDefault();
+    $(e.target).parents('.material-result-div').find('form').addClass('hidden');
+    $(e.target).parents('.material-result-div').find('.load-results-btn').show();
+});
+
 function setOwnership(obj) {
     const $obj = $(obj);
     const isOwner = $obj.attr('data-owner');

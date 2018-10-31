@@ -1,10 +1,16 @@
-$('.list-group-item a.link_preview').each(function (i, element) {
-    const icon = element.dataset.icon.substring(1, element.dataset.icon.length-1);
-    const html = `<i class ="fa ${icon}"></i>${element.text}`;
-    $(element).html(html);
-});
+function apply_preview_icons() {
+    $('.list-group-item a.link_preview').each(function (i, element) {
+        if (!$(element).find('i.fa').length) {
+            const icon = element.dataset.icon
+            const html = `<i class ="fa ${icon}"></i>&nbsp;${element.text}`;
+            $(element).html(html);
+        }
+    });
+}
 
-$('.list-group-item a.link_preview').on('click', (e) => {
+apply_preview_icons();
+
+$('body').delegate('.list-group-item a.link_preview', 'click', (e) => {
     e.preventDefault();
     linkPreview(e.target);
 });
@@ -19,19 +25,19 @@ function linkPreview(obj) {
 
     let element = null;
     
-    if (obj.dataset.file_type == '"pdf"') {
+    if (obj.dataset.file_type == 'pdf') {
         element = document.createElement("object");
         element.data = obj.href;
         element.type = "application/pdf";
         element.width = "100%";
         element.height = element.width;
     }
-    if (obj.dataset.file_type == '"image"') {
+    if (obj.dataset.file_type == 'image') {
         element = document.createElement('img');
         element.src = obj.href;
         element.style.width = "100%";
     }
-    if (obj.dataset.file_type == '"video"') {
+    if (obj.dataset.file_type == 'video') {
         element = document.createElement('video');
         element.src = obj.href;
         element.controls = 'true';
@@ -40,13 +46,13 @@ function linkPreview(obj) {
         element.playsinline = 'true';
         element.style.width = "100%";
     }
-    if (obj.dataset.file_type == '"audio"') {
+    if (obj.dataset.file_type == 'audio') {
         element = document.createElement('audio');
         element.src = obj.href;
         element.controls = 'true';
         element.style.width = "100%";
     }
-    if (obj.dataset.file_type == '"other"') {
+    if (obj.dataset.file_type == 'other') {
         element = document.createElement('a');
         element.innerText = "Скачать файл";
         $(element).addClass('btn');

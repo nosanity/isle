@@ -146,26 +146,56 @@ class Api:
         )
 
 
-class LabsApi:
+class BaseApi:
+    name = ''
+    base_url = ''
+    app_token = ''
+
     def make_request(self, url, method='GET'):
-        url = '{}{}'.format(settings.LABS_URL.rstrip('/'), url)
-        try:
-            resp = requests.request(method, url, params={'app_token': settings.LABS_TOKEN},
-                                    timeout=settings.CONNECTION_TIMEOUT)
-            assert resp.ok, 'status_code %s' % resp.status_code
-            return resp.json()
-        except (ValueError, TypeError, AssertionError):
-            logging.exception('Unexpected labs response for url %s: %s' % (url, resp.content.decode('utf8')))
-            raise BadApiResponse
-        except AssertionError:
-            logging.exception('Labs connection error')
-            raise ApiError
+        """
+        итератор по всем страницам ответа
+        """
+        url = '{}{}'.format(self.base_url, url)
+        page = 1
+        total_pages = None
+        while total_pages is None or page <= total_pages:
+            try:
+                resp = requests.request(method, url, params={'app_token': self.app_token, 'page': page},
+                                        timeout=settings.CONNECTION_TIMEOUT)
+                total_pages = int(resp.headers['X-Pagination-Page-Count'])
+                assert resp.ok, 'status_code %s' % resp.status_code
+                yield resp.json()
+                page += 1
+            except (ValueError, TypeError, AssertionError):
+                logging.exception('Unexpected %s response for url %s: %s' % (self.name, url, resp.content.decode('utf8')))
+                raise BadApiResponse
+            except KeyError:
+                logging.error('%s %s response has no header "X-Pagination-Page-Count"' % (self.name, url))
+                raise ApiError
+            except AssertionError:
+                logging.exception('%s connection error' % self.name)
+                raise ApiError
+
+
+class LabsApi(BaseApi):
+    name = 'labs'
+    base_url = settings.LABS_URL.rstrip('/')
+    app_token = getattr(settings, 'LABS_TOKEN', '')
 
     def get_activities(self):
-        return self.make_request('/api/v1/activity')
+        return self.make_request('/api/v2/activity')
 
     def get_types(self):
-        return self.make_request('/api/v1/type')
+        return self.make_request('/api/v2/type')
 
     def get_contexts(self):
         return self.make_request('/api/v2/context')
+
+
+class XLEApi(BaseApi):
+    name = 'xle'
+    base_url = settings.XLE_URL.rstrip('/')
+    app_token = getattr(settings, 'XLE_TOKEN', '')
+
+    def get_attendance(self):
+        return self.make_request('/api/v1/checkin')

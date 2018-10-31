@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'social_core',
     'social_django',
     'rest_framework',
+    'django_carrier_client',
 ]
 
 MIDDLEWARE = [
@@ -168,11 +169,19 @@ LABS_TRACES_API_URL = 'https://labs.u2035dev.ru/api/v1/tracetype?app_token=7at0h
 LABS_URL = 'SET-ME-PLEASE'
 LABS_TOKEN = 'SET-ME-PLEASE'
 
+XLE_URL = 'https://xle.2035.university'
+XLE_TOKEN = ''
+
 # базовый урл uploads
 BASE_URL = 'https://uploads.2035.university'
 
 # uuid эвента, в который будут грузиться данные для чартов
 API_DATA_EVENT = ''
+
+# данные для коммуникации с кафкой
+KAFKA_TOPIC = 'uploads'
+KAFKA_HOST = ''
+KAFKA_PORT = 80
 
 from .local_settings import *
 
