@@ -1,6 +1,8 @@
 import csv
+import json
 import logging
 import pytz
+from collections import defaultdict
 from io import StringIO
 from datetime import datetime
 from django.conf import settings
@@ -9,8 +11,9 @@ from django.core.files.storage import default_storage
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 import requests
-from isle.api import Api, ApiError, ApiNotFound, LabsApi
-from isle.models import Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context
+from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi
+from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
+                         LabsEventBlock, LabsEventResult)
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -26,74 +29,70 @@ def refresh_events_data():
     В процессе обновления эвент может быть удален, но только если он запланирован как минимум на следующий день.
     """
     try:
-        data = LabsApi().get_activities()
-    except ApiError:
-        return
-    try:
         event_types = {}
         existing_uids = set(Event.objects.values_list('uid', flat=True))
         fetched_events = set()
-        activities = data
         filter_dict = lambda d, excl: {k: d.get(k) for k in d if k not in excl}
         ACTIVITY_EXCLUDE_KEYS = ['runs', 'activity_type']
         RUN_EXCLUDE_KEYS = ['events']
-        EVENT_EXCLUDE_KEYS = ['time_slot']
-        for activity in activities:
-            title = activity.get('title', '')
-            runs = activity.get('runs') or []
-            event_type = None
-            activity_types = activity.get('type')
-            activity_type = activity_types and activity_types[0]
-            activity_json = filter_dict(activity, ACTIVITY_EXCLUDE_KEYS)
-            activity_json['ext_id'] = activity_json.get('id')
-            activity_uid = activity.get('uuid')
-            if activity_uid:
-                main_author = ''
-                authors = activity.get('authors') or []
-                for author in authors:
-                    if author.get('is_main'):
-                        main_author = author.get('title')
-                        break
-                current_activity = Activity.objects.update_or_create(
-                    uid=activity_uid,
-                    defaults={
-                        'ext_id': activity.get('id'),
-                        'title': title,
-                        'main_author': main_author,
-                        'is_deleted': bool(activity.get('is_deleted')),
-                    }
-                )[0]
-            else:
-                continue
-            if activity_type and activity_type.get('id'):
-                event_type = event_types.get(int(activity_type['id']))
-                if not event_type:
-                    event_type = EventType.objects.update_or_create(
-                        ext_id=int(activity_type['id']),
-                        defaults={'title': activity_type.get('title'),
-                                  'description': activity_type.get('description') or ''}
+        EVENT_EXCLUDE_KEYS = ['time_slot', 'blocks']
+        for data in LabsApi().get_activities():
+            for activity in data:
+                title = activity.get('title', '')
+                runs = activity.get('runs') or []
+                event_type = None
+                activity_types = activity.get('types')
+                activity_type = activity_types and activity_types[0]
+                activity_json = filter_dict(activity, ACTIVITY_EXCLUDE_KEYS)
+                activity_uid = activity.get('uuid')
+                if activity_uid:
+                    main_author = ''
+                    authors = activity.get('authors') or []
+                    for author in authors:
+                        if author.get('is_main'):
+                            main_author = author.get('title')
+                            break
+                    current_activity = Activity.objects.update_or_create(
+                        uid=activity_uid,
+                        defaults={
+                            'title': title,
+                            'main_author': main_author,
+                            'is_deleted': bool(activity.get('is_deleted')),
+                        }
                     )[0]
-            for run in runs:
-                run_json = filter_dict(run, RUN_EXCLUDE_KEYS)
-                run_json['ext_id'] = run_json.get('id')
-                events = run.get('events') or []
-                for event in events:
-                    event_json = filter_dict(event, EVENT_EXCLUDE_KEYS)
-                    event_json['ext_id'] = event_json.get('id')
-                    uid = event['uuid']
-                    timeslot = event.get('time_slot')
-                    is_active = False if event.get('is_delete') else True
-                    dt_start, dt_end = datetime.now(), datetime.now()
-                    if timeslot:
-                        dt_start = parse_datetime(timeslot['start']) or datetime.now()
-                        dt_end = parse_datetime(timeslot['end']) or datetime.now()
-                    e = Event.objects.update_or_create(uid=uid, defaults={
-                        'is_active': is_active,
-                        'ext_id': event.get('id'),
-                        'activity': current_activity,
-                        'data': {'event': event_json, 'run': run_json, 'activity': activity_json},
-                        'dt_start': dt_start, 'dt_end': dt_end, 'title': title, 'event_type': event_type})[0]
-                    fetched_events.add(e.uid)
+                else:
+                    continue
+                if activity_type and activity_type.get('uuid'):
+                    event_type = event_types.get(activity_type['uuid'])
+                    if not event_type:
+                        event_type = EventType.objects.update_or_create(
+                            uuid=activity_type['uuid'],
+                            defaults={'title': activity_type.get('title'),
+                                      'description': activity_type.get('description') or ''}
+                        )[0]
+                for run in runs:
+                    run_json = filter_dict(run, RUN_EXCLUDE_KEYS)
+                    events = run.get('events') or []
+                    for event in events:
+                        event_json = filter_dict(event, EVENT_EXCLUDE_KEYS)
+                        uid = event['uuid']
+                        timeslot = event.get('time_slot')
+                        is_active = False if event.get('is_deleted') else True
+                        dt_start, dt_end = datetime.now(), datetime.now()
+                        if timeslot:
+                            dt_start = parse_datetime(timeslot['start']) or datetime.now()
+                            dt_end = parse_datetime(timeslot['end']) or datetime.now()
+                        e, e_created = Event.objects.update_or_create(uid=uid, defaults={
+                            'is_active': is_active,
+                            'activity': current_activity,
+                            'data': {'event': event_json, 'run': run_json, 'activity': activity_json},
+                            'dt_start': dt_start, 'dt_end': dt_end, 'title': title, 'event_type': event_type})
+                        update_event_structure(
+                            event.get('blocks', []),
+                            e,
+                            e.blocks.values_list('uuid', flat=True) if not e_created else []
+                        )
+                        fetched_events.add(e.uid)
         delete_events = existing_uids - fetched_events - {getattr(settings, 'API_DATA_EVENT', '')}
         Event.objects.filter(uid__in=delete_events).update(is_active=False)
         # если произошли изменения в списке будущих эвентов
@@ -104,8 +103,103 @@ def refresh_events_data():
             logging.warning('Event(s) with uuid: {} were deleted'.format(', '.join(delete_events)))
             delete_qs.delete()
         return True
+    except ApiError:
+        return
     except Exception:
         logging.exception('Failed to handle events data')
+
+
+def update_event_structure(data, event, event_blocks_uuid):
+    """
+    Обновление структуры эвента
+    :param data json со структурой
+    :param event объект Event
+    :param event_blocks_uuid список текущих uuid-ов блоков мероприятия
+    """
+    def _parse_meta(meta):
+        if isinstance(meta, str):
+            try:
+                return json.loads(meta)
+            except:
+                return
+        elif isinstance(meta, list):
+            return meta
+        return
+
+    created_blocks = []
+    try:
+        for block_order, block in enumerate(data, 1):
+            block_uuid = block.get('uuid')
+            if not block_uuid:
+                logging.error("Didn't get uuid for block: %s" % block)
+                continue
+            b, created = LabsEventBlock.objects.update_or_create(uuid=block_uuid, defaults={
+                'event_id': event.id,
+                'title': block.get('title') or '',
+                'description': block.get('description') or '',
+                'block_type': block.get('type') or '',
+                'order': block_order,
+            })
+            created_blocks.append(b.uuid)
+            results = block.get('results') or []
+            block_results = b.results.values_list('uuid', flat=True) if not created else []
+            created_results = []
+            for result_order, result in enumerate(results, 1):
+                result_uuid = result.get('uuid')
+                if not result_uuid:
+                    logging.error("Didn't get uuid for result: %s" % result)
+                    continue
+                r, r_created = LabsEventResult.objects.update_or_create(uuid=result_uuid, defaults={
+                    'block_id': b.id,
+                    'title': result.get('title') or '',
+                    'result_format': result.get('format') or '',
+                    'fix': result.get('fix') or '',
+                    'check': result.get('check') or '',
+                    'order': result_order,
+                    'meta': _parse_meta(result.get('meta')),
+                })
+                created_results.append(r.uuid)
+            if set(block_results) - set(created_results):
+                b.results.exclude(uuid__in=created_results).delete()
+        if set(event_blocks_uuid) - set(created_blocks):
+            event.blocks.exclude(uuid__in=created_blocks).delete()
+    except Exception:
+        logging.exception('Failed to parse event structure')
+
+
+def update_event_entries():
+    """
+    добавление EventEntry по данным из xle
+    """
+    try:
+        by_event = defaultdict(list)
+        unti_id_to_id = dict(User.objects.filter(unti_id__isnull=False).values_list('unti_id', 'id'))
+        events = dict(Event.objects.values_list('uid', 'id'))
+        for data in XLEApi().get_attendance():
+            for item in data:
+                if item.get('attendance') and item.get('event_uuid') and item.get('unti_id'):
+                    by_event[item['event_uuid']].append(item['unti_id'])
+        for event_uuid, unti_ids in by_event.items():
+            event_id = events.get(event_uuid)
+            if not event_id:
+                logging.error('Event with uuid %s not found' % event_uuid)
+                continue
+            users = []
+            for unti_id in unti_ids:
+                user_id = unti_id_to_id.get(unti_id)
+                if not user_id:
+                    logging.error('User with unti_id %s not found' % unti_id)
+                    continue
+                users.append(user_id)
+            existing = list(EventEntry.objects.filter(event__uid=event_uuid).values_list('user_id', flat=True))
+            create = set(users) - set(existing)
+            for user_id in create:
+                EventEntry.all_objects.update_or_create(event_id=event_id, user_id=user_id, defaults={'deleted': False})
+        return True
+    except ApiError:
+        return False
+    except Exception:
+        logging.exception('Failed to parse xle attendance')
 
 
 def update_events_traces():
@@ -223,28 +317,27 @@ def update_contexts():
     апдейт контекстов и привязка к ним эвентов
     """
     try:
-        data = LabsApi().get_contexts()
+        for data in LabsApi().get_contexts():
+            for context in data:
+                timezone = context.get('timezone')
+                uuid = context.get('uuid')
+                if not timezone:
+                    logging.error('context has no timezone')
+                    continue
+                try:
+                    pytz.timezone(timezone)
+                except pytz.UnknownTimeZoneError:
+                    logging.error('unknown timezone %s' % timezone)
+                    continue
+                c = Context.objects.update_or_create(uuid=uuid, defaults={'timezone': timezone})[0]
+                events = []
+                for run in (context.get('runs') or []):
+                    for event in (run.get('events') or []):
+                        uuid = event.get('uuid')
+                        if uuid:
+                            events.append(uuid)
+                Event.objects.filter(uid__in=events).update(context=c)
     except ApiError:
         return
-    try:
-        for context in data:
-            timezone = context.get('timezone')
-            uuid = context.get('uuid')
-            if not timezone:
-                logging.error('context has no timezone')
-                continue
-            try:
-                pytz.timezone(timezone)
-            except pytz.UnknownTimeZoneError:
-                logging.error('unknown timezone %s' % timezone)
-                continue
-            c = Context.objects.update_or_create(uuid=uuid, defaults={'timezone': timezone})[0]
-            events = []
-            for run in (context.get('runs') or []):
-                for event in (run.get('events') or []):
-                    uuid = event.get('uuid')
-                    if uuid:
-                        events.append(uuid)
-            Event.objects.filter(uid__in=events).update(context=c)
     except Exception:
         logging.exception('Failed to parse contexts')

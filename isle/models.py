@@ -9,6 +9,7 @@ from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext_lazy as _
@@ -35,7 +36,8 @@ class User(AbstractUser):
 
 
 class EventType(models.Model):
-    ext_id = models.PositiveIntegerField(unique=True, verbose_name='Внешний id')
+    ext_id = models.PositiveIntegerField(verbose_name='Внешний id', null=True)
+    uuid = models.CharField(max_length=36)
     title = models.CharField(max_length=500, verbose_name='Название')
     description = models.TextField(verbose_name='Описание', blank=True, default='')
     visible = models.BooleanField(verbose_name='Отображать в списке мероприятий', default=True)
@@ -53,7 +55,7 @@ class EventType(models.Model):
 
 class Activity(models.Model):
     uid = models.CharField(max_length=255, unique=True)
-    ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS', db_index=True)
+    ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS', db_index=True, null=True)
     title = models.CharField(max_length=1000)
     main_author = models.CharField(max_length=500, default='')
     is_deleted = models.BooleanField(default=False, verbose_name=_(u'Удалено'))
@@ -81,7 +83,7 @@ class Event(models.Model):
     title = models.CharField(max_length=1000, default='', verbose_name='Название')
     event_type = models.ForeignKey(EventType, on_delete=models.SET_NULL, verbose_name='Тип мероприятия',
                                    blank=True, null=True, default=None)
-    ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS')
+    ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS', null=True)
 
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, default=None, null=True)
     context = models.ForeignKey(Context, on_delete=models.SET_NULL, null=True, default=None)
@@ -426,13 +428,22 @@ class AbstractMaterial(models.Model):
         elif self.file:
             return self.file.url
 
+    def get_file_name(self):
+        if self.url:
+            s = self.url
+        elif self.file:
+            s = self.file.name
+        else:
+            return ''
+        return urllib.parse.urlparse(s).path.rstrip('/').split('/')[-1]
+
     def get_name(self):
         if self.file:
             return urllib.parse.unquote(os.path.basename(self.file.url))
         return self.url
 
     def __str__(self):
-        return '#%s %s' % (self.id, self.get_url())
+        return '%s %s' % (self.get_initiator_user() or '', self.get_url())
 
     def get_owners(self):
         if hasattr(self, 'owners'):
@@ -482,6 +493,7 @@ class EventMaterial(AbstractMaterial):
     is_public = models.BooleanField(default=False)
     comment = models.CharField(default='', max_length=255)
     result = models.ForeignKey(UserResult, on_delete=models.CASCADE, null=True, default=None)
+    result_v2 = models.ForeignKey('LabsUserResult', on_delete=models.SET_NULL, null=True, default=None)
 
     class Meta:
         verbose_name = _(u'Материал')
@@ -508,6 +520,12 @@ class EventMaterial(AbstractMaterial):
         )
         EventOnlyMaterial.objects.filter(id=material.id).update(deleted=True)
         return new_obj
+
+    def get_page_url(self):
+        return '{}{}'.format(
+            settings.BASE_URL,
+            reverse('load-materials', kwargs={'uid': self.event.uid, 'unti_id': self.user.unti_id})
+        )
 
 
 class Team(models.Model):
@@ -641,3 +659,49 @@ class ApiUserChart(models.Model):
 
     class Meta:
         unique_together = ('user', 'event')
+
+
+class LabsEventBlock(models.Model):
+    """
+    Блоки мероприятия по данным из лабс
+    """
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='blocks', verbose_name=_('Мероприятие'))
+    uuid = models.CharField(max_length=36, unique=True, verbose_name=_('UUID'))
+    title = models.CharField(max_length=255, verbose_name=_('Название'))
+    description = models.TextField(verbose_name=_('Описание'))
+    block_type = models.CharField(max_length=255, verbose_name=_('Тип блока'))
+    order = models.IntegerField(verbose_name=_('Порядок отображения в рамках мероприятия'))
+
+    class Meta:
+        ordering = ['order']
+
+
+class LabsEventResult(models.Model):
+    """
+    Результаты блоков мароприятий по данным из лабс
+    """
+    block = models.ForeignKey(LabsEventBlock, on_delete=models.CASCADE, related_name='results',
+                              verbose_name=_('Блок мероприятия'))
+    uuid = models.CharField(max_length=36, unique=True, verbose_name=_('UUID'))
+    title = models.TextField(verbose_name=_('Название'))
+    result_format = models.CharField(max_length=50, verbose_name=_('Формат работы'))
+    fix = models.TextField(verbose_name=_('Способ фиксации результата'))
+    check = models.TextField(verbose_name=_('Способ проверки результата'))
+    order = models.IntegerField(verbose_name=_('Порядок отображения в рамках блока мероприятия'))
+    meta = JSONField(default=None, null=True, verbose_name=_('Ячейки, в которые попадает ЦС'))
+
+    class Meta:
+        ordering = ['order']
+
+
+class LabsUserResult(models.Model):
+    """
+    модель для привязки пользовательских файлов к результату LabsEventResult
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    result = models.ForeignKey(LabsEventResult, on_delete=models.CASCADE)
+    comment = models.TextField(default='')
+    approved = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ('user', 'result')

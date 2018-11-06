@@ -7,6 +7,7 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import logout as base_logout
 from django.core.exceptions import PermissionDenied, SuspiciousOperation
+from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -26,8 +27,10 @@ from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
 from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset, \
     EventMaterialForm
+from isle.kafka import send_object_info, KafkaActions
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
-    Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart
+    Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
+    LabsEventResult, LabsUserResult
 from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data
@@ -109,7 +112,7 @@ class Index(TemplateView):
     @cached_property
     def activity_filter(self):
         try:
-            return Activity.objects.get(ext_id=self.request.GET.get('activity'))
+            return Activity.objects.get(id=self.request.GET.get('activity'))
         except (ValueError, TypeError, Activity.DoesNotExist):
             return
 
@@ -259,24 +262,26 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
         material_id = request.POST.get('material_id')
         if not material_id or not material_id.isdigit():
             return JsonResponse({}, status=400)
-        trace = Trace.objects.filter(id=request.POST['trace_name']).first()
-        if not trace:
+        result_value = self._get_result_value(request)
+        if not result_value:
             return JsonResponse({}, status=400)
-        return self._delete_item(trace, material_id)
+        return self._delete_item(result_value, material_id)
+
+    def get_result_key_and_value(self, request):
+        return self._get_result_key(), self._get_result_value(request)
+
+    def _get_result_key(self):
+        return 'trace'
+
+    def _get_result_value(self, request):
+        return Trace.objects.filter(id=request.POST['trace_name']).first()
 
     def add_item(self, request, block_upload=False):
-        trace, result = None, None
-        if not block_upload:
-            trace = Trace.objects.filter(id=request.POST['trace_name']).first()
-        else:
-            result = self.get_result_for_request(request)
-        if (block_upload and not result) or (not block_upload and not trace):
+        result_key, result_value = self.get_result_key_and_value(request)
+        if not result_value:
             return JsonResponse({}, status=400)
         data = self.get_material_fields(request)
-        if not block_upload:
-            data['trace'] = trace
-        else:
-            data['result'] = result
+        data[result_key] = result_value
         url = request.POST.get('url_field')
         file_ = request.FILES.get('file_field')
         if bool(file_) == bool(url):
@@ -305,7 +310,7 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
             'data_attrs': material.render_metadata(),
             'can_set_public': self._can_set_public()
         }
-        self.update_add_item_response(resp, material, trace)
+        self.update_add_item_response(resp, material, result_value)
         if self.extra_context and self.extra_context.get('team_upload'):
             resp['uploader_name'] = request.user.fio
         return JsonResponse(resp)
@@ -323,6 +328,103 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
         users = {i.unti_id: i for i in User.objects.filter(unti_id__in=filter(None, [j.initiator for j in qs]))}
         for item in qs:
             item.initiator_user = users.get(item.initiator)
+
+
+class BaseLoadMaterialsLabsResults:
+    """
+    Базовый класс для вьюх загрузки результатов в привязке к лабсовским результатам
+    """
+    results_model = LabsUserResult
+    lookup_attr = 'user'
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        blocks = self.event.blocks.prefetch_related('results')
+        data.update({'blocks': blocks})
+        return data
+
+    def post(self, request, *args, **kwargs):
+        resp = self.check_post_allowed(request)
+        if resp is not None:
+            return resp
+        result_id_error = self._check_labs_result_id(request)
+        if 'add_btn' in request.POST:
+            if result_id_error is not None:
+                return result_id_error
+            return self.add_item(request)
+        elif 'action' in request.POST and request.POST['action'] in ['delete_all']:
+            if result_id_error is not None:
+                return result_id_error
+            return self.action_delete_all(request)
+        return self.delete_item(request)
+
+    def action_delete_all(self, request):
+        result = self.results_model.objects.filter(**{
+            'result_id': request.POST.get('labs_result_id'), self.lookup_attr: getattr(self, self.lookup_attr)
+        }).first()
+        if not result:
+            return JsonResponse({}, status=400)
+        materials = self.material_model.objects.filter(**{
+            'event': self.event,
+            self.lookup_attr: getattr(self, self.lookup_attr),
+            'result_v2': result
+        })
+        try:
+            with transaction.atomic():
+                tmp_materials = [(m.id, m) for m in materials]
+                materials.delete()
+                result.delete()
+                for m_id, m in tmp_materials:
+                    send_object_info(m, m_id, KafkaActions.DELETE)
+        except Exception:
+            logging.exception('Failed to delete result %s for user %s' % (result.id, result.user.username))
+            return JsonResponse({}, status=500)
+        logging.warning('User %s deleted all result files for %s %s result #%s' %
+                        (request.user.username, self.lookup_attr, getattr(self, self.lookup_attr).id,
+                         request.POST.get('labs_result_id')))
+        return JsonResponse({})
+
+    def delete_item(self, request):
+        material_id = request.POST.get('material_id')
+        if not material_id or not material_id.isdigit():
+            return JsonResponse({}, status=400)
+        if 'labs_result_id' in request.POST:
+            result_value = self.get_result_for_request(request, create=False)
+            if not result_value:
+                return JsonResponse({}, status=400)
+            return self._delete_item(result_value, material_id)
+        # обработка удаления старых файлов, не привязанных к результатам из лабс
+        material = self.material_model.objects.filter(**{
+            'event': self.event,
+            self.lookup_attr: getattr(self, self.lookup_attr),
+            'result_v2__isnull': True,
+            'id': request.POST.get('material_id', 0),
+        }).first()
+        if not material:
+            return JsonResponse({}, status=400)
+        logging.warning('User %s deleted old file %s for %s %s' %
+                        (request.user.username, material.get_url(), self.lookup_attr, getattr(self, self.lookup_attr)))
+        material.delete()
+        return JsonResponse({})
+
+    def _check_labs_result_id(self, request):
+        try:
+            result_id = int(request.POST.get('labs_result_id'))
+        except (ValueError, TypeError):
+            return JsonResponse({}, status=400)
+        if not result_id or not LabsEventResult.objects.filter(id=result_id, block__event_id=self.event.id).exists():
+            return JsonResponse({}, status=400)
+
+    def _get_result_key(self):
+        return 'result_v2'
+
+    def _get_result_value(self, request):
+        return self.get_result_for_request(request)
+
+    def update_add_item_response(self, resp, material, trace):
+        resp['comment'] = trace.comment
+        # отправка сообщения о созданном материале
+        send_object_info(material, material.id, KafkaActions.CREATE)
 
 
 class BaseLoadMaterialsResults(object):
@@ -356,6 +458,12 @@ class BaseLoadMaterialsResults(object):
         if not result_id or not self.check_event_has_result(result_id):
             return JsonResponse({}, status=400)
         return self.add_item(request, block_upload=True)
+
+    def _get_result_key(self):
+        return 'result'
+
+    def _get_result_value(self, request):
+        return self.get_result_for_request(request)
 
     def check_event_has_result(self, result_id):
         pass
@@ -420,6 +528,72 @@ class LoadMaterials(BaseLoadMaterials):
 
     def make_file_path(self, fn):
         return os.path.join(self.event.uid, str(self.user.unti_id), fn)
+
+
+class LoadUserMaterialsResult(BaseLoadMaterialsLabsResults, LoadMaterials):
+    template_name = 'personal_results.html'
+    material_model = EventMaterial
+    extra_context = {'user_upload': True}
+
+    def get_material_fields(self, request):
+        return dict(event=self.event, user=self.user, is_public=True)
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        blocks = data['blocks']
+        result_files = defaultdict(list)
+        for f in EventMaterial.objects.filter(event=self.event, result_v2__isnull=False, user=self.user).\
+                select_related('result_v2').order_by('-id'):
+            result_files[f.result_v2.result_id].append(f)
+        for block in blocks:
+            for result in block.results.all():
+                result.files = result_files.get(result.id, [])
+        traces = data['traces']
+        links = functools.reduce(lambda x, y: x + y, [i.get('links', []) for i in traces], [])
+        data.update({
+            'old_results': self.get_old_results(),
+            'links': links,
+        })
+        return data
+
+    def get_old_results(self):
+        """
+        получение старых результатов UserResult если такие есть
+        """
+        results = UserResult.objects.filter(event=self.event, user=self.user).order_by('id')
+        if not results:
+            return []
+        data = defaultdict(list)
+        for item in self.material_model.objects.filter(user=self.user, result__isnull=False):
+            data[item.result_id].append(item)
+        res = []
+        for result in results:
+            res.append({'result': result, 'links': data.get(result.id, [])})
+        return res
+
+    def _delete_item(self, trace, material_id):
+        if trace.approved:
+            return JsonResponse({'error': 'result was approved'}, status=400)
+        material = EventMaterial.objects.filter(
+            event=self.event, user=self.user, id=material_id, result_v2=trace
+        ).first()
+        if not material:
+            return JsonResponse({}, status=400)
+        material.delete()
+        send_object_info(material, material_id, KafkaActions.DELETE)
+        logging.warning('User %s has deleted file %s for user %s' %
+                        (self.request.user.username, material.get_url(), self.user.username))
+        # удаление связи пользователя с результатом, если у пользователя больше нет файлов
+        # с привязкой к этому результату
+        if not EventMaterial.objects.filter(result_v2=trace, event=self.event, user=self.user).exists():
+            trace.delete()
+        return JsonResponse({})
+
+    def get_result_for_request(self, request, create=True):
+        if create:
+            return LabsUserResult.objects.update_or_create(result_id=request.POST.get('labs_result_id'), user=self.user,
+                                                           defaults={'comment': request.POST.get('comment', '')})[0]
+        return LabsUserResult.objects.filter(result_id=request.POST.get('labs_result_id'), user=self.user).first()
 
 
 class LoadMaterialsAssistant(BaseLoadMaterialsResults, LoadMaterials):
@@ -646,6 +820,8 @@ class LoadEventMaterials(BaseLoadMaterials):
         return dict(event=self.event, comment=request.POST.get('comment', ''))
 
     def update_add_item_response(self, resp, material, trace):
+        if not isinstance(trace, Trace):
+            return
         form = EventMaterialForm(instance=material, data=self.request.POST, prefix=str(trace.id), event=self.event)
         if form.is_valid():
             material = form.save()
@@ -1193,7 +1369,7 @@ class TransferView(GetEventMixin, View):
     def post(self, request, uid=None):
         if request.POST.get('type') == 'event':
             return self.move_to_event(request)
-        if request.POST.get('type') not in ['user', 'team']:
+        if request.POST.get('type') not in ['team']:
             return JsonResponse({}, status=400)
         try:
             material = EventOnlyMaterial.objects.get(event=self.event, id=request.POST.get('material_id'))
@@ -1252,7 +1428,7 @@ class ActivitiesView(TemplateView):
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
         activities = self.get_activities().filter(event__event_type_id__in=get_allowed_event_type_ids()).distinct()
-        activities = activities.order_by('title', 'ext_id').annotate(event_count=Count('event'))
+        activities = activities.order_by('title', 'id').annotate(event_count=Count('event'))
         user_materials = dict(EventMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
         team_materials = dict(EventTeamMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
         event_materials = dict(EventOnlyMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
@@ -1424,7 +1600,7 @@ class RolesFormsetRender(GetEventMixin, TemplateView):
     отрисовка формсета с ролями пользователей, нужно для того чтобы без проблем менять
     формсеты на форме редактирования результата при нажатии кнопки редактирования
     """
-    template_name = '_user_roles_formset.html'
+    template_name = 'includes/_user_roles_formset.html'
 
     def get_context_data(self, **kwargs):
         if not self.request.user.is_assistant:
@@ -1528,3 +1704,101 @@ class UserChartApiView(APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
         data = recalculate_user_chart_data(user)
         return Response(data)
+
+
+class FileInfoMixin:
+    def get_file_info(self, m):
+        return {
+            'event_uuid': m.event.uid,
+            'file_url': m.get_url(),
+            'file_name': m.get_file_name(),
+            'comment': m.result_v2.comment,
+            'levels': m.result_v2.result.meta or [],
+            'url': m.get_page_url(),
+        }
+
+
+class UserMaterialsListView(FileInfoMixin, APIView):
+    """
+    **Описание**
+
+        Запрос файлов пользователя по его unti_id
+
+    **Пример запроса**
+
+        GET /api/user-materials/?unti_id=123
+
+    **Параметры запроса**
+
+        * unti_id - unti id пользователя
+
+    **Пример ответа**
+
+        * 200 успешно
+            [
+                {
+                    "event_uuid": "11111111-1111-1111-11111111",
+                    "file_url": "http://example.com/file.pdf"
+                    "file_name": "file.pdf",
+                    "comment": "",
+                    "levels": [{"level" 1, "sublevel": 1, "sector": 1}],
+                    "url": "https://uploads.2035.university/11111111-1111-1111-11111111/123/"
+                },
+                ...
+            ]
+        * 400 неполный запрос
+    """
+
+    permission_classes = (ApiPermission, )
+
+    def get(self, request):
+        unti_id = request.query_params.get('unti_id')
+        if not unti_id or not unti_id.isdigit():
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        materials = EventMaterial.objects.filter(user__unti_id=unti_id, result_v2__isnull=False).\
+            select_related('event', 'user', 'result_v2', 'result_v2__result')
+        resp = [self.get_file_info(m) for m in materials.iterator()]
+        return Response(resp)
+
+
+class MaterialInfoView(FileInfoMixin, APIView):
+    """
+    **Описание**
+
+        Запрос информации о файле по его id
+
+    **Пример запроса**
+
+        GET /api/material-info/?id=123
+
+    **Параметры запроса**
+
+        * id - id файла
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "event_uuid": "11111111-1111-1111-11111111",
+                "file_url": "http://example.com/file.pdf"
+                "file_name": "file.pdf",
+                "comment": "",
+                "levels": [{"level" 1, "sublevel": 1, "sector": 1}],
+                "url": "https://uploads.2035.university/11111111-1111-1111-11111111/123/"
+            }
+        * 400 неполный запрос
+        * 404 файл не найден
+    """
+
+    permission_classes = (ApiPermission, )
+
+    def get(self, request):
+        file_id = request.query_params.get('id')
+        if not file_id or not file_id.isdigit():
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        material = EventMaterial.objects.filter(id=file_id, result_v2__isnull=False).\
+            select_related('event', 'user', 'result_v2', 'result_v2__result').first()
+        if not material:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        resp = self.get_file_info(material)
+        return Response(resp)

@@ -264,3 +264,39 @@ nav.navbar {
 .collapse select.form-control {
     width: 100% !important;
 }
+
+.material-result-div {
+    border: solid #ccc 1px;
+    padding: 20px;
+    margin-top: 20px;
+}
+
+.select-files-btn {
+    background-color: #555 !important;
+    max-width: 40%;
+    color: white;
+}
+
+.load-results-btn {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+}
+
+.btn-transparent {
+    background-color: rgba(0,0,0,0);
+    border: none;
+}
+
+.btn-transparent:focus {
+    outline: none;
+}
+
+.result-action-buttons {
+    background-color: #ccc;
+    padding: 5px;
+}
+
+.font-red {
+    color: red;
+}
