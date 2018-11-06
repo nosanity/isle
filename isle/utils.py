@@ -129,7 +129,11 @@ def update_event_structure(data, event, event_blocks_uuid):
     created_blocks = []
     try:
         for block_order, block in enumerate(data, 1):
-            b, created = LabsEventBlock.objects.update_or_create(uuid=block.get('uuid'), defaults={
+            block_uuid = block.get('uuid')
+            if not block_uuid:
+                logging.error("Didn't get uuid for block: %s" % block)
+                continue
+            b, created = LabsEventBlock.objects.update_or_create(uuid=block_uuid, defaults={
                 'event_id': event.id,
                 'title': block.get('title') or '',
                 'description': block.get('description') or '',
@@ -141,7 +145,11 @@ def update_event_structure(data, event, event_blocks_uuid):
             block_results = b.results.values_list('uuid', flat=True) if not created else []
             created_results = []
             for result_order, result in enumerate(results, 1):
-                r, r_created = LabsEventResult.objects.update_or_create(uuid=result.get('uuid'), defaults={
+                result_uuid = result.get('uuid')
+                if not result_uuid:
+                    logging.error("Didn't get uuid for result: %s" % result)
+                    continue
+                r, r_created = LabsEventResult.objects.update_or_create(uuid=result_uuid, defaults={
                     'block_id': b.id,
                     'title': result.get('title') or '',
                     'result_format': result.get('format') or '',

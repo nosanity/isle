@@ -7,6 +7,7 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import logout as base_logout
 from django.core.exceptions import PermissionDenied, SuspiciousOperation
+from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -368,10 +369,16 @@ class BaseLoadMaterialsLabsResults:
             self.lookup_attr: getattr(self, self.lookup_attr),
             'result_v2': result
         })
-        for m in materials:
-            send_object_info(m, KafkaActions.DELETE)
-        materials.delete()
-        result.delete()
+        try:
+            with transaction.atomic():
+                tmp_materials = [(m.id, m) for m in materials]
+                materials.delete()
+                result.delete()
+                for m_id, m in tmp_materials:
+                    send_object_info(m, m_id, KafkaActions.DELETE)
+        except Exception:
+            logging.exception('Failed to delete result %s for user %s' % (result.id, result.user.username))
+            return JsonResponse({}, status=500)
         logging.warning('User %s deleted all result files for %s %s result #%s' %
                         (request.user.username, self.lookup_attr, getattr(self, self.lookup_attr).id,
                          request.POST.get('labs_result_id')))
@@ -416,7 +423,8 @@ class BaseLoadMaterialsLabsResults:
 
     def update_add_item_response(self, resp, material, trace):
         resp['comment'] = trace.comment
-        send_object_info(material, KafkaActions.CREATE)
+        # отправка сообщения о созданном материале
+        send_object_info(material, material.id, KafkaActions.CREATE)
 
 
 class BaseLoadMaterialsResults(object):
@@ -571,8 +579,8 @@ class LoadUserMaterialsResult(BaseLoadMaterialsLabsResults, LoadMaterials):
         ).first()
         if not material:
             return JsonResponse({}, status=400)
-        send_object_info(material, KafkaActions.DELETE)
         material.delete()
+        send_object_info(material, material_id, KafkaActions.DELETE)
         logging.warning('User %s has deleted file %s for user %s' %
                         (self.request.user.username, material.get_url(), self.user.username))
         # удаление связи пользователя с результатом, если у пользователя больше нет файлов

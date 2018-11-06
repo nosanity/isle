@@ -182,6 +182,8 @@ API_DATA_EVENT = ''
 KAFKA_TOPIC = 'uploads'
 KAFKA_HOST = ''
 KAFKA_PORT = 80
+KAFKA_TOKEN = ''
+KAFKA_PROTOCOL = 'http'
 
 from .local_settings import *
 

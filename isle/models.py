@@ -662,26 +662,33 @@ class ApiUserChart(models.Model):
 
 
 class LabsEventBlock(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='blocks')
-    uuid = models.CharField(max_length=36, unique=True)
-    title = models.CharField(max_length=255)
-    description = models.TextField()
-    block_type = models.CharField(max_length=255)
-    order = models.IntegerField()
+    """
+    Блоки мероприятия по данным из лабс
+    """
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='blocks', verbose_name=_('Мероприятие'))
+    uuid = models.CharField(max_length=36, unique=True, verbose_name=_('UUID'))
+    title = models.CharField(max_length=255, verbose_name=_('Название'))
+    description = models.TextField(verbose_name=_('Описание'))
+    block_type = models.CharField(max_length=255, verbose_name=_('Тип блока'))
+    order = models.IntegerField(verbose_name=_('Порядок отображения в рамках мероприятия'))
 
     class Meta:
         ordering = ['order']
 
 
 class LabsEventResult(models.Model):
-    block = models.ForeignKey(LabsEventBlock, on_delete=models.CASCADE, related_name='results')
-    uuid = models.CharField(max_length=36, unique=True)
-    title = models.TextField()
-    result_format = models.CharField(max_length=50)
-    fix = models.TextField()
-    check = models.TextField()
-    order = models.IntegerField()
-    meta = JSONField(default=None, null=True)
+    """
+    Результаты блоков мароприятий по данным из лабс
+    """
+    block = models.ForeignKey(LabsEventBlock, on_delete=models.CASCADE, related_name='results',
+                              verbose_name=_('Блок мероприятия'))
+    uuid = models.CharField(max_length=36, unique=True, verbose_name=_('UUID'))
+    title = models.TextField(verbose_name=_('Название'))
+    result_format = models.CharField(max_length=50, verbose_name=_('Формат работы'))
+    fix = models.TextField(verbose_name=_('Способ фиксации результата'))
+    check = models.TextField(verbose_name=_('Способ проверки результата'))
+    order = models.IntegerField(verbose_name=_('Порядок отображения в рамках блока мероприятия'))
+    meta = JSONField(default=None, null=True, verbose_name=_('Ячейки, в которые попадает ЦС'))
 
     class Meta:
         ordering = ['order']
