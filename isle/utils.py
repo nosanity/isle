@@ -76,7 +76,7 @@ def refresh_events_data():
                     for event in events:
                         event_json = filter_dict(event, EVENT_EXCLUDE_KEYS)
                         uid = event['uuid']
-                        timeslot = event.get('time_slot')
+                        timeslot = event.get('timeslot')
                         is_active = False if event.get('is_deleted') else True
                         dt_start, dt_end = datetime.now(), datetime.now()
                         if timeslot:
