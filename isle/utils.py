@@ -175,9 +175,12 @@ def update_event_entries():
         by_event = defaultdict(list)
         unti_id_to_id = dict(User.objects.filter(unti_id__isnull=False).values_list('unti_id', 'id'))
         events = dict(Event.objects.values_list('uid', 'id'))
+        # список пользователей, которых не удалось найти по unti id, и для которых запрос на пропушивание в sso
+        # не удался, чтобы не пытаться их пропушивать еще раз
+        failed_unti_ids = set()
         for data in XLEApi().get_attendance():
             for item in data:
-                if item.get('attendance') and item.get('event_uuid') and item.get('unti_id'):
+                if (item.get('attendance') or item.get('checkin')) and item.get('event_uuid') and item.get('unti_id'):
                     by_event[item['event_uuid']].append(item['unti_id'])
         for event_uuid, unti_ids in by_event.items():
             event_id = events.get(event_uuid)
@@ -188,8 +191,13 @@ def update_event_entries():
             for unti_id in unti_ids:
                 user_id = unti_id_to_id.get(unti_id)
                 if not user_id:
-                    logging.error('User with unti_id %s not found' % unti_id)
-                    continue
+                    created_user = pull_sso_user(unti_id) if unti_id not in failed_unti_ids else None
+                    if not created_user:
+                        logging.error('User with unti_id %s not found' % unti_id)
+                        failed_unti_ids.add(unti_id)
+                        continue
+                    user_id = created_user.id
+                    unti_id_to_id[unti_id] = user_id
                 users.append(user_id)
             existing = list(EventEntry.objects.filter(event__uid=event_uuid).values_list('user_id', flat=True))
             create = set(users) - set(existing)
@@ -200,6 +208,24 @@ def update_event_entries():
         return False
     except Exception:
         logging.exception('Failed to parse xle attendance')
+
+
+def pull_sso_user(unti_id):
+    """
+    запрос в sso на пропушивание пользователя с указанным unti id
+    """
+    try:
+        r = requests.post(
+            '{}/api/push-user-to-uploads/'.format(settings.SSO_UNTI_URL),
+            json={'unti_id': int(unti_id)},
+            headers={'X-SSO-API-KEY': settings.SSO_API_KEY},
+            timeout=settings.CONNECTION_TIMEOUT
+        )
+        assert r.ok, 'SSO status code %s' % r.status_code
+        assert r.json().get('status') is not None, 'SSO push_to_uploads failed'
+    except Exception:
+        logging.exception('Failed to pull user from sso')
+    return User.objects.filter(unti_id=unti_id).first()
 
 
 def update_events_traces():
