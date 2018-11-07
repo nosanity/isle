@@ -300,3 +300,8 @@ nav.navbar {
 .font-red {
     color: red;
 }
+
+.user-photo-div {
+    float: left;
+    margin-right: 20px;
+}

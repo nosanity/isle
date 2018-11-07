@@ -7,9 +7,14 @@
     </a>
     <h2>{% trans "Персональные результаты" %}</h2>
     <div>
-        <b>{% trans "Мероприятие:" %}</b> {{ event.title }}
-        <br>
-        {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }}{% endlocaltime %}
+        {% if user.icon %}
+            <div class="user-photo-div"><img src="{{ user.icon.Small }}"/></div>
+        {% endif %}
+        <div>
+            <b>{{ user.fio }}</b>
+            <br>
+            <b>{% trans "Мероприятие:" %}</b> {{ event.title }} {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }}{% endlocaltime %}
+        </div>
     </div>
 
     <div>
@@ -39,7 +44,7 @@
                             <div class="col-md-6">
                                 {% if can_upload %}
                                 <button class="btn btn-warning load-results-btn">
-                                    {% if not result.files|length %}{% trans "Загрузить" %}{% else %}{% trans "Загрузить еще один результат" %}{% endif %}
+                                    {% if not result.results|length %}{% trans "Загрузить" %}{% else %}{% trans "Загрузить еще один результат" %}{% endif %}
                                 </button>
                                 {% endif %}
                             </div>
@@ -73,7 +78,7 @@
                                                     <input type="url" name="url_field" class="form-control full-width" id="url" placeholder="Укажите URL-ссылку на материал">
                                                 </div>
                                                 <div class="materials-form-comment-div">
-                                                    <textarea id="description" maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Описание файлов (не обязательно)"></textarea>
+                                                    <textarea maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Описание файлов (не обязательно)"></textarea>
                                                 </div>
                                             </div>
                                         </div>
@@ -89,33 +94,35 @@
                                 </form>
                             {% endif %}
 
-                        <div class="row">
-                            <div class="col-md-9">
-                                <ul class="list-group list-group-flush">
-                                    {% for link in result.files %}
-                                        <li class="list-group-item no-left-padding">
-                                            <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
-                                            {% if can_upload %}
-                                                <button name="material_id" value="{{ link.id }}" class="btn-transparent delete-material-btn pull-right">
-                                                    <span class="glyphicon glyphicon-remove"></span>
-                                                </button>
-                                            {% endif %}
-                                        </li>
-                                    {% endfor %}
-                                </ul>
-                                <p class="result-comment">
-                                    {% if result.files %}
-                                        {% with tmp=result.files|first %}
-                                            {{ tmp.result_v2.comment }}
-                                        {% endwith %}
-                                    {% endif %}
-                                </p>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="result-helper-block" {% if not result.files %}style=""{% endif %}>
-                                    <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
-                                </div>
-                            </div>
+                        <div class="result-items-wrapper">
+                            <ul class="list-group list-group-flush">
+                                {% for result_item in result.results %}
+                                    <li class="list-group-item no-left-padding result-item-li">
+                                        <div class="row">
+                                            <div class="col-md-9">
+                                                <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="{{ result_item.id }}">
+                                                    {% for link in result_item.links %}
+                                                        <li>
+                                                            <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
+                                                            {% if can_upload %}
+                                                                <button name="material_id" value="{{ link.id }}" class="btn-transparent delete-material-btn pull-right">
+                                                                    <span class="glyphicon glyphicon-remove"></span>
+                                                                </button>
+                                                            {% endif %}
+                                                        </li>
+                                                    {% endfor %}
+                                                </ul>
+                                                <p class="result-comment">{{ result_item.comment }}</p>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="result-helper-block">
+                                                    <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </li>
+                                {% endfor %}
+                            </ul>
                         </div>
 
                     </div>
