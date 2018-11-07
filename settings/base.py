@@ -147,6 +147,8 @@ ACTIVITIES_PER_PAGE = 20
 ### параметры, которые надо указать в local_settings ###
 # урл sso без / в конце
 SSO_UNTI_URL = ''
+# ключ апи sso
+SSO_API_KEY = ''
 # key и secret для oauth авторизации
 SOCIAL_AUTH_UNTI_KEY = ''
 SOCIAL_AUTH_UNTI_SECRET = ''
