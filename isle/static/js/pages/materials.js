@@ -110,7 +110,6 @@ $('.load-results-btn').on('click', (e) => {
     let div = $(e.target).parents('.material-result-div');
     div.find('form').removeClass('hidden');
     $(e.target).hide();
-    div.find('textarea[name="comment"]').val(div.find('.result-comment').text().trim());
 });
 
 $('.hide-results-form-btn').on('click', (e) => {

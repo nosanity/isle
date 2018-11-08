@@ -352,15 +352,33 @@ class BaseLoadMaterialsLabsResults:
             if result_id_error is not None:
                 return result_id_error
             return self.add_item(request)
-        elif 'action' in request.POST and request.POST['action'] in ['delete_all']:
+        elif 'action' in request.POST and request.POST['action'] in ['delete_all', 'init_result']:
             if result_id_error is not None:
                 return result_id_error
-            return self.action_delete_all(request)
+            if request.POST['action'] == 'delete_all':
+                return self.action_delete_all(request)
+            elif request.POST['action'] == 'init_result':
+                return self.action_init_result(request)
         return self.delete_item(request)
 
+    def action_init_result(self, request):
+        """
+        создание результата, в который будут загружаться файлы
+        """
+        item = self.results_model.objects.create(**{
+            'result_id': request.POST.get('labs_result_id'),
+            self.lookup_attr: getattr(self, self.lookup_attr),
+            'comment': request.POST.get('comment') or '',
+        })
+        return JsonResponse({'result_id': item.id})
+
     def action_delete_all(self, request):
+        if not request.POST.get('result_item_id'):
+            return JsonResponse({}, status=400)
         result = self.results_model.objects.filter(**{
-            'result_id': request.POST.get('labs_result_id'), self.lookup_attr: getattr(self, self.lookup_attr)
+            'result_id': request.POST.get('labs_result_id'),
+            self.lookup_attr: getattr(self, self.lookup_attr),
+            'id': request.POST.get('result_item_id'),
         }).first()
         if not result:
             return JsonResponse({}, status=400)
@@ -389,7 +407,7 @@ class BaseLoadMaterialsLabsResults:
         if not material_id or not material_id.isdigit():
             return JsonResponse({}, status=400)
         if 'labs_result_id' in request.POST:
-            result_value = self.get_result_for_request(request, create=False)
+            result_value = self.get_result_for_request(request)
             if not result_value:
                 return JsonResponse({}, status=400)
             return self._delete_item(result_value, material_id)
@@ -541,18 +559,32 @@ class LoadUserMaterialsResult(BaseLoadMaterialsLabsResults, LoadMaterials):
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
         blocks = data['blocks']
-        result_files = defaultdict(list)
-        for f in EventMaterial.objects.filter(event=self.event, result_v2__isnull=False, user=self.user).\
-                select_related('result_v2').order_by('-id'):
-            result_files[f.result_v2.result_id].append(f)
+        qs = self.results_model.objects.filter(
+            user=self.user,
+            result__block__event_id=self.event.id
+        ).order_by('-id')
+        qs_materials = self.material_model.objects.filter(
+            user=self.user,
+            event=self.event,
+            result_v2__isnull=False
+        ).order_by('-id')
+        materials = defaultdict(list)
+        for m in qs_materials:
+            materials[m.result_v2_id].append(m)
+        user_results = defaultdict(list)
+        for item in qs:
+            item.links = materials.get(item.id, [])
+            if item.links:
+                user_results[item.result_id].append(item)
         for block in blocks:
             for result in block.results.all():
-                result.files = result_files.get(result.id, [])
+                result.results = user_results.get(result.id, [])
         traces = data['traces']
         links = functools.reduce(lambda x, y: x + y, [i.get('links', []) for i in traces], [])
         data.update({
             'old_results': self.get_old_results(),
             'links': links,
+            'user': self.user,
         })
         return data
 
@@ -583,17 +615,18 @@ class LoadUserMaterialsResult(BaseLoadMaterialsLabsResults, LoadMaterials):
         send_object_info(material, material_id, KafkaActions.DELETE)
         logging.warning('User %s has deleted file %s for user %s' %
                         (self.request.user.username, material.get_url(), self.user.username))
-        # удаление связи пользователя с результатом, если у пользователя больше нет файлов
+        # удаление пользовательского результата, если у пользователя больше нет файлов
         # с привязкой к этому результату
         if not EventMaterial.objects.filter(result_v2=trace, event=self.event, user=self.user).exists():
             trace.delete()
         return JsonResponse({})
 
-    def get_result_for_request(self, request, create=True):
-        if create:
-            return LabsUserResult.objects.update_or_create(result_id=request.POST.get('labs_result_id'), user=self.user,
-                                                           defaults={'comment': request.POST.get('comment', '')})[0]
-        return LabsUserResult.objects.filter(result_id=request.POST.get('labs_result_id'), user=self.user).first()
+    def get_result_for_request(self, request):
+        return LabsUserResult.objects.filter(
+            result_id=request.POST.get('labs_result_id'),
+            user=self.user,
+            id=request.POST.get('result_item_id')
+        ).first()
 
 
 class LoadMaterialsAssistant(BaseLoadMaterialsResults, LoadMaterials):

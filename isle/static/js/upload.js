@@ -122,7 +122,7 @@ function isFormValid($form) {
     const urlFilled = !!$urlField.first().val();
     const fileFilled = !!($fileField && !!$fileField.val());
 
-    return !(urlFilled && fileFilled);
+    return !(urlFilled == fileFilled);
 }
 
 function setActivateButton($form) {
@@ -144,8 +144,7 @@ function clearFileForm($form) {
     $form.find('span.file-name').html('');
     $form.find('input[name=url_field]').val('');
     $form.find('input[name=file_field]').val('');
-    if (pageType != 'loadMaterials_v2')
-        $form.find('[name=comment]').val('');
+    $form.find('[name=comment]').val('');
     $form.find('input[name=is_public]').prop('checked', false);
     try {
         $form.find('[name$=event_block]').val('');
@@ -177,6 +176,7 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
             }
             if (pageType == 'loadMaterials_v2') {
                 data['labs_result_id'] = $obj.parents('.material-result-div').data('result');
+                data['result_item_id'] = $obj.parents('.result-materials-wrapper').data('result-id');
             }
             try {
                 requestUrl = fileBlocksUploadUrl;
@@ -187,7 +187,7 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
                 data: data,
                 url: requestUrl,
                 success: (data) => {
-                    let el = $obj.parents('ul');
+                    let el = $obj.parents('div.result-items-wrapper');
                     $obj.parent('li').remove();
                     resultFilesNumberHandler(el);
                 },
@@ -206,6 +206,7 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
             csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
             trace_name: $obj.parents('form.trace-form').children('input[name=trace_name]').val(),
             action: 'delete_all',
+            result_item_id: $obj.parents('.result-item-li').find('.result-materials-wrapper').data('result-id'),
             labs_result_id: $obj.parents('.material-result-div').data('result')
         }
         $.ajax({
@@ -213,8 +214,8 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
             data: data,
             url: '',
             success: (data) => {
-                $obj.parents('.material-result-div').find('ul.list-group li').remove();
-                resultFilesNumberHandler($obj);
+                $obj.parents('.result-item-li').remove();
+                resultFilesNumberHandler($obj.parents('div.result-items-wrapper'));
             },
             error: (xhr, err) => {
                 // TODO show appropriate message
@@ -243,7 +244,7 @@ $('body').delegate('input[name=file_field]', 'change', (e) => {
         parentSelector = 'li';
     }
     else if (pageType == 'loadMaterials_v2') {
-        $button = $obj.parents('form.user-materials-form');
+        $button = $obj.parents('div.material-result-div').find('form.user-materials-form');
         parentSelector = 'form';
     } else if (pageType == 'loadUserMaterials') {
         $button = $('#result_form');
@@ -255,7 +256,7 @@ $('body').delegate('input[name=file_field]', 'change', (e) => {
     if ($obj && $obj[0].files.length != 0) {
         let filesName = 'Файл(ы) для загрузки: <br />';
         for (file of $obj[0].files) {
-            filesName += `${file.name} <br /`;
+            filesName += `${file.name} <br>`;
         }
         $obj.parents(parentSelector).find('span.file-name').html(filesName);
     }
@@ -398,14 +399,33 @@ function resultFormHandler(e) {
 
 // ajax 
 
-function successProcessFile(data, $form) {
+function successProcessFile(data, $form, result_item_id) {
     const url = data.url;
     const mId = data.material_id;
     const name = data.name;
     const comment = data.comment;
     let items, item;
     if (pageType == 'loadMaterials_v2') {
-        item = $form.parents('div.material-result-div').find('ul.list-group');
+        if (!$form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]').length) {
+            let html_wrapper = `
+                <li class="list-group-item no-left-padding result-item-li">
+                    <div class="row">
+                        <div class="col-md-9">
+                            <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="${result_item_id}">
+                            </ul>
+                            <p class="result-comment"></p>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="result-helper-block">
+                                <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
+                            </div>
+                        </div>
+                    </div>
+                </li>
+            `;
+            $form.parents('div.material-result-div').find('ul.list-group').prepend($(html_wrapper));
+        }
+        item = $form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]');
     }
     else {
         items = $form.children('ul.list-group').children('li');
@@ -415,7 +435,7 @@ function successProcessFile(data, $form) {
     let html = null;
     if (pageType == 'loadMaterials_v2') {
         html = `
-            <li class="list-group-item no-left-padding">
+            <li>
                 <a class="link_preview" href="${url}" ${data_attrs}>${name}</a>&nbsp;
                 <button name="material_id" value="${mId}" class="btn-transparent delete-material-btn pull-right">
                     <span class="glyphicon glyphicon-remove"></span>
@@ -496,8 +516,8 @@ function successProcessFile(data, $form) {
     }
     if (pageType == 'loadMaterials_v2') {
         item.prepend($(html));
-        item.parents('.material-result-div').find('.result-comment').html(comment);
-        resultFilesNumberHandler(item);
+        item.parent('div').find('.result-comment').html(comment);
+        resultFilesNumberHandler(item.parents('div.result-items-wrapper'));
     }
     else { item.before($(html)); }
     if (pageType == 'loadUserMaterials') {
@@ -533,6 +553,8 @@ function completeProcessFile(num, $form = null) {
                 clearForm($form);
             }
         }
+        if (uploads.length == 0)
+            setActivateButton($form);
     }  
 }
 
@@ -541,11 +563,12 @@ function errorProcessFile() {
     alert('error');
 }
 
-function processUrl(form) {
+function processUrl(form, result_item_id) {
     const $form = $(form);
-    const formData = new FormData(form);
+    const formData = new FormData($(form).get(0));
     formData.append('add_btn', '');
-    setActivateButton($form);
+    if (pageType == 'loadMaterials_v2')
+        formData.append('result_item_id', result_item_id);
     try {
         requestUrl = fileBlocksUploadUrl;
     }
@@ -557,8 +580,9 @@ function processUrl(form) {
         contentType: false,
         url: requestUrl,
         success: (data) => {
-            successProcessFile(data, $form);
+            successProcessFile(data, $form, result_item_id);
             clearFileForm($form);
+            setActivateButton($form);
         },
         error: errorProcessFile
     })
@@ -566,16 +590,17 @@ function processUrl(form) {
 
 // file-upload
 
-function processFile(form, file, filesLength) {
+function processFile(form, file, filesLength, result_item_id) {
     const $form = $(form);
-    const formData = new FormData(form);
+    const formData = new FormData($(form).get(0));
     if (filesLength) {
         formData.delete('file_field');
         formData.append('file_field', file, file.name);
     }
     formData.append('add_btn', '');
+    if (pageType == 'loadMaterials_v2')
+        formData.append('result_item_id', result_item_id);
     const num = filesLength ? addUploadProgress($form, file) : null;
-    setActivateButton($form);
     try {
         requestUrl = fileBlocksUploadUrl;
     }
@@ -600,7 +625,7 @@ function processFile(form, file, filesLength) {
             return xhr;            
         },
         success: (data) => {
-            successProcessFile(data, $form);
+            successProcessFile(data, $form, result_item_id);
         },
         complete: () => {
             completeProcessFile(num, $form);
@@ -611,37 +636,67 @@ function processFile(form, file, filesLength) {
 
 function formSubmitHadler(form, resultId = null) {
     const $form = $(form);
+    if (!isFormValid($form)) {
+        setActivateButton($form);
+        return false;
+    }
+    if (pageType == 'loadMaterials_v2')
+        $form.find('.add-material-btn').prop('disabled', true);
     if (isFormValid($form)) {
-        const fileField = $form.find('input[name=file_field]');
-        if (fileField && fileField[0].files.length) {
-            const filesLength = fileField[0].files ? fileField[0].files.length : 0;
-            if (!((uploads.lenght + filesLength) > maxParallelUploads && filesLength)) {
-                for (file of fileField[0].files) {
-                    processFile(form, file, filesLength);
-                }
-                clearFileForm($form);
-            } else {
-                alert(`Максимальное количество одновременно загружаемых файлов не может превышать ${maxParallelUploads}`);
-            }
+        if (pageType == 'loadMaterials_v2') {
+            let data = {
+                csrfmiddlewaretoken: csrfmiddlewaretoken,
+                action: 'init_result',
+                labs_result_id: $form.find('[name=labs_result_id]').val(),
+                comment: $form.find('[name=comment]').val()
+            };
+            $.ajax({
+                method: 'POST',
+                data: data,
+                success: function(data) {
+                    formSubmitHandler_inner($form, resultId, data.result_id);
+                },
+                error: function() { alert('error'); }
+            })
         }
         else {
-            processUrl(form);
+            formSubmitHandler_inner($form, resultId);
         }
     };
 }
 
+function formSubmitHandler_inner($form, resultId=null, result_item_id=null) {
+    const fileField = $form.find('input[name=file_field]');
+    if (fileField && fileField[0].files.length) {
+        const filesLength = fileField[0].files ? fileField[0].files.length : 0;
+        if (!((uploads.length + filesLength) > maxParallelUploads && filesLength)) {
+            for (file of fileField[0].files) {
+                processFile($form, file, filesLength, result_item_id);
+            }
+            clearFileForm($form);
+        } else {
+            alert(`Максимальное количество одновременно загружаемых файлов не может превышать ${maxParallelUploads}`);
+        }
+    }
+    else {
+        processUrl($form, result_item_id);
+    }
+}
+
 function resultFilesNumberHandler(item) {
-    // скрывает/показывает блок с дополнительными кнопками и меняет надпись на кнопке загрузки в соответствии с тем,
-    // есть ли для результата загруженные файлы
+    // меняет надпись на кнопке загрузки в соответствии с тем, есть ли для результата загруженные файлы,
+    // удаляет результат, если был удален его последний файл
     if (pageType == 'loadMaterials_v2') {
-        if (item.parents('.material-result-div').find('ul.list-group li').length) {
-            item.parents('.material-result-div').find('.result-helper-block').show();
+        let results_li = item.find('li.result-item-li');
+        for (li of results_li) {
+            if ($(li).find('ul.result-materials-wrapper li').length == 0)
+                $(li).remove();
+        }
+        if (item.find('li.result-item-li').length) {
             item.parents('.material-result-div').find('.load-results-btn').text('Загрузить еще один результат');
         }
         else {
-            item.parents('.material-result-div').find('.result-helper-block').hide();
             item.parents('.material-result-div').find('.load-results-btn').text('Загрузить');
-            item.parents('.material-result-div').find('.result-comment').html('');
         }
     }
 }

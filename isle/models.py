@@ -702,6 +702,3 @@ class LabsUserResult(models.Model):
     result = models.ForeignKey(LabsEventResult, on_delete=models.CASCADE)
     comment = models.TextField(default='')
     approved = models.BooleanField(default=False)
-
-    class Meta:
-        unique_together = ('user', 'result')
