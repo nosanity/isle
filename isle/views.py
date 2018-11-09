@@ -1122,14 +1122,12 @@ class AttendanceApi(ListAPIView):
             "results": [
                 {
                     "unti_id": 125, // id пользователя в UNTI SSO
-                    "event_id": 2448, // id мероприятия в LABS
+                    "event_uuid": "11111111-1111-1111-11111111", // uuid мероприятия в LABS
                     "created_on": "2018-07-15T07:14:04+10:00", // дата создания объекта
                     "updated_on": "2018-07-15T07:14:04+10:00", // дата обновления объекта
                     "is_confirmed": true, // присутствие подтверждено
                     "confirmed_by_user": 1, // id пользователя подтвердившего присутствие в UNTI SSO
                     "confirmed_by_system": "uploads", // кем подтверждено uploads или chat_bot
-                    "run_id": 1405, // id прогона в LABS
-                    "activity_id": 439 // id активити в LABS
                 },
                 ...
           }
@@ -1174,7 +1172,7 @@ class AttendanceApi(ListAPIView):
     def post(self, request):
         is_confirmed = request.data.get('is_confirmed')
         user_id = request.data.get('user_id')
-        event_id = request.data.get('event_id')
+        event_id = request.data.get('event_uuid')
         confirmed_by = request.data.get('confirmed_by_user')
         if is_confirmed is None or not user_id or not event_id:
             return Response({'error': 'request should contain is_confirmed, user_id and event_id parameters'},
@@ -1184,7 +1182,7 @@ class AttendanceApi(ListAPIView):
         except (User.DoesNotExist, TypeError):
             return Response({'error': 'user does not exist'}, status=status.HTTP_404_NOT_FOUND)
         try:
-            event = Event.objects.get(ext_id=event_id)
+            event = Event.objects.get(uid=event_id)
         except (Event.DoesNotExist, TypeError):
             return Response({'error': 'event does not exist'}, status=status.HTTP_404_NOT_FOUND)
         if confirmed_by is not None:

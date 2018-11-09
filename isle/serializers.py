@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 class AttendanceSerializer(serializers.Serializer):
     unti_id = serializers.IntegerField(source='user.unti_id')
-    event_uuid = serializers.IntegerField(source='event.uid')
+    event_uuid = serializers.CharField(source='event.uid')
     created_on = serializers.DateTimeField()
     updated_on = serializers.DateTimeField()
     is_confirmed = serializers.BooleanField()
