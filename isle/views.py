@@ -1,15 +1,18 @@
+import csv
+import io
 import functools
 import logging
 import os
 from itertools import permutations, combinations
 from collections import defaultdict, Counter
 from django.conf import settings
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import logout as base_logout
 from django.core.exceptions import PermissionDenied, SuspiciousOperation
 from django.db import transaction
 from django.db.models import Count, Q
-from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404
+from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404, FileResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -33,7 +36,7 @@ from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, Eve
     LabsEventResult, LabsUserResult
 from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
-    recalculate_user_chart_data
+    recalculate_user_chart_data, get_results_list
 
 
 def login(request):
@@ -1833,3 +1836,24 @@ class MaterialInfoView(FileInfoMixin, APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
         resp = self.get_file_info(material)
         return Response(resp)
+
+
+@method_decorator(staff_member_required, name='dispatch')
+class GetDpData(View):
+    def get(self, request):
+        event_uid = request.GET.get('event')
+        if not event_uid:
+            event = None
+        else:
+            event = get_object_or_404(Event, uid=event_uid)
+        s = io.StringIO()
+        c = csv.writer(s, delimiter=';')
+        for line in get_results_list(event):
+            c.writerow(line)
+        s.seek(0)
+        b = io.BytesIO()
+        b.write(s.read().encode('utf8'))
+        b.seek(0)
+        resp = FileResponse(b, content_type='text/csv')
+        resp['Content-Disposition'] = "attachment; filename*=UTF-8''{}.csv".format('data')
+        return resp

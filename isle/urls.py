@@ -50,6 +50,7 @@ urlpatterns = [
     path('<str:uid>/<int:unti_id>/', views.LoadUserMaterialsResult.as_view(), name='load-materials'),
     path('api/user-materials/', views.UserMaterialsListView.as_view()),
     path('api/material-info/', views.MaterialInfoView.as_view()),
+    path('api/get-dp-data/', views.GetDpData.as_view()),
 ]
 
 if settings.DEBUG:
