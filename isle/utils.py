@@ -29,6 +29,12 @@ def refresh_events_data():
     Обновление списка эвентов и активностей. Предполагается, что этот список меняется редко (или не меняется вообще).
     В процессе обновления эвент может быть удален, но только если он запланирован как минимум на следующий день.
     """
+    def _parse_dt(val):
+        try:
+            return parse_datetime(val)
+        except (AssertionError, TypeError):
+            return timezone.now()
+
     try:
         event_types = {}
         existing_uids = set(Event.objects.values_list('uid', flat=True))
@@ -81,8 +87,8 @@ def refresh_events_data():
                         is_active = False if event.get('is_deleted') else True
                         dt_start, dt_end = datetime.now(), datetime.now()
                         if timeslot:
-                            dt_start = parse_datetime(timeslot['start']) or datetime.now()
-                            dt_end = parse_datetime(timeslot['end']) or datetime.now()
+                            dt_start = _parse_dt(timeslot['start'])
+                            dt_end = _parse_dt(timeslot['end'])
                         e, e_created = Event.objects.update_or_create(uid=uid, defaults={
                             'is_active': is_active,
                             'activity': current_activity,
