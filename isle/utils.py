@@ -8,12 +8,13 @@ from datetime import datetime
 from django.conf import settings
 from django.core.cache import caches
 from django.core.files.storage import default_storage
+from django.db import models
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 import requests
 from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
-                         LabsEventBlock, LabsEventResult)
+                         LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial)
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -367,3 +368,50 @@ def update_contexts():
         return
     except Exception:
         logging.exception('Failed to parse contexts')
+
+
+def get_results_list(event=None):
+    """
+    возвращает генератор списков вида
+    untiID - UUID мероприятия - Уровень - Подуровень - Сектор - ссылка на первый файл или  url первой ссылки -
+        название блока - название результата
+    логика такая, что для каждой связки (LabsEventResult, User) будет n ссылок по количеству ячеек этого результата,
+    и эта ссылка - первая загруженная в рамках результата
+    """
+    # результаты мероприятий нужного контекста или определенного мероприятия, для которых указаны ячейки
+    if event:
+        results = LabsEventResult.objects.filter(block__event_id=event.id, meta__isnull=False)
+    else:
+        context = Context.objects.get(uuid=getattr(settings, 'SPECIAL_CONTEXT_UUID', ''))
+        results = LabsEventResult.objects.filter(block__event__context_id=context.id, meta__isnull=False)
+
+    # первый "пользовательский результат", загруженный в рамках лабсовского результата,
+    # т.е. первый набор файлов с общим комментарием
+    user_results = list(LabsUserResult.objects.filter(result__in=results).values('user', 'result').\
+        annotate(id=models.Min('id')).values_list('id', flat=True))
+
+    # последние ссылки
+    qs = EventMaterial.objects.filter(result_v2_id__in=user_results).values('user', 'result_v2').\
+        annotate(material=models.Max('id'))
+    materials_mapper = dict([((i['user'], i['result_v2']), i['material']) for i in qs])
+    for m in EventMaterial.objects.filter(id__in=materials_mapper.values()).iterator():
+        materials_mapper[(m.user_id, m.result_v2_id)] = m.get_url()
+
+    qs2 = LabsUserResult.objects.filter(result__in=results).values('user', 'result').\
+        annotate(id=models.Min('id')).\
+        values('id', 'user_id', 'user__unti_id', 'result__block__event__uid', 'result__meta', 'result__title',
+               'result__block__title')
+    for i in qs2.iterator():
+        material_link = materials_mapper.get((i['user_id'], i['id'])) or ''
+        cells = json.loads(i['result__meta'])
+        for cell in cells:
+            yield list(map(str, [
+                i['user__unti_id'],
+                i['result__block__event__uid'],
+                cell.get('level') or '',
+                cell.get('sublevel') or '',
+                cell.get('sector') or '',
+                material_link,
+                i['result__block__title'],
+                i['result__title'],
+            ]))
