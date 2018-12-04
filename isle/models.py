@@ -426,6 +426,8 @@ class AbstractMaterial(models.Model):
         if self.url:
             return self.url
         elif self.file:
+            if self.file.url.startswith('/'):
+                return '{}{}'.format(settings.BASE_URL, self.file.url)
             return self.file.url
 
     def get_file_name(self):
@@ -557,6 +559,7 @@ class EventTeamMaterial(AbstractMaterial):
     confirmed = models.BooleanField(default=True)
     owners = models.ManyToManyField(User)
     result = models.ForeignKey(TeamResult, on_delete=models.CASCADE, null=True, default=None)
+    result_v2 = models.ForeignKey('LabsTeamResult', on_delete=models.CASCADE, null=True, default=None)
 
     class Meta:
         verbose_name = _(u'Материал команды')
@@ -584,6 +587,12 @@ class EventTeamMaterial(AbstractMaterial):
         new_obj.owners.set(list(material.owners.all()))
         EventOnlyMaterial.objects.filter(id=material.id).update(deleted=True)
         return new_obj
+
+    def get_page_url(self):
+        return '{}{}'.format(
+            settings.BASE_URL,
+            reverse('load-team-materials', kwargs={'uid': self.event.uid, 'team_id': self.id})
+        )
 
 
 class EventOnlyMaterial(AbstractMaterial):
@@ -694,11 +703,45 @@ class LabsEventResult(models.Model):
         ordering = ['order']
 
 
-class LabsUserResult(models.Model):
+class AbstractResult(models.Model):
+    """
+    общие поля для персональных/командных результатов
+    """
+    result = models.ForeignKey(LabsEventResult, on_delete=models.CASCADE)
+    comment = models.TextField(default='')
+    approved = models.BooleanField(default=False)
+
+    class Meta:
+        abstract = True
+
+
+class LabsUserResult(AbstractResult):
     """
     модель для привязки пользовательских файлов к результату LabsEventResult
     """
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    result = models.ForeignKey(LabsEventResult, on_delete=models.CASCADE)
-    comment = models.TextField(default='')
-    approved = models.BooleanField(default=False)
+
+    def __str__(self):
+        return str(self.user)
+
+    def get_page_url(self):
+        return '{}{}'.format(
+            settings.BASE_URL,
+            reverse('load-materials', kwargs={'uid': self.result.block.event.uid, 'unti_id': self.user.unti_id})
+        )
+
+
+class LabsTeamResult(AbstractResult):
+    """
+    модель для привязки командных файлов к результату LabsEventResult
+    """
+    team = models.ForeignKey(Team, on_delete=models.CASCADE)
+
+    def __str__(self):
+        return str(self.team)
+
+    def get_page_url(self):
+        return '{}{}'.format(
+            settings.BASE_URL,
+            reverse('load-team-materials', kwargs={'uid': self.result.block.event.uid, 'team_id': self.team.id})
+        )

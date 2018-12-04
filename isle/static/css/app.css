@@ -305,3 +305,8 @@ nav.navbar {
     float: left;
     margin-right: 20px;
 }
+
+.member-image {
+    width: 50px;
+    height: 50px;
+}

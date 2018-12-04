@@ -33,7 +33,7 @@ from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResul
 from isle.kafka import send_object_info, KafkaActions
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
-    LabsEventResult, LabsUserResult
+    LabsEventResult, LabsUserResult, LabsTeamResult
 from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data, get_results_list
@@ -339,12 +339,59 @@ class BaseLoadMaterialsLabsResults:
     """
     results_model = LabsUserResult
     lookup_attr = 'user'
+    legacy_results_model = UserResult
 
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
         blocks = self.event.blocks.prefetch_related('results')
-        data.update({'blocks': blocks})
+        qs = self.results_model.objects.filter(**{
+            self.lookup_attr: getattr(self, self.lookup_attr),
+            'result__block__event_id': self.event.id
+        }).order_by('-id')
+        qs_materials = self.material_model.objects.filter(**{
+            self.lookup_attr: getattr(self, self.lookup_attr),
+            'event': self.event,
+            'result_v2__isnull': False
+        }).order_by('-id')
+        materials = defaultdict(list)
+        for m in qs_materials:
+            materials[m.result_v2_id].append(m)
+        item_results = defaultdict(list)
+        for item in qs:
+            item.links = materials.get(item.id, [])
+            if item.links:
+                item_results[item.result_id].append(item)
+        for block in blocks:
+            for result in block.results.all():
+                result.results = item_results.get(result.id, [])
+        traces = data['traces']
+        links = functools.reduce(lambda x, y: x + y, [i.get('links', []) for i in traces], [])
+        data.update({
+            'blocks': blocks,
+            'old_results': self.get_old_results(),
+            'links': links,
+            self.lookup_attr: getattr(self, self.lookup_attr),
+        })
         return data
+
+    def get_old_results(self):
+        """
+        получение старых результатов legacy_results_model если такие есть
+        """
+        results = self.legacy_results_model.objects.filter(**{
+            'event': self.event,
+            self.lookup_attr: getattr(self, self.lookup_attr)
+        }).order_by('id')
+        if not results:
+            return []
+        data = defaultdict(list)
+        for item in self.material_model.objects.filter(**{self.lookup_attr: getattr(self, self.lookup_attr),
+                                                          'result__isnull': False}):
+            data[item.result_id].append(item)
+        res = []
+        for result in results:
+            res.append({'result': result, 'links': data.get(result.id, [])})
+        return res
 
     def post(self, request, *args, **kwargs):
         resp = self.check_post_allowed(request)
@@ -373,6 +420,7 @@ class BaseLoadMaterialsLabsResults:
             self.lookup_attr: getattr(self, self.lookup_attr),
             'comment': request.POST.get('comment') or '',
         })
+        send_object_info(item, item.id, KafkaActions.CREATE)
         return JsonResponse({'result_id': item.id})
 
     def action_delete_all(self, request):
@@ -391,12 +439,11 @@ class BaseLoadMaterialsLabsResults:
             'result_v2': result
         })
         try:
+            result_id = result.id
             with transaction.atomic():
-                tmp_materials = [(m.id, m) for m in materials]
                 materials.delete()
                 result.delete()
-                for m_id, m in tmp_materials:
-                    send_object_info(m, m_id, KafkaActions.DELETE)
+            send_object_info(result, result_id, KafkaActions.DELETE)
         except Exception:
             logging.exception('Failed to delete result %s for user %s' % (result.id, result.user.username))
             return JsonResponse({}, status=500)
@@ -444,8 +491,42 @@ class BaseLoadMaterialsLabsResults:
 
     def update_add_item_response(self, resp, material, trace):
         resp['comment'] = trace.comment
-        # отправка сообщения о созданном материале
-        send_object_info(material, material.id, KafkaActions.CREATE)
+        # отправка сообщения об изменении результата
+        send_object_info(trace, trace.id, KafkaActions.UPDATE)
+
+    def _delete_item(self, trace, material_id):
+        result_id = trace.id
+        if trace.approved:
+            return JsonResponse({'error': 'result was approved'}, status=400)
+        material = self.material_model.objects.filter(**{
+            'event': self.event,
+            self.lookup_attr: getattr(self, self.lookup_attr),
+            'id': material_id,
+            'result_v2': trace,
+        }).first()
+        if not material:
+            return JsonResponse({}, status=400)
+        material.delete()
+        self._log_material_delete(material)
+        # удаление связи пользователя/команды с результатом, если у пользователя/команды больше нет файлов
+        # с привязкой к этому результату
+        if not self.material_model.objects.filter(**{'result_v2': trace, 'event': self.event,
+                                                     self.lookup_attr: getattr(self, self.lookup_attr)}).exists():
+            trace.delete()
+            send_object_info(trace, result_id, KafkaActions.DELETE)
+        else:
+            send_object_info(trace, result_id, KafkaActions.UPDATE)
+        return JsonResponse({})
+
+    def _log_material_delete(self, material):
+        pass
+
+    def get_result_for_request(self, request):
+        return self.results_model.objects.filter(**{
+            'result_id': request.POST.get('labs_result_id'),
+            self.lookup_attr: getattr(self, self.lookup_attr),
+            'id': request.POST.get('result_item_id')
+        }).first()
 
 
 class BaseLoadMaterialsResults(object):
@@ -559,77 +640,9 @@ class LoadUserMaterialsResult(BaseLoadMaterialsLabsResults, LoadMaterials):
     def get_material_fields(self, request):
         return dict(event=self.event, user=self.user, is_public=True)
 
-    def get_context_data(self, **kwargs):
-        data = super().get_context_data(**kwargs)
-        blocks = data['blocks']
-        qs = self.results_model.objects.filter(
-            user=self.user,
-            result__block__event_id=self.event.id
-        ).order_by('-id')
-        qs_materials = self.material_model.objects.filter(
-            user=self.user,
-            event=self.event,
-            result_v2__isnull=False
-        ).order_by('-id')
-        materials = defaultdict(list)
-        for m in qs_materials:
-            materials[m.result_v2_id].append(m)
-        user_results = defaultdict(list)
-        for item in qs:
-            item.links = materials.get(item.id, [])
-            if item.links:
-                user_results[item.result_id].append(item)
-        for block in blocks:
-            for result in block.results.all():
-                result.results = user_results.get(result.id, [])
-        traces = data['traces']
-        links = functools.reduce(lambda x, y: x + y, [i.get('links', []) for i in traces], [])
-        data.update({
-            'old_results': self.get_old_results(),
-            'links': links,
-            'user': self.user,
-        })
-        return data
-
-    def get_old_results(self):
-        """
-        получение старых результатов UserResult если такие есть
-        """
-        results = UserResult.objects.filter(event=self.event, user=self.user).order_by('id')
-        if not results:
-            return []
-        data = defaultdict(list)
-        for item in self.material_model.objects.filter(user=self.user, result__isnull=False):
-            data[item.result_id].append(item)
-        res = []
-        for result in results:
-            res.append({'result': result, 'links': data.get(result.id, [])})
-        return res
-
-    def _delete_item(self, trace, material_id):
-        if trace.approved:
-            return JsonResponse({'error': 'result was approved'}, status=400)
-        material = EventMaterial.objects.filter(
-            event=self.event, user=self.user, id=material_id, result_v2=trace
-        ).first()
-        if not material:
-            return JsonResponse({}, status=400)
-        material.delete()
-        send_object_info(material, material_id, KafkaActions.DELETE)
+    def _log_material_delete(self, material):
         logging.warning('User %s has deleted file %s for user %s' %
                         (self.request.user.username, material.get_url(), self.user.username))
-        # удаление пользовательского результата, если у пользователя больше нет файлов
-        # с привязкой к этому результату
-        if not EventMaterial.objects.filter(result_v2=trace, event=self.event, user=self.user).exists():
-            trace.delete()
-        return JsonResponse({})
-
-    def get_result_for_request(self, request):
-        return LabsUserResult.objects.filter(
-            result_id=request.POST.get('labs_result_id'),
-            user=self.user,
-            id=request.POST.get('result_item_id')
-        ).first()
 
 
 class LoadMaterialsAssistant(BaseLoadMaterialsResults, LoadMaterials):
@@ -761,6 +774,20 @@ class LoadTeamMaterials(BaseLoadMaterials):
     def get_material_fields(self, request):
         return dict(event=self.event, team=self.team, comment=request.POST.get('comment', ''),
                     confirmed=self.request.user.is_assistant)
+
+
+class LoadTeamMaterialsResult(BaseLoadMaterialsLabsResults, LoadTeamMaterials):
+    results_model = LabsTeamResult
+    legacy_results_model = TeamResult
+    lookup_attr = 'team'
+    template_name = 'team_results.html'
+
+    def get_material_fields(self, request):
+        return dict(event=self.event, team=self.team)
+
+    def _log_material_delete(self, material):
+        logging.warning('User %s has deleted file %s for team %s' %
+                        (self.request.user.username, material.get_url(), self.team.id))
 
 
 class LoadTeamMaterialsAssistant(BaseLoadMaterialsResults, LoadTeamMaterials):
@@ -1775,12 +1802,22 @@ class UserMaterialsListView(FileInfoMixin, APIView):
                     "file_url": "http://example.com/file.pdf"
                     "file_name": "file.pdf",
                     "comment": "",
-                    "levels": [{"level" 1, "sublevel": 1, "sector": 1}],
+                    "levels": [{"level": 1, "sublevel": 1, "competence": "11111111-1111-1111-11111111}],
                     "url": "https://uploads.2035.university/11111111-1111-1111-11111111/123/"
+                },
+                {
+                    "event_uuid": "11111111-1111-1111-11111111",
+                    "file_url": "http://example.com/file.pdf"
+                    "file_name": "file.pdf",
+                    "comment": "",
+                    "levels": [{"level": 1, "sublevel": 1, "competence": "11111111-1111-1111-11111111}],
+                    "url": "https://uploads.2035.university/load-team/11111111-1111-1111-11111111/123/",
+                    "team": {"id": 1, "name": "name", "members": [1, 2]}
                 },
                 ...
             ]
         * 400 неполный запрос
+        * 404 пользователь не найден
     """
 
     permission_classes = (ApiPermission, )
@@ -1789,53 +1826,130 @@ class UserMaterialsListView(FileInfoMixin, APIView):
         unti_id = request.query_params.get('unti_id')
         if not unti_id or not unti_id.isdigit():
             return Response(status=status.HTTP_400_BAD_REQUEST)
-        materials = EventMaterial.objects.filter(user__unti_id=unti_id, result_v2__isnull=False).\
+        user = User.objects.filter(unti_id=unti_id).first()
+        if not user:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        materials = EventMaterial.objects.filter(user_id=user.id, result_v2__isnull=False).\
             select_related('event', 'user', 'result_v2', 'result_v2__result')
+        team_materials = EventTeamMaterial.objects.filter(team__users__id=user.id, result_v2__isnull=False).\
+            select_related('event', 'team', 'result_v2', 'result_v2__result').prefetch_related('team__users')
         resp = [self.get_file_info(m) for m in materials.iterator()]
+        for m in team_materials:
+            data = self.get_file_info(m)
+            data.update({'team': {
+                'id': m.team.id,
+                'name': m.team.name,
+                'members': [i.unti_id for i in m.team.users.all()]
+            }})
+            resp.append(data)
         return Response(resp)
 
 
-class MaterialInfoView(FileInfoMixin, APIView):
+class BaseResultInfoView(APIView):
+    permission_classes = (ApiPermission, )
+    result_model = LabsUserResult
+    materials_model = EventMaterial
+
+    def get(self, request):
+        result_id = request.query_params.get('id')
+        if not result_id or not result_id.isdigit():
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        result = self.result_model.objects.filter(id=result_id).\
+            select_related('result', 'result__block__event').first()
+        if not result:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        materials = self.materials_model.objects.filter(result_v2=result)
+        resp = {
+            'event_uuid': result.result.block.event.uid,
+            'comment': result.comment,
+            'approved': result.approved,
+            'levels': result.result.meta,
+            'url': result.get_page_url(),
+            'files': [{'file_url': f.get_url(), 'file_name': f.get_file_name()} for f in materials]
+        }
+        self.update_response(resp, result)
+        return Response(resp)
+
+    def update_response(self, resp, result):
+        pass
+
+
+class UserResultInfoView(BaseResultInfoView):
     """
     **Описание**
 
-        Запрос информации о файле по его id
+        Запрос информации о пользовательском результате по его id
 
     **Пример запроса**
 
-        GET /api/material-info/?id=123
+        GET /api/user-result-info/?id=123
 
     **Параметры запроса**
 
-        * id - id файла
+        * id - id результата
 
     **Пример ответа**
 
         * 200 успешно
             {
                 "event_uuid": "11111111-1111-1111-11111111",
-                "file_url": "http://example.com/file.pdf"
-                "file_name": "file.pdf",
                 "comment": "",
-                "levels": [{"level" 1, "sublevel": 1, "sector": 1}],
-                "url": "https://uploads.2035.university/11111111-1111-1111-11111111/123/"
+                "approved": false,
+                "levels": [{"level": 1, "sublevel": 1, "competence": "11111111-1111-1111-11111111}],
+                "user": {"unti_id": 1},
+                "url": "https://uploads.2035.university/11111111-1111-1111-11111111/123/",
+                "files": [
+                    {"file_url": "http://example.com/file.pdf", "file_name": "file.pdf"}
+                ]
             }
         * 400 неполный запрос
-        * 404 файл не найден
+        * 404 результат не найден
     """
 
-    permission_classes = (ApiPermission, )
+    def update_response(self, resp, result):
+        resp['user'] = {'unti_id': result.user.unti_id}
 
-    def get(self, request):
-        file_id = request.query_params.get('id')
-        if not file_id or not file_id.isdigit():
-            return Response(status=status.HTTP_400_BAD_REQUEST)
-        material = EventMaterial.objects.filter(id=file_id, result_v2__isnull=False).\
-            select_related('event', 'user', 'result_v2', 'result_v2__result').first()
-        if not material:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        resp = self.get_file_info(material)
-        return Response(resp)
+
+class TeamResultInfoView(BaseResultInfoView):
+    """
+    **Описание**
+
+        Запрос информации о командном результате по его id
+
+    **Пример запроса**
+
+        GET /api/team-result-info/?id=123
+
+    **Параметры запроса**
+
+        * id - id результата
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "event_uuid": "11111111-1111-1111-11111111",
+                "comment": "",
+                "approved": false,
+                "levels": [{"level": "1", "sublevel": "1", "competence": "11111111-1111-1111-11111111"}],
+                "team": {"id": 1, "name": "name", "members": [1, 2]},
+                "url": "https://uploads.2035.university/load-team/11111111-1111-1111-11111111/123/",
+                "files": [
+                    {"file_url": "http://example.com/file.pdf", "file_name": "file.pdf"}
+                ]
+            }
+        * 400 неполный запрос
+        * 404 результат не найден
+    """
+    result_model = LabsTeamResult
+    materials_model = EventTeamMaterial
+
+    def update_response(self, resp, result):
+        resp['team'] = {
+            'id': result.team_id,
+            'name': result.team.name,
+            'members': list(result.team.users.values_list('unti_id', flat=True))
+        }
 
 
 @method_decorator(staff_member_required, name='dispatch')

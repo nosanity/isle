@@ -1,0 +1,21 @@
+{% extends 'base_results_upload.html' %}
+{% load i18n static tz %}
+
+{% block page_title %}{% trans "Командные результаты" %}{% endblock %}
+
+{% block info %}
+    <h4>{% trans "Состав команды" %}</h4>
+    <div class="row">
+        {% for member in team.users.all %}
+            <div class="col-md-6 mt-10">
+                <div class="user-photo-div">
+                    {% if member.icon.Small %}
+                        <img class="member-image" src="{{ member.icon.Small }}"/>
+                    {% else %}
+                        <div class="member-image"></div>
+                    {% endif %}
+                </div>{{ member.fio }}
+            </div>
+        {% endfor %}
+    </div>
+{% endblock %}
