@@ -416,7 +416,7 @@ def get_results_list(event=None):
                 i['result__block__event__uid'],
                 cell.get('level') or '',
                 cell.get('sublevel') or '',
-                cell.get('sector') or '',
+                cell.get('competence') or '',
                 material_link,
                 i['result__block__title'],
                 i['result__title'],
