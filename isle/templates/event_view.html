@@ -162,12 +162,6 @@
         <a class="nav-item btn btn-success item-margin" href="{% url 'load-event-materials' uid=event.uid %}">
             Материалы презентации спикера, фотографии, аудио, видео{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
     </nav>
-    {% if request.user.is_assistant %}
-        <nav class="nav nav-pills nav-justified">
-            <button class="nav-item btn btn-primary item-margin" id="refresh" data-url="{% url 'refresh-event-view' uid=event.uid %}">Обновить данные</button>
-            <button class="nav-item btn btn-primary item-margin" id="refresh-check-ins" data-url="{% url 'refresh-checkin-view' uid=event.uid %}">Обновить чекины</button>
-        </nav>
-    {% endif %}
 {% endblock %}
 
 {% block js %}
