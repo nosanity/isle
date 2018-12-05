@@ -344,20 +344,18 @@ class BaseLoadMaterialsLabsResults:
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
         blocks = self.event.blocks.prefetch_related('results')
-        qs = self.results_model.objects.filter(**{
-            self.lookup_attr: getattr(self, self.lookup_attr),
+        qs_results = self.results_model.objects.filter(**self._update_query_dict({
             'result__block__event_id': self.event.id
-        }).order_by('-id')
-        qs_materials = self.material_model.objects.filter(**{
-            self.lookup_attr: getattr(self, self.lookup_attr),
+        })).order_by('-id')
+        qs_materials = self.material_model.objects.filter(**self._update_query_dict({
             'event': self.event,
             'result_v2__isnull': False
-        }).order_by('-id')
+        })).order_by('-id')
         materials = defaultdict(list)
         for m in qs_materials:
             materials[m.result_v2_id].append(m)
         item_results = defaultdict(list)
-        for item in qs:
+        for item in qs_results:
             item.links = materials.get(item.id, [])
             if item.links:
                 item_results[item.result_id].append(item)
@@ -366,27 +364,33 @@ class BaseLoadMaterialsLabsResults:
                 result.results = item_results.get(result.id, [])
         traces = data['traces']
         links = functools.reduce(lambda x, y: x + y, [i.get('links', []) for i in traces], [])
-        data.update({
+        data.update(self._update_query_dict({
             'blocks': blocks,
             'old_results': self.get_old_results(),
             'links': links,
-            self.lookup_attr: getattr(self, self.lookup_attr),
-        })
+        }))
         return data
+
+    def _update_query_dict(self, d):
+        """
+        т.к. у базовых классов есть cached_property user или team, которое одновременно является
+        параметром фильтрации для персональных файлов/результатов и командных файлов/результатов соответственно,
+        то этот метод добавляет нужный параметр в словарь для фильтрации/создания объектов
+        """
+        d.update({self.lookup_attr: getattr(self, self.lookup_attr)})
+        return d
 
     def get_old_results(self):
         """
         получение старых результатов legacy_results_model если такие есть
         """
-        results = self.legacy_results_model.objects.filter(**{
+        results = self.legacy_results_model.objects.filter(**self._update_query_dict({
             'event': self.event,
-            self.lookup_attr: getattr(self, self.lookup_attr)
-        }).order_by('id')
+        })).order_by('id')
         if not results:
             return []
         data = defaultdict(list)
-        for item in self.material_model.objects.filter(**{self.lookup_attr: getattr(self, self.lookup_attr),
-                                                          'result__isnull': False}):
+        for item in self.material_model.objects.filter(**self._update_query_dict({'result__isnull': False})):
             data[item.result_id].append(item)
         res = []
         for result in results:
@@ -415,29 +419,26 @@ class BaseLoadMaterialsLabsResults:
         """
         создание результата, в который будут загружаться файлы
         """
-        item = self.results_model.objects.create(**{
+        item = self.results_model.objects.create(**self._update_query_dict({
             'result_id': request.POST.get('labs_result_id'),
-            self.lookup_attr: getattr(self, self.lookup_attr),
             'comment': request.POST.get('comment') or '',
-        })
+        }))
         send_object_info(item, item.id, KafkaActions.CREATE)
         return JsonResponse({'result_id': item.id})
 
     def action_delete_all(self, request):
         if not request.POST.get('result_item_id'):
             return JsonResponse({}, status=400)
-        result = self.results_model.objects.filter(**{
+        result = self.results_model.objects.filter(**self._update_query_dict({
             'result_id': request.POST.get('labs_result_id'),
-            self.lookup_attr: getattr(self, self.lookup_attr),
             'id': request.POST.get('result_item_id'),
-        }).first()
+        })).first()
         if not result:
             return JsonResponse({}, status=400)
-        materials = self.material_model.objects.filter(**{
+        materials = self.material_model.objects.filter(**self._update_query_dict({
             'event': self.event,
-            self.lookup_attr: getattr(self, self.lookup_attr),
             'result_v2': result
-        })
+        }))
         try:
             result_id = result.id
             with transaction.atomic():
@@ -462,12 +463,11 @@ class BaseLoadMaterialsLabsResults:
                 return JsonResponse({}, status=400)
             return self._delete_item(result_value, material_id)
         # обработка удаления старых файлов, не привязанных к результатам из лабс
-        material = self.material_model.objects.filter(**{
+        material = self.material_model.objects.filter(**self._update_query_dict({
             'event': self.event,
-            self.lookup_attr: getattr(self, self.lookup_attr),
             'result_v2__isnull': True,
             'id': request.POST.get('material_id', 0),
-        }).first()
+        })).first()
         if not material:
             return JsonResponse({}, status=400)
         logging.warning('User %s deleted old file %s for %s %s' %
@@ -498,20 +498,19 @@ class BaseLoadMaterialsLabsResults:
         result_id = trace.id
         if trace.approved:
             return JsonResponse({'error': 'result was approved'}, status=400)
-        material = self.material_model.objects.filter(**{
+        material = self.material_model.objects.filter(**self._update_query_dict({
             'event': self.event,
-            self.lookup_attr: getattr(self, self.lookup_attr),
             'id': material_id,
             'result_v2': trace,
-        }).first()
+        })).first()
         if not material:
             return JsonResponse({}, status=400)
         material.delete()
         self._log_material_delete(material)
         # удаление связи пользователя/команды с результатом, если у пользователя/команды больше нет файлов
         # с привязкой к этому результату
-        if not self.material_model.objects.filter(**{'result_v2': trace, 'event': self.event,
-                                                     self.lookup_attr: getattr(self, self.lookup_attr)}).exists():
+        if not self.material_model.objects.filter(
+                **self._update_query_dict({'result_v2': trace, 'event': self.event})).exists():
             trace.delete()
             send_object_info(trace, result_id, KafkaActions.DELETE)
         else:
@@ -522,11 +521,10 @@ class BaseLoadMaterialsLabsResults:
         pass
 
     def get_result_for_request(self, request):
-        return self.results_model.objects.filter(**{
+        return self.results_model.objects.filter(**self._update_query_dict({
             'result_id': request.POST.get('labs_result_id'),
-            self.lookup_attr: getattr(self, self.lookup_attr),
             'id': request.POST.get('result_item_id')
-        }).first()
+        })).first()
 
 
 class BaseLoadMaterialsResults(object):
