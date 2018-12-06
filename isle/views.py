@@ -891,12 +891,6 @@ class LoadEventMaterials(BaseLoadMaterials):
                      (self.request.user.username, material.id, resp['info_string']))
 
 
-class RefreshDataView(View):
-    def get(self, request, uid=None):
-        # TODO: починить когда появится ручка получения информации аналогичной ассайнментам/чекинам из ile
-        return JsonResponse({'success': False})
-
-
 class CreateTeamView(GetEventMixin, TemplateView):
     template_name = 'create_team.html'
 
@@ -920,47 +914,6 @@ class CreateTeamView(GetEventMixin, TemplateView):
             return JsonResponse({}, status=400)
         form.save()
         return JsonResponse({'redirect': reverse('event-view', kwargs={'uid': self.event.uid})})
-
-
-class RefreshCheckInView(GetEventMixin, View):
-    """
-    Обновление чекинов всех пользователей определенного мероприятия из ILE
-    или обновление чекина одного пользователя в ILE
-    """
-    def dispatch(self, request, *args, **kwargs):
-        if request.user.is_authenticated and request.user.is_assistant:
-            return super().dispatch(request, *args, **kwargs)
-        return HttpResponseForbidden()
-
-    def get(self, request, uid=None):
-        if not self.event.ext_id:
-            return JsonResponse({'success': False})
-        return JsonResponse({'success': bool(update_check_ins_for_event(self.event))})
-
-    # def post(self, request, uid=None):
-    #     if not self.event.ext_id:
-    #         return JsonResponse({'success': False})
-    #     user_id = request.POST.get('user_id')
-    #     if not user_id or 'status' not in request.POST:
-    #         return JsonResponse({}, status=400)
-    #     user = User.objects.filter(id=user_id).first()
-    #     if not user or not EventEntry.objects.filter(event=self.event, user=user).exists():
-    #         return JsonResponse({}, status=400)
-    #     status = request.POST['status'] in ['true', '1', True]
-    #     result = set_check_in(self.event, user, status)
-    #     if result:
-    #         EventEntry.objects.filter(event=self.event, user=user).update(is_active=True)
-    #         Attendance.objects.update_or_create(
-    #             event=self.event, user=user,
-    #             defaults={
-    #                 'confirmed_by_user': request.user,
-    #                 'is_confirmed': True,
-    #                 'confirmed_by_system': Attendance.SYSTEM_UPLOADS,
-    #             }
-    #         )
-    #         logging.info('User %s has checked in user %s on event %s' %
-    #                      (request.user.username, user.username, self.event.id))
-    #     return JsonResponse({'success': result})
 
 
 class AddUserToEvent(GetEventMixin, TemplateView):

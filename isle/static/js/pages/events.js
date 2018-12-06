@@ -12,11 +12,6 @@ $('.approve-text-btn').click(() => {
 });
 
 if (isAssistant) {
-    $('#refresh, #refresh-check-ins').on('click', (e) => {
-        e.preventDefault();
-        refresh(e.target);
-    });
-
     $('.btn-confirm-team').on('click', (e) => {
         e.preventDefault();
         confirmTeam(e.target);
@@ -29,23 +24,6 @@ if (isAssistant) {
     $('#event-users-table').delegate('.btn-delete-attendance', 'click', (e) => {
         e.preventDefault();
         deleteAttendance(e.target);
-    });
-}
-
-function refresh(obj) {
-    const $obj = $(obj);
-    $obj.prop('disabled', true);
-    $.ajax({
-        url: $obj.data('url'),
-        type: 'GET',
-        success: function(data) {
-            if (data.success) {
-                window.location.reload();
-            }
-        },
-        complete: function(xhr, status) {
-            $obj.prop('disabled', false);
-        }
     });
 }
 
