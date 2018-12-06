@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+{% load i18n static tz %}
+
+{% block content %}
+    <a href="{% url 'event-view' uid=event.uid %}">
+        <button class="btn btn-light font-red"><i class="glyphicon glyphicon-arrow-left"></i>&nbsp;К странице мероприятия</button>
+    </a>
+    <h2>{% block page_title %}{% endblock %}</h2>
+    <div>
+        <p><b>{% trans "Мероприятие:" %}</b> {{ event.title }}
+        <br>
+        {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }}{% endlocaltime %}</p>
+    </div>
+    <div>
+        {% block info %}{% endblock %}
+    </div>
+
+    <div>
+        {% for block in blocks %}
+            <div class="block-div mt-40">
+                <h4>{% blocktrans with n=block.order %}Блок {{ n }}{% endblocktrans %}</h4>
+                <p>
+                    <b>{% trans "Название:" %}</b> {{ block.title }}
+                    <br>
+                    <b>{% trans "Тип:" %}</b> {{ block.block_type }}
+                    <br>
+                    <b>{% trans "Деятельность:" %}</b> {{ block.description }}
+                </p>
+                {% for result in block.results.all %}
+                    <div class="material-result-div" data-result="{{ result.id }}">
+                        <h4>{% blocktrans with n1=block.order n2=result.order %}Результат {{ n1 }}.{{ n2 }}{% endblocktrans %}</h4>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p>
+                                    <b>{% trans "Ожидаемый результат:" %}</b> {{ result.check }}
+                                    <br>
+                                    <b>{% trans "Формат работы:" %}</b> {{ result.result_format }}
+                                    <br>
+                                    <b>{% trans "Способ фиксации:" %}</b> {{ result.fix }}
+                                </p>
+                            </div>
+                            <div class="col-md-6">
+                                {% if can_upload %}
+                                <button class="btn btn-warning load-results-btn">
+                                    {% if not result.results|length %}{% trans "Загрузить" %}{% else %}{% trans "Загрузить еще один результат" %}{% endif %}
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
+
+
+                            {% if can_upload %}
+                                <form method="post" class="form hidden user-materials-form">
+                                    <div class="row">
+                                        {% csrf_token %}
+                                        <input name="labs_result_id" type="hidden" value="{{ result.id }}">
+                                        <div class="col-sm-12 col-md-3 mb-10">
+                                            <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
+                                                <a class="nav-link active" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home-{{ result.id }}" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы</a>
+                                                <a class="nav-link" id="v-pills-profile-tab" data-toggle="pill" href="#v-pills-profile-{{ result.id }}" role="tab" aria-controls="v-pills-profile" aria-selected="false">Ссылки</a>
+                                            </div>
+                                        </div>
+                                        <div class="col-sm-12 col-md-9">
+                                            <div class="tab-content" id="v-pills-tabContent">
+                                                <div class="tab-pane fade show active" id="v-pills-home-{{ result.id }}" role="tabpanel" aria-labelledby="v-pills-home-tab">
+                                                    {% if allow_file_upload %}
+                                                        <label class="btn btn-block btn-file border label-overflow select-files-btn">
+                                                            {% trans "Выбрать файлы" %}
+                                                            <input type="file" multiple name="file_field" class="form-control hidden">
+                                                        </label>
+                                                    {% endif %}
+                                                    <div><span class="file-name"></span></div>
+                                                    <div class="uploads"></div>
+                                                </div>
+                                                <div class="tab-pane fade" id="v-pills-profile-{{ result.id }}" role="tabpanel" aria-labelledby="v-pills-profile-tab">
+                                                    <input type="url" name="url_field" class="form-control full-width" id="url" placeholder="Укажите URL-ссылку на материал">
+                                                </div>
+                                                <div class="materials-form-comment-div">
+                                                    <textarea maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Описание файлов (не обязательно)"></textarea>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-sm-3">
+                                            <button name="add_btn" type="submit" class="btn btn-success btn-block add-material-btn" disabled="disabled">{% trans "Сохранить" %}</button>
+                                        </div>
+                                        <div class="col-sm-3">
+                                            <span class="btn btn-danger btn-block hide-results-form-btn">{% trans "Отменить" %}</span>
+                                        </div>
+                                    </div>
+                                </form>
+                            {% endif %}
+
+                        <div class="result-items-wrapper">
+                            <ul class="list-group list-group-flush">
+                                {% for result_item in result.results %}
+                                    <li class="list-group-item no-left-padding result-item-li">
+                                        <div class="row">
+                                            <div class="col-md-9">
+                                                <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="{{ result_item.id }}">
+                                                    {% for link in result_item.links %}
+                                                        <li>
+                                                            <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
+                                                            {% if can_upload %}
+                                                                <button name="material_id" value="{{ link.id }}" class="btn-transparent delete-material-btn pull-right">
+                                                                    <span class="glyphicon glyphicon-remove"></span>
+                                                                </button>
+                                                            {% endif %}
+                                                        </li>
+                                                    {% endfor %}
+                                                </ul>
+                                                <p class="result-comment">{{ result_item.comment }}</p>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="result-helper-block">
+                                                    <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+
+                    </div>
+                {% endfor %}
+            </div>
+        {% endfor %}
+    </div>
+
+    {% if old_results %}
+        <div id="results-jumper">
+            <h4>Загруженные результаты</h4>
+            {% for result in old_results %}
+                <p class="result-anchor-text" data-result="{{ result.result.id }}">{{ forloop.counter }} - {{ result.result.get_result_type_display|default:'' }} - {{ result.result.get_rating_display|default:'' }} - <a href="#result-entry-{{ forloop.counter }}">подробнее</a></p>
+            {% endfor %}
+        </div>
+
+        <div id="results">
+            {% for result in old_results %}
+                <div class="result-wrapper-div" data-result="{{ result.result.id }}">
+                    <h5 class="result-entry" id="result-entry-{{ forloop.counter }}">Результат {{ forloop.counter }}</h5>
+                    <div class="row result-annotation">
+                        <div class="col-lg-10">
+                            <p class="text-muted">Тип: {{ result.result.get_result_type_display|default:'' }}. Оценка: {{ result.result.get_rating_display|default:'' }}</p>
+                            <p class="text-muted">Компетенции: {{ result.result.competences }}</p>
+                            {% if team_upload %}
+                                <p class="text-muted">Групповая динамика: {{ result.result.group_dynamics }}</p>
+                            {% endif %}
+                            <p class="text-muted">Комментарий: {{ result.result.result_comment }}</p>
+                        </div>
+                    </div>
+                    <div data-result="{{ result.result.id }}">
+                        <ul id="trace-ul" class="list-group list-group-flush">
+                            {% for link in result.links %}
+                                <li class="list-group-item {% if link.confirmed and team_upload and not link.initiator_user.is_assistant %}confirmed-team-link{% elif team_upload and link.initiator_user.is_assistant %}assistant-team-link{% endif %}">
+                                    <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
+                                    {% if can_upload %}
+                                        <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
+                                            {% blocktrans %}Удалить{% endblocktrans %}
+                                        </button>
+                                    {% endif %}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% if links %}
+        <h4 class="mt-60">Отдельные файлы</h4>
+
+        <ul class="list-group list-group-flush">
+            {% for link in links %}
+                <li class="list-group-item {% if link.confirmed and team_upload and not link.initiator_user.is_assistant %}confirmed-team-link{% elif team_upload and link.initiator_user.is_assistant %}assistant-team-link{% endif %}">
+                    <a href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
+                    {% if can_upload %}
+                    <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
+                        {% blocktrans %}Удалить{% endblocktrans %}
+                    </button>
+                    <div><span>{{ link.comment }}</span></div>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+{% endblock %}
+
+{% block js %}
+    {{ block.super }}
+    <script type="text/javascript">
+        const pageType = "loadMaterials_v2";
+        const isAssistant = eval("{{ request.user.is_assistant|lower }}");
+        const eventUpload = eval("{{ event_upload|lower }}");
+        const teamUpload = eval("{{ team_upload|lower }}");
+        const fromUser = eval("{{ user_upload|lower }}");
+        const canUpload = eval("{{ can_upload|lower }}");
+        const csrfmiddlewaretoken = "{{ csrf_token }}";
+    </script>
+    {% if can_upload %}
+        <script type="text/javascript">
+            const maxSize = parseInt("{{ max_size }}");
+            const maxParallelUploads = parseInt("{{ max_uploads }}");
+        </script>
+        <script type="text/javascript" src="{% static 'js/libs/jquery.are-you-sure.min.js' %}"></script>
+        <script type="text/javascript" src="{% static 'js/upload.js' %}"></script>
+    {% endif %}
+    <script type="text/javascript" src="{% static 'js/pages/materials.js' %}"></script>
+    {% include "includes/_link_preview.html" %}
+{% endblock %}
+
+{% block css %}
+    {{ block.super }}
+    <link href="{% static 'css/bootstrap-glyphicons.min.css' %}" rel="stylesheet">
+{% endblock %}

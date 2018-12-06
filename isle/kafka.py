@@ -4,7 +4,7 @@ from django.conf import settings
 from django.utils import timezone
 from carrier_client.manager import MessageManager
 from carrier_client.message import OutgoingMessage
-from isle.models import EventMaterial
+from isle.models import LabsUserResult, LabsTeamResult
 
 
 message_manager = MessageManager(
@@ -23,8 +23,7 @@ class KafkaActions:
 
 
 def get_payload(obj, obj_id, action):
-    if isinstance(obj, EventMaterial):
-        payload_type = 'user_material'
+    def for_type(payload_type):
         return {
             'action': action,
             'type': payload_type,
@@ -36,12 +35,19 @@ def get_payload(obj, obj_id, action):
             'source': settings.KAFKA_TOPIC,
             'version': None,
         }
+    if isinstance(obj, LabsUserResult):
+        return for_type('user_result')
+    if isinstance(obj, LabsTeamResult):
+        return for_type('team_result')
 
 
 def send_object_info(obj, obj_id, action):
     """
     отправка в кафку сообщения, составленного исходя из типа объекта obj и действия
     """
+    if not getattr(settings, 'KAFKA_HOST'):
+        logging.warning('KAFKA_HOST is not defined')
+        return
     payload = get_payload(obj, obj_id, action)
     if not payload:
         logging.error("Can't get payload for %s action %s" % (obj, action))
