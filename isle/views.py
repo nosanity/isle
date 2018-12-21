@@ -423,7 +423,8 @@ class BaseLoadMaterialsLabsResults:
             'result_id': request.POST.get('labs_result_id'),
             'comment': request.POST.get('comment') or '',
         }))
-        send_object_info(item, item.id, KafkaActions.CREATE)
+        if self.should_send_to_kafka(item):
+            send_object_info(item, item.id, KafkaActions.CREATE)
         return JsonResponse({'result_id': item.id})
 
     def action_delete_all(self, request):
@@ -441,10 +442,12 @@ class BaseLoadMaterialsLabsResults:
         }))
         try:
             result_id = result.id
+            should_send = self.should_send_to_kafka(result)
             with transaction.atomic():
                 materials.delete()
                 result.delete()
-            send_object_info(result, result_id, KafkaActions.DELETE)
+            if should_send:
+                send_object_info(result, result_id, KafkaActions.DELETE)
         except Exception:
             logging.exception('Failed to delete result %s for user %s' % (result.id, result.user.username))
             return JsonResponse({}, status=500)
@@ -492,7 +495,8 @@ class BaseLoadMaterialsLabsResults:
     def update_add_item_response(self, resp, material, trace):
         resp['comment'] = trace.comment
         # отправка сообщения об изменении результата
-        send_object_info(trace, trace.id, KafkaActions.UPDATE)
+        if self.should_send_to_kafka(trace):
+            send_object_info(trace, trace.id, KafkaActions.UPDATE)
 
     def _delete_item(self, trace, material_id):
         result_id = trace.id
@@ -509,12 +513,15 @@ class BaseLoadMaterialsLabsResults:
         self._log_material_delete(material)
         # удаление связи пользователя/команды с результатом, если у пользователя/команды больше нет файлов
         # с привязкой к этому результату
+        should_send = self.should_send_to_kafka(trace)
         if not self.material_model.objects.filter(
                 **self._update_query_dict({'result_v2': trace, 'event': self.event})).exists():
             trace.delete()
-            send_object_info(trace, result_id, KafkaActions.DELETE)
+            action = KafkaActions.DELETE
         else:
-            send_object_info(trace, result_id, KafkaActions.UPDATE)
+            action = KafkaActions.UPDATE
+        if should_send:
+            send_object_info(trace, result_id, action)
         return JsonResponse({})
 
     def _log_material_delete(self, material):
@@ -525,6 +532,12 @@ class BaseLoadMaterialsLabsResults:
             'result_id': request.POST.get('labs_result_id'),
             'id': request.POST.get('result_item_id')
         })).first()
+
+    def should_send_to_kafka(self, result):
+        """
+        проверка того, что для соответствующего результата блока заданы ячейки
+        """
+        return bool(result.result.meta)
 
 
 class BaseLoadMaterialsResults(object):
