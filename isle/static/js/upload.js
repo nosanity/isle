@@ -165,7 +165,7 @@ function result_edit_switcher(result, editable) {
         html = `
         <form class="result-comment-edit-form">
             <textarea class="hidden old_comment_value">${text}</textarea>
-            <textarea maxlength="255" class="form-control full-width mb-6 result-comment-edit-input">${text}</textarea>
+            <textarea maxlength="255" class="form-control width-80 mb-6 result-comment-edit-input">${text}</textarea>
             <button class="btn btn-success btn-edit-comment-save">Обновить комментарий</button>
             <button  class="btn btn-danger btn-edit-comment-cancel">Отменить</button>
         </form>
