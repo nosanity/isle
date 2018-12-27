@@ -295,6 +295,7 @@ nav.navbar {
 .result-action-buttons {
     background-color: #ccc;
     padding: 5px;
+    margin-right: 5px;
 }
 
 .font-red {
