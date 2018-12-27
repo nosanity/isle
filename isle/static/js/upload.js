@@ -156,6 +156,31 @@ function clearFileForm($form) {
     }
 }
 
+function result_edit_switcher(result, editable) {
+    let el, text, html;
+    if (editable) {
+        result.find('.edit-result-comment').hide();
+        el = result.find('.result-comment');
+        text = el.html().trim();
+        html = `
+        <form class="result-comment-edit-form">
+            <textarea class="hidden old_comment_value">${text}</textarea>
+            <textarea maxlength="255" class="form-control full-width mb-6 result-comment-edit-input">${text}</textarea>
+            <button class="btn btn-success btn-edit-comment-save">Обновить комментарий</button>
+            <button  class="btn btn-danger btn-edit-comment-cancel">Отменить</button>
+        </form>
+        `;
+        el.replaceWith(html);
+    }
+    else {
+        result.find('.edit-result-comment').show();
+        el = result.find('.result-comment-edit-form');
+        text = result.find('.result-comment-edit-input').val();
+        html = '<p class="result-comment">' + text + '</p>';
+        el.replaceWith(html);
+    }
+}
+
 // handlers
 
 $('body').delegate('button.delete-material-btn', 'click', (e) => {
@@ -223,6 +248,38 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
             }
         })
     }
+}).delegate('.edit-result-comment', 'click', (e) => {
+    e.preventDefault();
+    let $obj = $(e.target);
+    result_edit_switcher($obj.parents('.result-item-li'), true);
+}).delegate('.btn-edit-comment-save', 'click', (e) => {
+    e.preventDefault();
+    let $obj = $(e.target);
+    const data = {
+        csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
+        action: 'edit_comment',
+        result_item_id: $obj.parents('.result-item-li').find('.result-materials-wrapper').data('result-id'),
+        labs_result_id: $obj.parents('.material-result-div').data('result'),
+        comment: $obj.parents('.result-comment-edit-form').find('.result-comment-edit-input').val()
+    };
+    $.ajax({
+        type: 'POST',
+        data: data,
+        url: '',
+        error: (xhr, err) => {
+            // TODO show appropriate message
+            let t = $obj.parents('.result-item-li').find('.old_comment_value').val().trim();
+            $obj.parents('.result-item-li').find('.result-comment-edit-input').val(t);
+            alert('error');
+        },
+        complete: (xhr, err) => {
+            result_edit_switcher($obj.parents('.result-item-li'), false);
+        }
+    })
+}).delegate('.btn-edit-comment-cancel', 'click', (e) => {
+    e.preventDefault();
+    let $obj = $(e.target);
+    result_edit_switcher($obj.parents('.result-item-li'), false);
 });
 
 $('body').delegate(maxSizeSelector, 'change', (e) => {
@@ -418,6 +475,7 @@ function successProcessFile(data, $form, result_item_id) {
                         <div class="col-md-3">
                             <div class="result-helper-block">
                                 <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
+                                <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
                             </div>
                         </div>
                     </div>

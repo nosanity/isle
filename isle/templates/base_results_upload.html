@@ -49,7 +49,6 @@
                         </div>
 
 
-                            {% if can_upload %}
                                 <form method="post" class="form hidden user-materials-form">
                                     <div class="row">
                                         {% csrf_token %}
@@ -90,7 +89,6 @@
                                         </div>
                                     </div>
                                 </form>
-                            {% endif %}
 
                         <div class="result-items-wrapper">
                             <ul class="list-group list-group-flush">
@@ -114,7 +112,10 @@
                                             </div>
                                             <div class="col-md-3">
                                                 <div class="result-helper-block">
+                                                    {% if can_upload %}
                                                     <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
+                                                    {% endif %}
+                                                    <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
                                                 </div>
                                             </div>
                                         </div>
@@ -200,14 +201,12 @@
         const canUpload = eval("{{ can_upload|lower }}");
         const csrfmiddlewaretoken = "{{ csrf_token }}";
     </script>
-    {% if can_upload %}
-        <script type="text/javascript">
-            const maxSize = parseInt("{{ max_size }}");
-            const maxParallelUploads = parseInt("{{ max_uploads }}");
-        </script>
-        <script type="text/javascript" src="{% static 'js/libs/jquery.are-you-sure.min.js' %}"></script>
-        <script type="text/javascript" src="{% static 'js/upload.js' %}"></script>
-    {% endif %}
+    <script type="text/javascript">
+        const maxSize = parseInt("{{ max_size }}");
+        const maxParallelUploads = parseInt("{{ max_uploads }}");
+    </script>
+    <script type="text/javascript" src="{% static 'js/libs/jquery.are-you-sure.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'js/upload.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/pages/materials.js' %}"></script>
     {% include "includes/_link_preview.html" %}
 {% endblock %}

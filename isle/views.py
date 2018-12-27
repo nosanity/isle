@@ -398,6 +398,9 @@ class BaseLoadMaterialsLabsResults:
         return res
 
     def post(self, request, *args, **kwargs):
+        if request.POST.get('action') == 'edit_comment':
+            # действие доступно для всех, кто может заходить на страницу
+            return self.action_edit_comment(request)
         resp = self.check_post_allowed(request)
         if resp is not None:
             return resp
@@ -414,6 +417,22 @@ class BaseLoadMaterialsLabsResults:
             elif request.POST['action'] == 'init_result':
                 return self.action_init_result(request)
         return self.delete_item(request)
+
+    def action_edit_comment(self, request):
+        result_id = request.POST.get('labs_result_id') or ''
+        result_item_id = request.POST.get('result_item_id') or ''
+        comment = request.POST.get('comment')
+        if result_id.isdigit() and result_item_id.isdigit() and comment is not None:
+            result = self.get_result_for_request(request)
+            if not result:
+                return JsonResponse({}, status=404)
+            result.comment = comment
+            result.save(update_fields=['comment'])
+            send_object_info(result, result.id, KafkaActions.UPDATE)
+            logging.info('User %s has updated comment for result #%s: %s' %
+                (request.user.username, result_id, comment))
+            return JsonResponse({})
+        return JsonResponse({}, status=400)
 
     def action_init_result(self, request):
         """
