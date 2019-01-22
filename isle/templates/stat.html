@@ -1,4 +1,8 @@
-{% extends 'base.html' %} {% block content %} {% if not request.user.is_assistant %}
+{% extends 'base.html' %}
+
+{% block title %}Статистика{% endblock %}
+
+{% block content %} {% if not request.user.is_assistant %}
 <div class="alert alert-danger" role="alert">
     Доступ к странице статистики есть только у ассистентов.
 </div>
