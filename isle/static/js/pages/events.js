@@ -6,7 +6,7 @@ $('.hide-text-btn').click(() => {
     $('.approve-text').addClass('d-none');
 });
 
-$('.approve-text-btn').click(() => {
+$('.approve-text-btn').click((e) => {
     e.preventDefault();
     approveTextButton();
 });
@@ -94,7 +94,7 @@ function deleteAttendance(obj) {
 }
 
 function approveTextButton() {
-    const data = { 
+    const data = {
         approve_text: $('#approve_text_data').val(), 
         csrfmiddlewaretoken: csrfmiddlewaretoken 
     };
