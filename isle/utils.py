@@ -31,7 +31,7 @@ def refresh_events_data():
     """
     def _parse_dt(val):
         try:
-            return parse_datetime(val)
+            return parse_datetime(val) or timezone.now()
         except (AssertionError, TypeError):
             return timezone.now()
 
@@ -198,7 +198,9 @@ def update_event_entries():
             for unti_id in unti_ids:
                 user_id = unti_id_to_id.get(unti_id)
                 if not user_id:
-                    created_user = pull_sso_user(unti_id) if unti_id not in failed_unti_ids else None
+                    if unti_id in failed_unti_ids:
+                        continue
+                    created_user = pull_sso_user(unti_id)
                     if not created_user:
                         logging.error('User with unti_id %s not found' % unti_id)
                         failed_unti_ids.add(unti_id)
