@@ -72,9 +72,12 @@ class EventTypeForm(forms.ModelForm):
 
 @admin.register(EventType)
 class EventTypeAdmin(RemoveDeleteActionMixin, admin.ModelAdmin):
-    readonly_fields = ('ext_id', 'title', 'description')
+    readonly_fields = ('ext_id', 'title', 'description', 'uuid')
     form = EventTypeForm
     list_display = ('title', 'visible')
+
+    def has_add_permission(self, request):
+        return False
 
     def save_model(self, request, obj, form, change):
         obj.save()
