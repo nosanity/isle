@@ -22,7 +22,7 @@ class EventAdmin(RemoveDeleteActionMixin, admin.ModelAdmin):
     actions = ['make_active', 'make_inactive']
     list_display = ('uid', 'title', 'dt_start', 'dt_end', 'event_type', 'is_active')
     list_filter = ('is_active', 'event_type',)
-    readonly_fields = ('uid', 'dt_start', 'dt_end', 'data', 'title', 'event_type', 'ext_id')
+    readonly_fields = ('uid', 'dt_start', 'dt_end', 'data', 'title', 'event_type', 'ext_id', 'activity', 'context')
     search_fields = ('uid', )
 
     def has_add_permission(self, request):
@@ -39,16 +39,6 @@ class EventAdmin(RemoveDeleteActionMixin, admin.ModelAdmin):
         Event.objects.filter(id__in=selected).update(is_active=False)
         return HttpResponseRedirect(request.get_full_path())
     make_inactive.short_description = _(u'Сделать недоступным для оцифровки')
-
-
-@admin.register(Team)
-class TeamAdmin(RemoveDeleteActionMixin, admin.ModelAdmin):
-    list_display = ('event', 'name')
-    search_fields = ('name', 'event__uid', 'event__title')
-    filter_horizontal = ('users', )
-
-    def has_add_permission(self, request):
-        return False
 
 
 class EventTypeForm(forms.ModelForm):
