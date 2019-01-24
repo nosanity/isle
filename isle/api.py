@@ -167,7 +167,7 @@ class BaseApi:
                 yield resp.json()
                 page += 1
             except (ValueError, TypeError, AssertionError):
-                logging.exception('Unexpected %s response for url %s: %s' % (self.name, url, resp.content.decode('utf8')))
+                logging.exception('Unexpected %s response for url %s' % (self.name, url))
                 raise BadApiResponse
             except KeyError:
                 logging.error('%s %s response has no header "X-Pagination-Page-Count"' % (self.name, url))
@@ -175,6 +175,23 @@ class BaseApi:
             except AssertionError:
                 logging.exception('%s connection error' % self.name)
                 raise ApiError
+
+    def make_request_no_pagination(self, url, method='GET'):
+        """
+        запрос, не предполагающий пагинацию в ответе
+        """
+        url = '{}{}'.format(self.base_url, url)
+        try:
+            resp = requests.request(method, url, params={'app_token': self.app_token},
+                                    timeout=settings.CONNECTION_TIMEOUT)
+            assert resp.ok, 'status_code %s' % resp.status_code
+            return resp.json()
+        except (ValueError, TypeError, AssertionError):
+            logging.exception('Unexpected %s response for url %s' % (self.name, url))
+            raise BadApiResponse
+        except AssertionError:
+            logging.exception('%s connection error' % self.name)
+            raise ApiError
 
 
 class LabsApi(BaseApi):
@@ -199,3 +216,12 @@ class XLEApi(BaseApi):
 
     def get_attendance(self):
         return self.make_request('/api/v1/checkin')
+
+
+class DpApi(BaseApi):
+    name = 'dp'
+    base_url = settings.DP_URL.rstrip('/')
+    app_token = getattr(settings, 'DP_TOKEN', '')
+
+    def get_metamodel(self, uuid):
+        return self.make_request_no_pagination('/api/v1/model/{}'.format(uuid))

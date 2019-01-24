@@ -1950,3 +1950,27 @@ class GetDpData(View):
         resp = FileResponse(b, content_type='text/csv')
         resp['Content-Disposition'] = "attachment; filename*=UTF-8''{}.csv".format('data')
         return resp
+
+
+class ResultPage(TemplateView):
+    template_name = 'result_page.html'
+
+    def get_context_data(self, **kwargs):
+        if self.kwargs['result_type'] not in ['user', 'team']:
+            raise Http404
+        model = LabsUserResult if self.kwargs['result_type'] == 'user' else LabsTeamResult
+        dic = {'id': self.kwargs['result_id']}
+        if self.kwargs['result_type'] == 'user':
+            dic['user__unti_id'] = self.kwargs['unti_id']
+        else:
+            dic['team_id'] = self.kwargs['unti_id']
+        result = get_object_or_404(model, **dic)
+        event = result.result.block.event
+        return {
+            'type': self.kwargs['result_type'],
+            'result': result,
+            'files': result.get_files(),
+            'event': event,
+            'structure': event.blocks.prefetch_related('results'),
+            'models': result.models_list(),
+        }
