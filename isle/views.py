@@ -61,6 +61,7 @@ class Index(TemplateView):
         ctx = {
             'objects': objects,
             'date': date.strftime(self.DATE_FORMAT) if date else None,
+            'date_obj': date,
             'sort_asc': self.is_asc_sort(),
             'activity_filter': self.activity_filter,
         }
@@ -69,16 +70,11 @@ class Index(TemplateView):
                 'initiator__in': User.objects.filter(is_assistant=True).values_list('unti_id', flat=True)
             }
             ctx.update({
-                'total_elements': EventMaterial.objects.count() +
-                                  EventTeamMaterial.objects.count() +
-                                  EventOnlyMaterial.objects.count(),
-                'today_elements': EventMaterial.objects.filter(event__in=objects).count() +
-                                  EventTeamMaterial.objects.filter(event__in=objects).count() +
-                                  EventOnlyMaterial.objects.filter(event__in=objects).count(),
-                'total_elements_user': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).count() +
-                                       EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).count(),
-                'today_elements_user': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count() +
-                                       EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count(),
+                'elements_cnt': EventMaterial.objects.filter(event__in=objects).count() +
+                                EventTeamMaterial.objects.filter(event__in=objects).count() +
+                                EventOnlyMaterial.objects.filter(event__in=objects).count(),
+                'elements_user_cnt': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count() +
+                                     EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count(),
             })
             if self.request.user.is_assistant:
                 enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
