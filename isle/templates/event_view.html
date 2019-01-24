@@ -2,18 +2,40 @@
 {% load static i18n tz %}
 
 {% block content %}
+    {% if request.user.is_assistant %}
+        <div>
+            <a href="{% url 'activities' %}">Активности</a>
+            &nbsp;/&nbsp;
+            <a href="{% url 'index' %}?activity={{ event.activity_id }}">{{ event.activity.title|truncatechars:30 }}</a>
+            &nbsp;/&nbsp;
+            {% localtime off %}{{ event.get_dt_start|date:'d E H:i' }}{% endlocaltime %}
+        </div>
+    {% endif %}
     <div class="row">
         <div class="col-lg-12">
             <h2>{{ event.title }}</h2>
         </div>
     </div>
-    <div>
-        <h6>{{ event.get_authors|join:', '|safe }}</h6>
-    </div>
-    <div>
-        <h6>
-            {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }} - {{ event.get_dt_end|date:'H:i' }}{% endlocaltime %};
-        </h6>
+    <div class="inline-divs-wrapper">
+        <div>
+            <div>
+                <h6>{{ event.get_authors|join:', '|safe }}</h6>
+            </div>
+            <div>
+                <h6>
+                    {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }} - {{ event.get_dt_end|date:'H:i' }}{% endlocaltime %};
+                </h6>
+            </div>
+            {% if request.user.is_assistant %}
+                <div>
+                    <a href="{{ event.activity.get_labs_link }}">Открыть в LABS</a>
+                </div>
+            {% endif %}
+        </div>
+        <div>
+            <a class="nav-item btn btn-danger mt-10" href="{% url 'load-event-materials' uid=event.uid %}">
+                Материалы мероприятия</a>
+        </div>
     </div>
 
     {% csrf_token %}
@@ -172,10 +194,6 @@
     {% else %}
         <div class="alert alert-default">Ни одной команды не создано</div>
     {% endif %}
-    <nav class="nav nav-pills nav-justified mt-40">
-        <a class="nav-item btn btn-success item-margin" href="{% url 'load-event-materials' uid=event.uid %}">
-            Материалы презентации спикера, фотографии, аудио, видео{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
-    </nav>
 {% endblock %}
 
 {% block css %}

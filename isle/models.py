@@ -60,6 +60,9 @@ class Activity(models.Model):
     main_author = models.CharField(max_length=500, default='')
     is_deleted = models.BooleanField(default=False, verbose_name=_(u'Удалено'))
 
+    def get_labs_link(self):
+        return '{}/admin/activity/{}'.format(settings.LABS_URL.rstrip('/'), self.uid)
+
 
 class ActivityEnrollment(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
