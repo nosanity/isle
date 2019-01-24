@@ -39,11 +39,6 @@
         </div>
     {% endif %}
 
-    {% if request.user.is_assistant %}
-        <nav class="nav nav-pills nav-justified">
-            <a class="nav-item btn btn-primary item-margin" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
-        </nav>
-    {% endif %}
     <nav class="nav nav-pills nav-justified">
         {% if not request.user.is_assistant and not event_entry.approved %}
             <a class="nav-item btn btn-primary text-white item-margin" id="i-was-here">
@@ -54,7 +49,16 @@
 
     <div class="row">
         <div class="col">
-            <h3 class="mt-40">Участники</h3>
+            <div class="inline-divs-wrapper mt-40">
+                <div><h3>Участники</h3></div>
+                {% if request.user.is_assistant %}
+                <div>
+                    <a class="nav-item btn btn-warning" href="{% url 'add-user' uid=event.uid %}">
+                        <span class="glyphicon glyphicon-plus mr-10"></span>
+                        Добавить участника</a>
+                </div>
+                {% endif %}
+            </div>
             {% if request.user.is_assistant %}
                 <p>
                     <b>Важно: обязательно проверьте список участников.</b>
