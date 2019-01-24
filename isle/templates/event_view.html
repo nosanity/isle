@@ -45,7 +45,6 @@
         </nav>
     {% endif %}
     <nav class="nav nav-pills nav-justified">
-        <a class="nav-item btn btn-success item-margin" href="{% url 'create-team' uid=event.uid %}">Создать команду</a>
         {% if not request.user.is_assistant and not event_entry.approved %}
             <a class="nav-item btn btn-primary text-white item-margin" id="i-was-here">
                 {% if event_entry.approve_text %}Изменить подтверждение присутствия{% else %}Я тут точно был!{% endif %}
@@ -119,9 +118,18 @@
 	    <div class="alert alert-danger" role="alert">Нет записей на данное мероприятие</div>
     {% endif %}
 
+    <div class="mt-40 inline-divs-wrapper">
+        <div>
+            <h3>Команды</h3>
+        </div>
+        <div>
+            <a class="nav-item btn btn-warning create-team-btn" href="{% url 'create-team' uid=event.uid %}">
+                <span class="glyphicon glyphicon-plus mr-10"></span>
+                Создать команду</a>
+        </div>
+    </div>
     {% if teams %}
-        <h3 class="mt-40">Команды</h3>
-        <table class="table table-hover table-bordered">
+        <table class="table table-hover table-bordered mt-20">
             <thead class="thead-light">
                 <tr>
                   <th scope="col">Название команды</th>
@@ -157,11 +165,18 @@
                 </tr>
             {% endfor %}
         </table>
+    {% else %}
+        <div class="alert alert-default">Ни одной команды не создано</div>
     {% endif %}
     <nav class="nav nav-pills nav-justified mt-40">
         <a class="nav-item btn btn-success item-margin" href="{% url 'load-event-materials' uid=event.uid %}">
             Материалы презентации спикера, фотографии, аудио, видео{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
     </nav>
+{% endblock %}
+
+{% block css %}
+    {{ block.super }}
+    <link href="{% static 'css/bootstrap-glyphicons.min.css' %}" rel="stylesheet">
 {% endblock %}
 
 {% block js %}

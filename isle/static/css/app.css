@@ -315,3 +315,21 @@ nav.navbar {
 .width-80 {
     width: 80%;
 }
+
+.inline-divs-wrapper {
+    display: flex;
+    justify-content: space-between;
+}
+
+.mr-10 {
+    margin-right: 10px;
+}
+
+.create-team-btn {
+    margin-top: -7px;
+}
+
+.alert-default {
+    text-align: center;
+    background-color: #E9ECEF;
+}
