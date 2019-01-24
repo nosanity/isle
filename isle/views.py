@@ -428,7 +428,8 @@ class BaseLoadMaterialsLabsResults:
                 return JsonResponse({}, status=404)
             result.comment = comment
             result.save(update_fields=['comment'])
-            send_object_info(result, result.id, KafkaActions.UPDATE)
+            if self.should_send_to_kafka(result):
+                send_object_info(result, result.id, KafkaActions.UPDATE)
             logging.info('User %s has updated comment for result #%s: %s' %
                 (request.user.username, result_id, comment))
             return JsonResponse({})
