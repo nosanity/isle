@@ -509,6 +509,7 @@ class BaseLoadMaterialsLabsResults:
 
     def update_add_item_response(self, resp, material, trace):
         resp['comment'] = trace.comment
+        resp['result_url'] = trace.get_page_url()
         # отправка сообщения об изменении результата
         if self.should_send_to_kafka(trace):
             send_object_info(trace, trace.id, KafkaActions.UPDATE)
