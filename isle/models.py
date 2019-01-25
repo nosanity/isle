@@ -745,7 +745,12 @@ class LabsUserResult(AbstractResult):
     def get_page_url(self):
         return '{}{}'.format(
             settings.BASE_URL,
-            reverse('load-materials', kwargs={'uid': self.result.block.event.uid, 'unti_id': self.user.unti_id})
+            reverse('result-page', kwargs={
+                'uid': self.result.block.event.uid,
+                'unti_id': self.user.unti_id,
+                'result_type': 'user',
+                'result_id': self.id,
+            })
         )
 
     def get_files(self):
@@ -764,7 +769,12 @@ class LabsTeamResult(AbstractResult):
     def get_page_url(self):
         return '{}{}'.format(
             settings.BASE_URL,
-            reverse('load-team-materials', kwargs={'uid': self.result.block.event.uid, 'team_id': self.team.id})
+            reverse('result-page', kwargs={
+                'uid': self.result.block.event.uid,
+                'unti_id': self.team_id,
+                'result_type': 'team',
+                'result_id': self.id,
+            })
         )
 
     def get_files(self):
