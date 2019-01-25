@@ -1953,6 +1953,7 @@ class GetDpData(View):
         return resp
 
 
+@method_decorator(login_required, name='dispatch')
 class ResultPage(TemplateView):
     template_name = 'result_page.html'
 
