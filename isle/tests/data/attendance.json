@@ -1,0 +1,42 @@
+[
+    {
+        "leave_dt": "2019-01-22T18:00:39+03:00",
+        "unti_id": 1,
+        "checkin": false,
+        "attendance_dt": "2018-10-23T15:34:16+03:00",
+        "attendance": true,
+        "cancel_dt": "2019-01-22T18:00:39+03:00",
+        "event_uuid": "d18093f5-dd5c-41e3-a772-0103402ddf2c",
+        "checkin_dt": "2019-01-22T18:00:39+03:00"
+    },
+    {
+        "leave_dt": "2019-01-22T18:00:39+03:00",
+        "unti_id": 1,
+        "checkin": false,
+        "attendance_dt": "2019-01-22T18:00:39+03:00",
+        "attendance": false,
+        "cancel_dt": "2019-01-22T18:00:39+03:00",
+        "event_uuid": "d18093f5-dd5c-41e3-a772-0103402ddf2d",
+        "checkin_dt": "2019-01-22T18:00:39+03:00"
+    },
+    {
+        "leave_dt": "2019-01-22T18:00:39+03:00",
+        "unti_id": 2,
+        "checkin": false,
+        "attendance_dt": "2018-11-15T21:02:16+03:00",
+        "attendance": true,
+        "cancel_dt": "2019-01-22T18:00:39+03:00",
+        "event_uuid": "d18093f5-dd5c-41e3-a772-0103402ddf2c",
+        "checkin_dt": "2019-01-22T18:00:39+03:00"
+    },
+    {
+        "leave_dt": "2019-01-22T18:00:39+03:00",
+        "unti_id": 2,
+        "checkin": true,
+        "attendance_dt": "2018-11-15T21:02:16+03:00",
+        "attendance": true,
+        "cancel_dt": "2019-01-22T18:00:39+03:00",
+        "event_uuid": "d18093f5-dd5c-41e3-a772-0103402ddf2d",
+        "checkin_dt": "2019-01-22T18:00:39+03:00"
+    }
+]

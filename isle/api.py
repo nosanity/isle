@@ -167,7 +167,7 @@ class BaseApi:
                 yield resp.json()
                 page += 1
             except (ValueError, TypeError, AssertionError):
-                logging.exception('Unexpected %s response for url %s: %s' % (self.name, url, resp.content.decode('utf8')))
+                logging.exception('Unexpected %s response for url %s' % (self.name, url))
                 raise BadApiResponse
             except KeyError:
                 logging.error('%s %s response has no header "X-Pagination-Page-Count"' % (self.name, url))
