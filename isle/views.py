@@ -61,6 +61,7 @@ class Index(TemplateView):
         ctx = {
             'objects': objects,
             'date': date.strftime(self.DATE_FORMAT) if date else None,
+            'date_obj': date,
             'sort_asc': self.is_asc_sort(),
             'activity_filter': self.activity_filter,
         }
@@ -69,16 +70,11 @@ class Index(TemplateView):
                 'initiator__in': User.objects.filter(is_assistant=True).values_list('unti_id', flat=True)
             }
             ctx.update({
-                'total_elements': EventMaterial.objects.count() +
-                                  EventTeamMaterial.objects.count() +
-                                  EventOnlyMaterial.objects.count(),
-                'today_elements': EventMaterial.objects.filter(event__in=objects).count() +
-                                  EventTeamMaterial.objects.filter(event__in=objects).count() +
-                                  EventOnlyMaterial.objects.filter(event__in=objects).count(),
-                'total_elements_user': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).count() +
-                                       EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).count(),
-                'today_elements_user': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count() +
-                                       EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count(),
+                'elements_cnt': EventMaterial.objects.filter(event__in=objects).count() +
+                                EventTeamMaterial.objects.filter(event__in=objects).count() +
+                                EventOnlyMaterial.objects.filter(event__in=objects).count(),
+                'elements_user_cnt': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count() +
+                                     EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count(),
             })
             if self.request.user.is_assistant:
                 enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
@@ -514,6 +510,7 @@ class BaseLoadMaterialsLabsResults:
 
     def update_add_item_response(self, resp, material, trace):
         resp['comment'] = trace.comment
+        resp['result_url'] = trace.get_page_url()
         # отправка сообщения об изменении результата
         if self.should_send_to_kafka(trace):
             send_object_info(trace, trace.id, KafkaActions.UPDATE)
@@ -1955,3 +1952,28 @@ class GetDpData(View):
         resp = FileResponse(b, content_type='text/csv')
         resp['Content-Disposition'] = "attachment; filename*=UTF-8''{}.csv".format('data')
         return resp
+
+
+@method_decorator(login_required, name='dispatch')
+class ResultPage(TemplateView):
+    template_name = 'result_page.html'
+
+    def get_context_data(self, **kwargs):
+        if self.kwargs['result_type'] not in ['user', 'team']:
+            raise Http404
+        model = LabsUserResult if self.kwargs['result_type'] == 'user' else LabsTeamResult
+        dic = {'id': self.kwargs['result_id']}
+        if self.kwargs['result_type'] == 'user':
+            dic['user__unti_id'] = self.kwargs['unti_id']
+        else:
+            dic['team_id'] = self.kwargs['unti_id']
+        result = get_object_or_404(model, **dic)
+        event = result.result.block.event
+        return {
+            'type': self.kwargs['result_type'],
+            'result': result,
+            'files': result.get_files(),
+            'event': event,
+            'structure': event.blocks.prefetch_related('results'),
+            'models': result.models_list(),
+        }

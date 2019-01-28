@@ -461,6 +461,7 @@ function successProcessFile(data, $form, result_item_id) {
     const mId = data.material_id;
     const name = data.name;
     const comment = data.comment;
+    const page_url = data.result_url;
     let items, item;
     if (pageType == 'loadMaterials_v2') {
         if (!$form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]').length) {
@@ -476,6 +477,7 @@ function successProcessFile(data, $form, result_item_id) {
                             <div class="result-helper-block">
                                 <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
                                 <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
+                                <span data-url="${page_url}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
                             </div>
                         </div>
                     </div>

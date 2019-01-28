@@ -174,6 +174,9 @@ LABS_TOKEN = 'SET-ME-PLEASE'
 XLE_URL = 'https://xle.2035.university'
 XLE_TOKEN = ''
 
+DP_URL = 'https://dp.2035.university'
+DP_TOKEN = ''
+
 # базовый урл uploads
 BASE_URL = 'https://uploads.2035.university'
 

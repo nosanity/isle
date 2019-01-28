@@ -12,9 +12,9 @@ from django.db import models
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 import requests
-from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi
+from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
-                         LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial)
+                         LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel)
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -39,6 +39,7 @@ def refresh_events_data():
         event_types = {}
         existing_uids = set(Event.objects.values_list('uid', flat=True))
         fetched_events = set()
+        metamodels = set()
         filter_dict = lambda d, excl: {k: d.get(k) for k in d if k not in excl}
         ACTIVITY_EXCLUDE_KEYS = ['runs', 'activity_type']
         RUN_EXCLUDE_KEYS = ['events']
@@ -97,7 +98,8 @@ def refresh_events_data():
                         update_event_structure(
                             event.get('blocks', []),
                             e,
-                            e.blocks.values_list('uuid', flat=True) if not e_created else []
+                            e.blocks.values_list('uuid', flat=True) if not e_created else [],
+                            metamodels
                         )
                         fetched_events.add(e.uid)
         delete_events = existing_uids - fetched_events - {getattr(settings, 'API_DATA_EVENT', '')}
@@ -116,7 +118,7 @@ def refresh_events_data():
         logging.exception('Failed to handle events data')
 
 
-def update_event_structure(data, event, event_blocks_uuid):
+def update_event_structure(data, event, event_blocks_uuid, metamodels):
     """
     Обновление структуры эвента
     :param data json со структурой
@@ -156,6 +158,7 @@ def update_event_structure(data, event, event_blocks_uuid):
                 if not result_uuid:
                     logging.error("Didn't get uuid for result: %s" % result)
                     continue
+                meta = _parse_meta(result.get('meta'))
                 r, r_created = LabsEventResult.objects.update_or_create(uuid=result_uuid, defaults={
                     'block_id': b.id,
                     'title': result.get('title') or '',
@@ -163,8 +166,22 @@ def update_event_structure(data, event, event_blocks_uuid):
                     'fix': result.get('fix') or '',
                     'check': result.get('check') or '',
                     'order': result_order,
-                    'meta': _parse_meta(result.get('meta')),
+                    'meta': meta,
                 })
+                if meta and isinstance(meta, list):
+                    for model in meta:
+                        # подтягивание информации о метамодели, указанной в метаданных, если такая метамодель
+                        # еще не подтягивалась в рамках данного запуска обновления данных активностей и эвентов
+                        if isinstance(model, dict) and 'model' in model and model['model'] not in metamodels:
+                            try:
+                                meta_data = DpApi().get_metamodel(model['model'])
+                                if isinstance(meta_data, dict) and all(i in meta_data for i in ['title', 'guid']):
+                                    MetaModel.objects.update_or_create(uuid=model['model'], defaults={
+                                        'guid': meta_data['guid'], 'title': meta_data['title']
+                                    })
+                                    metamodels.add(model['model'])
+                            except ApiError:
+                                pass
                 created_results.append(r.uuid)
             if set(block_results) - set(created_results):
                 b.results.exclude(uuid__in=created_results).delete()

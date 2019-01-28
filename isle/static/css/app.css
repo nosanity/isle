@@ -315,3 +315,44 @@ nav.navbar {
 .width-80 {
     width: 80%;
 }
+
+.inline-divs-wrapper {
+    display: flex;
+    justify-content: space-between;
+}
+
+.mr-10 {
+    margin-right: 10px;
+}
+
+.create-team-btn {
+    margin-top: -7px;
+}
+
+.alert-default {
+    text-align: center;
+    background-color: #E9ECEF;
+}
+
+.index-statistics-block {
+    margin: -10px auto 10px;
+}
+
+.artefact-item-wrapper {
+    width: 300px;
+    height: 200px;
+    border: 2px solid #bbbbbb;
+    display:table-cell;
+	vertical-align:middle;
+	text-align:center;
+}
+
+.artefact-preview {
+    max-width:100%;
+    max-height:100%;
+    margin: auto auto;
+}
+
+.large-font {
+    font-size: 4em;
+}

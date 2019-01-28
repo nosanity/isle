@@ -4,18 +4,40 @@
 {% block title %}Страница мероприятия "{{ event.title }}"{% endblock %}
 
 {% block content %}
+    {% if request.user.is_assistant %}
+        <div>
+            <a href="{% url 'activities' %}">Активности</a>
+            &nbsp;/&nbsp;
+            <a href="{% url 'index' %}?activity={{ event.activity_id }}">{{ event.activity.title|truncatechars:30 }}</a>
+            &nbsp;/&nbsp;
+            {% localtime off %}{{ event.get_dt_start|date:'d E H:i' }}{% endlocaltime %}
+        </div>
+    {% endif %}
     <div class="row">
         <div class="col-lg-12">
             <h2>{{ event.title }}</h2>
         </div>
     </div>
-    <div>
-        <h6>{{ event.get_authors|join:', '|safe }}</h6>
-    </div>
-    <div>
-        <h6>
-            {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }} - {{ event.get_dt_end|date:'H:i' }}{% endlocaltime %};
-        </h6>
+    <div class="inline-divs-wrapper">
+        <div>
+            <div>
+                <h6>{{ event.get_authors|join:', '|safe }}</h6>
+            </div>
+            <div>
+                <h6>
+                    {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }} - {{ event.get_dt_end|date:'H:i' }}{% endlocaltime %};
+                </h6>
+            </div>
+            {% if request.user.is_assistant %}
+                <div>
+                    <a href="{{ event.activity.get_labs_link }}">Открыть в LABS</a>
+                </div>
+            {% endif %}
+        </div>
+        <div>
+            <a class="nav-item btn btn-danger mt-10" href="{% url 'load-event-materials' uid=event.uid %}">
+                Материалы мероприятия</a>
+        </div>
     </div>
 
     {% csrf_token %}
@@ -41,13 +63,7 @@
         </div>
     {% endif %}
 
-    {% if request.user.is_assistant %}
-        <nav class="nav nav-pills nav-justified">
-            <a class="nav-item btn btn-primary item-margin" href="{% url 'add-user' uid=event.uid %}">Добавить участника</a>
-        </nav>
-    {% endif %}
     <nav class="nav nav-pills nav-justified">
-        <a class="nav-item btn btn-success item-margin" href="{% url 'create-team' uid=event.uid %}">Создать команду</a>
         {% if not request.user.is_assistant and not event_entry.approved %}
             <a class="nav-item btn btn-primary text-white item-margin" id="i-was-here">
                 {% if event_entry.approve_text %}Изменить подтверждение присутствия{% else %}Я тут точно был!{% endif %}
@@ -57,7 +73,16 @@
 
     <div class="row">
         <div class="col">
-            <h3 class="mt-40">Участники</h3>
+            <div class="inline-divs-wrapper mt-40">
+                <div><h3>Участники</h3></div>
+                {% if request.user.is_assistant %}
+                <div>
+                    <a class="nav-item btn btn-warning" href="{% url 'add-user' uid=event.uid %}">
+                        <span class="glyphicon glyphicon-plus mr-10"></span>
+                        Добавить участника</a>
+                </div>
+                {% endif %}
+            </div>
             {% if request.user.is_assistant %}
                 <p>
                     <b>Важно: обязательно проверьте список участников.</b>
@@ -121,9 +146,18 @@
 	    <div class="alert alert-danger" role="alert">Нет записей на данное мероприятие</div>
     {% endif %}
 
+    <div class="mt-40 inline-divs-wrapper">
+        <div>
+            <h3>Команды</h3>
+        </div>
+        <div>
+            <a class="nav-item btn btn-warning create-team-btn" href="{% url 'create-team' uid=event.uid %}">
+                <span class="glyphicon glyphicon-plus mr-10"></span>
+                Создать команду</a>
+        </div>
+    </div>
     {% if teams %}
-        <h3 class="mt-40">Команды</h3>
-        <table class="table table-hover table-bordered">
+        <table class="table table-hover table-bordered mt-20">
             <thead class="thead-light">
                 <tr>
                   <th scope="col">Название команды</th>
@@ -159,11 +193,14 @@
                 </tr>
             {% endfor %}
         </table>
+    {% else %}
+        <div class="alert alert-default">Ни одной команды не создано</div>
     {% endif %}
-    <nav class="nav nav-pills nav-justified mt-40">
-        <a class="nav-item btn btn-success item-margin" href="{% url 'load-event-materials' uid=event.uid %}">
-            Материалы презентации спикера, фотографии, аудио, видео{% if event.event_only_material_count %} ({{ event.event_only_material_count }}){% endif %}</a>
-    </nav>
+{% endblock %}
+
+{% block css %}
+    {{ block.super }}
+    <link href="{% static 'css/bootstrap-glyphicons.min.css' %}" rel="stylesheet">
 {% endblock %}
 
 {% block js %}

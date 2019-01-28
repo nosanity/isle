@@ -178,3 +178,12 @@ function transfer($obj, data, msg, success) {
         });
     }
 }
+
+$(document).ready(function() {
+    $('body').delegate('.view-result-page', 'click', function(e) {
+        e.preventDefault();
+        if ($(this).data('url')) {
+            window.location = $(this).data('url');
+        }
+    })
+});

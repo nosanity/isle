@@ -60,6 +60,9 @@ class Activity(models.Model):
     main_author = models.CharField(max_length=500, default='')
     is_deleted = models.BooleanField(default=False, verbose_name=_(u'Удалено'))
 
+    def get_labs_link(self):
+        return '{}/admin/activity/{}'.format(settings.LABS_URL.rstrip('/'), self.uid)
+
 
 class ActivityEnrollment(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -714,6 +717,21 @@ class AbstractResult(models.Model):
     class Meta:
         abstract = True
 
+    def models_list(self):
+        """
+        мета информация результата с дополнительными полем title - названием соответствующей метамодели
+        """
+        meta = self.result.meta
+        meta_models = []
+        if meta and isinstance(meta, list):
+            meta_models = list(filter(lambda x: isinstance(x, dict), meta))
+        uuids = filter(None, [i.get('model') for i in meta_models])
+        model_names = dict(MetaModel.objects.filter(uuid__in=uuids).values_list('uuid', 'title'))
+        result = meta_models[:]
+        for item in result:
+            item['title'] = model_names.get(item.get('model')) or ''
+        return result
+
 
 class LabsUserResult(AbstractResult):
     """
@@ -727,8 +745,16 @@ class LabsUserResult(AbstractResult):
     def get_page_url(self):
         return '{}{}'.format(
             settings.BASE_URL,
-            reverse('load-materials', kwargs={'uid': self.result.block.event.uid, 'unti_id': self.user.unti_id})
+            reverse('result-page', kwargs={
+                'uid': self.result.block.event.uid,
+                'unti_id': self.user.unti_id,
+                'result_type': 'user',
+                'result_id': self.id,
+            })
         )
+
+    def get_files(self):
+        return EventMaterial.objects.filter(result_v2=self)
 
 
 class LabsTeamResult(AbstractResult):
@@ -743,5 +769,23 @@ class LabsTeamResult(AbstractResult):
     def get_page_url(self):
         return '{}{}'.format(
             settings.BASE_URL,
-            reverse('load-team-materials', kwargs={'uid': self.result.block.event.uid, 'team_id': self.team.id})
+            reverse('result-page', kwargs={
+                'uid': self.result.block.event.uid,
+                'unti_id': self.team_id,
+                'result_type': 'team',
+                'result_id': self.id,
+            })
         )
+
+    def get_files(self):
+        return EventTeamMaterial.objects.filter(result_v2=self)
+
+
+class MetaModel(models.Model):
+    """
+    Информация о метамоделях. Нужно для хранения информации о названиях моделей
+    из метаданных результата в лабс
+    """
+    uuid = models.CharField(max_length=255, unique=True)
+    guid = models.CharField(max_length=255)
+    title = models.CharField(max_length=500)

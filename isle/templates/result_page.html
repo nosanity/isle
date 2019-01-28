@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% load tz %}
+
+{% block content %}
+    <div>
+        <h2>Элемент цифрового следа</h2>
+    </div>
+    <div>
+        {% if result.result.title %}<strong>{{ result.result.title }}</strong>{% endif %} <br>
+        {% if result.result.check %}<strong>Ожидаемый результат: {{ result.result.check }}</strong>{% endif %} <br>
+        {% if result.result.result_format %}<strong>Формат работы: {{ result.result.result_format }}</strong>{% endif %}
+    </div>
+
+    <div class="mt-40">
+        <h5>Артефакты</h5>
+        {% if result.comment %}
+            <p>{{ result.comment }}</p>
+        {% endif %}
+
+        <div class="row">
+            {% for material in files %}
+                <div class="col-sm-4">
+                    <div class="artefact-item-wrapper" href="{{ material.get_url }}" {{ material.render_metadata|safe }} data-material-title="{{ material.get_name }}">
+                        {% if material.get_metadata.file_type == 'image' %}
+                            <img src="{{ material.get_url }}" class="artefact-preview">
+                        {% else %}
+                            <span class="fa fa-file large-font"></span>
+                        {% endif %}
+                    </div>
+                    <a class="link_preview" href="{{ material.get_url }}" {{ material.render_metadata|safe }}>{{ material.get_name }}</a>&nbsp;
+                </div>
+            {% endfor %}
+        </div>
+
+        <div class="row mt-40">
+            <div class="col-sm-6">
+                <h5>Где получен</h5>
+                <strong>Мероприятие:</strong> {{ event.title }} <br>
+                {% if event.event_type and event.event_type.title %}<strong>Тип мероприятия:</strong> {{ event.event_type.title }}<br>{% endif %}
+                {% if event.dt_start and event.dt_end %}
+                    {% localtime off %}
+                    <strong>Дата, время:</strong> {{ event.dt_start|date:'d E' }} c {{ event.dt_start|date:'H:i' }} по {{ event.dt_end|date:'H:i' }}<br>
+                    {% endlocaltime %}
+                {% endif %}
+                {% if event.get_authors %}<strong>Автор:</strong> {{ event.get_authors|join:', '|safe }}<br>{% endif %}
+                {% if event.data.event.place.title %}<strong>Место:</strong> {{ event.data.event.place.title }}<br>{% endif %}
+
+                <h6 class="font-weight-bold mt-20">Структура мероприятия</h6>
+                {% for block in structure %}
+                    <strong>Блок {{ block.order }}. {{ block.title }}</strong>
+                    <ul class="no-bullets">
+                        {% for result in block.results.all %}
+                            <li>Результат {{ block.order }}.{{ result.order }}. {{ result.title }}</li>
+                        {% empty %}
+                            <li>Нет ожидаемых результатов</li>
+                        {% endfor %}
+                    </ul>
+                {% endfor %}
+            </div>
+
+            <div class="col-sm-6">
+                <h5>Что подтверждает</h5>
+                {% for model in models %}
+                    <p>
+                        {% if model.title %}<strong>Метамодель:</strong> {{ model.title }}<br>{% endif %}
+                        {% if model.sector %}<strong>Сектор:</strong> {{ model.sector }}<br>{% endif %}
+                        {% if model.level %}<strong>Уровень:</strong> {{ model.level }}<br>{% endif %}
+                        {# <strong>Инструмент:</strong> TODO: пока такого нет в лабс #}
+                        {% if model.sublevel %}<strong>Подуровень:</strong> {{ model.sublevel }}<br>{% endif %}
+                    </p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block js %}
+    {{ block.super }}
+    {% include "includes/_link_preview.html" with with_download_btn=True %}
+    <script type="text/javascript">
+        var ALWAYS_SHOW_DOWNLOAD_BTN = true;
+        $(document).ready(function() {
+            $('body').delegate('a.link_preview,div.artefact-item-wrapper', 'click', (e) => {
+                e.preventDefault();
+                if ($(e.target).hasClass('link_preview') || $(e.target).hasClass('artefact-item-wrapper'))
+                    linkPreview(e.target);
+                else
+                    linkPreview($(e.target).parents('.artefact-item-wrapper')[0]);
+            });
+        })
+    </script>
+{% endblock %}

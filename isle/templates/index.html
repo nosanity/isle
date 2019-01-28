@@ -1,32 +1,22 @@
 {% extends 'base.html' %}
 {% load static tz %}
 {% block content %}
-    <div class="row">
-        <div class="col">
-            <div class="pull-left">
-                <form class="form-inline">
-                    <label>Дата</label>
-                    <input type="date" id="choose-date" class="form-control">
-                    <button class="btn btn-primary" id="btn-date-refresh">Фильтровать</button>
-                    {% if not request.user.is_assistant %}
-                        <a href='/'><button class="btn btn-info">Сбросить фильтр</button></a>
-                    {% endif %}
-                    {% if request.user.is_assistant %}
-                <a class="nav-item btn btn-secondary" href='/statistics/'>Статистика</a> &nbsp;
-                <a class="nav-item btn btn-primary" href='/activities/'>Все активности</a>
-                    {% endif %}
-                </form>
-            </div>
-            <!-- TODO replace &nbsp and <br> -->
-            {% if request.user.is_assistant %}
-                <div class="pull-right small">
-                    Элементов по мероприятиям за день: {{ today_elements }};&nbsp;&nbsp;Загружено пользователями: {{ today_elements_user }}
-                    <br>
-                    Всего элементов: {{ total_elements }}&nbsp;&nbsp;Загружено пользователями: {{ total_elements_user }}
-                </div>
+    {% if request.user.is_assistant %}
+        <div>
+            <a href="{% url 'activities' %}">Активности</a>
+            &nbsp;/&nbsp;
+            {% if activity_filter %}
+                {{ activity_filter.title|truncatechars:30 }}
+            {% elif date_obj %}
+                Мероприятия {{ date_obj|date:'d/m/Y' }}
             {% else %}
-                <div class="pull-right">&nbsp;Мероприятий: {{ event_num }};&nbsp;&nbsp;Элементов цифрового следа: {{ trace_num }} </div>
+                Мероприятия
             {% endif %}
+        </div>
+    {% endif %}
+    <div class="row">
+        <div class="col-lg-12">
+            <h2>Мероприятия</h2>
         </div>
     </div>
     {% if activity_filter %}
@@ -40,6 +30,27 @@
             </div>
         </div>
     {% endif %}
+    <div class="row {% if activity_filter %}mt-10{% endif %}">
+        <div class="col">
+            <div>
+                <form class="form-inline">
+                    <label>Дата</label>
+                    <input type="date" id="choose-date" class="form-control">
+                    <button class="btn btn-primary" id="btn-date-refresh">Фильтровать</button>
+                    {% if not request.user.is_assistant %}
+                        <a href='/'><button class="btn btn-info">Сбросить фильтр</button></a>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="text-muted index-statistics-block">
+        {% if request.user.is_assistant %}
+            Мероприятий: {{ objects|length }}. Загружено элементов: {{ elements_cnt }}. Загружено пользователями: {{ elements_user_cnt }}.
+        {% else %}
+            Мероприятий: {{ event_num }};&nbsp;&nbsp;Элементов цифрового следа: {{ trace_num }}
+        {% endif %}
+    </div>
     <div class="row">
         <div class="col">
             <div class="overflow-scroll">
