@@ -61,7 +61,7 @@ class Activity(models.Model):
     is_deleted = models.BooleanField(default=False, verbose_name=_(u'Удалено'))
 
     def get_labs_link(self):
-        return '{}/admin/activity/{}'.format(settings.LABS_URL.rstrip('/'), self.uid)
+        return '{}/admin/activity/view/{}'.format(settings.LABS_URL.rstrip('/'), self.uid)
 
 
 class ActivityEnrollment(models.Model):
