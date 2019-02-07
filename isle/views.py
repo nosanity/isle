@@ -36,7 +36,7 @@ from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, Eve
     LabsEventResult, LabsUserResult, LabsTeamResult
 from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
-    recalculate_user_chart_data, get_results_list
+    recalculate_user_chart_data, get_results_list, EventMaterialsCSV
 
 
 def login(request):
@@ -1977,3 +1977,23 @@ class ResultPage(TemplateView):
             'structure': event.blocks.prefetch_related('results'),
             'models': result.models_list(),
         }
+
+
+class EventCsvData(GetEventMixin, View):
+    def get(self, request, *args, **kwargs):
+        if not request.user.is_assistant:
+            raise PermissionDenied
+        obj = EventMaterialsCSV(self.event)
+        if request.GET.get('check_empty'):
+            return JsonResponse({'has_contents': obj.has_contents()})
+        s = io.StringIO()
+        c = csv.writer(s, delimiter=';')
+        for line in obj.generate():
+            c.writerow(list(map(str, line)))
+        s.seek(0)
+        b = io.BytesIO()
+        b.write(s.read().encode('utf8'))
+        b.seek(0)
+        resp = FileResponse(b, content_type='text/csv')
+        resp['Content-Disposition'] = "attachment; filename*=UTF-8''{}.csv".format(obj.get_csv_filename())
+        return resp

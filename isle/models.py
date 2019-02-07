@@ -442,6 +442,11 @@ class AbstractMaterial(models.Model):
             return ''
         return urllib.parse.urlparse(s).path.rstrip('/').split('/')[-1]
 
+    def get_extension(self):
+        name = self.get_file_name()
+        if '.' in name:
+            return name.split('.')[-1]
+
     def get_name(self):
         if self.file:
             return urllib.parse.unquote(os.path.basename(self.file.url))

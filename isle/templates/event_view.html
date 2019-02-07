@@ -35,6 +35,12 @@
             {% endif %}
         </div>
         <div>
+            {% if request.user.is_assistant %}
+                <a class="pull-right export_event_csv" href="{% url 'get_event_csv' uid=event.uid %}">
+                    <span class="glyphicon glyphicon-download-alt"></span>&nbsp;Экспортировать все
+                </a>
+                <div class="clearfix"></div>
+            {% endif %}
             <a class="nav-item btn btn-danger mt-10" href="{% url 'load-event-materials' uid=event.uid %}">
                 Материалы мероприятия</a>
         </div>

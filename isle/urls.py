@@ -33,6 +33,7 @@ urlpatterns = [
     path('add-event-block/<str:uid>/', views.AddEventBlockToMaterial.as_view(), name='add-event-block'),
     path('event-block-edit/<str:uid>/', views.EventBlockEditRenderer.as_view(), name='event-block-edit-renderer'),
     path('role-formset-render/<str:uid>/<int:team_id>/', views.RolesFormsetRender.as_view(), name='roles-formset-render'),
+    path('get_event_csv/<str:uid>/', views.EventCsvData.as_view(), name='get_event_csv'),
     path('<str:uid>/', views.EventView.as_view(), name='event-view'),
     path('<str:uid>/<int:unti_id>/', views.LoadUserMaterialsResult.as_view(), name='load-materials'),
     path('api/user-materials/', views.UserMaterialsListView.as_view()),
