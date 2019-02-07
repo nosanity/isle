@@ -1,5 +1,12 @@
 {% extends 'base.html' %} 
 {% block content %}
+{% if messages %}
+    {% for message in messages %}
+        <div class="bg-danger text-center">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
 <div class="card-header text-center">
     Цифровой след — это массив данных о результатах образовательной и проектной деятельностях. Любые материалы, которые создают
     участники («дорожные карты», презентации, прототипы, аудио и видеозаписи), остаются в хранилище цифрового следа.
