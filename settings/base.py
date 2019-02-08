@@ -132,16 +132,10 @@ AWS_S3_FILE_OVERWRITE = False
 ASSISTANT_TAGS_NAME = ['assistant', 'island_assistant']
 # максимальный размер загружаемых файлов
 MAXIMUM_ALLOWED_FILE_SIZE = 5120
-# значение в секундах, +- от текущего времени когда событие считается новым
-CURRENT_EVENT_DELTA = 60 * 60
 # на сколько кешировать данные, получаемые по апи
 API_DATA_CACHE_TIME = 60 * 30
-# мероприятия каких типов отображать
-VISIBLE_EVENT_TYPES = ['клуб мышления', 'визионерская лекция', 'мастер-класс', 'x-labs']
 # максимальное количество одновременно загружаемых файлов пользователем
 MAX_PARALLEL_UPLOADS = 10
-# использовать снэпшот для обновления эвентов
-USE_ILE_SNAPSHOT = True
 # сколько активностей запрашивать на странице (если не используется снэпшот для обновления эвентов)
 ACTIVITIES_PER_PAGE = 20
 
@@ -167,19 +161,17 @@ ILE_TOKEN_PATH = '/api/token/'
 ILE_SNAPSHOT_PATH = '/api/snapshot/'
 # нужно ли валидировать сертификат ILE
 ILE_VERIFY_CERTIFICATE = False
-# урл для получения трейсов из LABS
-LABS_TRACES_API_URL = 'https://labs.u2035dev.ru/api/v1/tracetype?app_token=7at0hbdmabmtfl0y'
-LABS_URL = 'SET-ME-PLEASE'
-LABS_TOKEN = 'SET-ME-PLEASE'
+LABS_URL = ''
+LABS_TOKEN = ''
 
-XLE_URL = 'https://xle.2035.university'
+XLE_URL = ''
 XLE_TOKEN = ''
 
-DP_URL = 'https://dp.2035.university'
+DP_URL = ''
 DP_TOKEN = ''
 
 # базовый урл uploads
-BASE_URL = 'https://uploads.2035.university'
+BASE_URL = ''
 
 # uuid эвента, в который будут грузиться данные для чартов
 API_DATA_EVENT = ''
@@ -191,5 +183,21 @@ KAFKA_PORT = 80
 KAFKA_TOKEN = ''
 KAFKA_PROTOCOL = 'http'
 
-from .local_settings import *
+from os import getenv
+from split_settings.tools import include
 
+settings_path = getenv('UPLOADS_SETTINGS_PATH', 'local_settings.py')
+try:
+    include(settings_path)
+except IOError as e:
+    print("CRITICAL: {}".format(e))
+    exit(1)
+
+define = [
+    'SSO_UNTI_URL', 'SSO_API_KEY', 'SSO_API_KEY', 'SOCIAL_AUTH_UNTI_SECRET', 'LABS_URL', 'LABS_TOKEN',
+    'XLE_URL', 'XLE_TOKEN', 'DP_URL', 'DP_TOKEN', 'BASE_URL'
+]
+
+for name in define:
+    if not locals().get(name):
+        raise Exception('"{}" must be defined'.format(name))
