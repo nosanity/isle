@@ -356,3 +356,8 @@ nav.navbar {
 .large-font {
     font-size: 4em;
 }
+
+.context-switching-select {
+    margin-bottom: -5px;
+    margin-left: 20px;
+}

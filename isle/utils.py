@@ -385,7 +385,8 @@ def update_contexts():
                 except pytz.UnknownTimeZoneError:
                     logging.error('unknown timezone %s' % timezone)
                     continue
-                c = Context.objects.update_or_create(uuid=uuid, defaults={'timezone': timezone})[0]
+                c = Context.objects.update_or_create(uuid=uuid, defaults={'timezone': timezone,
+                                                                          'title': context.get('title') or ''})[0]
                 events = []
                 for run in (context.get('runs') or []):
                     for event in (run.get('events') or []):

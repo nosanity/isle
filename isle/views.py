@@ -3,6 +3,7 @@ import io
 import functools
 import logging
 import os
+from functools import wraps
 from itertools import permutations, combinations
 from collections import defaultdict, Counter
 from django.conf import settings
@@ -14,7 +15,7 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404, FileResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
+from django.urls import reverse, resolve, Resolver404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
@@ -33,7 +34,7 @@ from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResul
 from isle.kafka import send_object_info, KafkaActions
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
-    LabsEventResult, LabsUserResult, LabsTeamResult
+    LabsEventResult, LabsUserResult, LabsTeamResult, Context
 from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data, get_results_list, EventMaterialsCSV
@@ -45,6 +46,26 @@ def login(request):
 
 def logout(request):
     return base_logout(request, next_page='index')
+
+
+def context_setter(f):
+    """
+    декоратор для установки контекста ассистенту при заходе на страницы мероприятия и связанных страниц в случае,
+    если его текущий контекст не совпадает с контекстом этого мероприятия
+    """
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            uid = kwargs.get('uid')
+            if uid:
+                event = Event.objects.filter(uid=uid).first()
+                if event and request.user.is_authenticated and request.user.is_assistant and \
+                        request.user.chosen_context_id != event.context_id:
+                    request.user.chosen_context_id = event.context_id
+                    request.user.save(update_fields=['chosen_context_id'])
+            return view_func(request, *args, **kwargs)
+        return _wrapped_view
+    return decorator(f)
 
 
 @method_decorator(login_required, name='dispatch')
@@ -130,6 +151,8 @@ class Index(TemplateView):
         if self.activity_filter:
             events = events.filter(activity=self.activity_filter)
         events = events.order_by('{}dt_start'.format('' if self.is_asc_sort() else '-'))
+        if self.request.user.is_assistant and self.request.user.chosen_context_id:
+            events = events.filter(context_id=self.request.user.chosen_context_id)
         return events
 
     def is_asc_sort(self):
@@ -163,6 +186,7 @@ def get_event_participants(event):
     return User.objects.filter(id__in=users).order_by('last_name', 'first_name', 'second_name')
 
 
+@method_decorator(context_setter, name='get')
 class EventView(GetEventMixinWithAccessCheck, TemplateView):
     """
     Просмотр статистики загрузок материалов по эвентам
@@ -206,6 +230,7 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
         }
 
 
+@method_decorator(context_setter, name='get')
 class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
     template_name = 'load_materials.html'
     material_model = None
@@ -1489,9 +1514,16 @@ class ActivitiesView(TemplateView):
 
     def get_activities(self):
         if not self.only_my_activities():
-            return Activity.objects.filter(is_deleted=False)
-        return Activity.objects.filter(is_deleted=False, id__in=ActivityEnrollment.objects.filter(user=self.request.user).
-                                       values_list('activity_id', flat=True))
+            return self.filter_context(Activity.objects.filter(is_deleted=False))
+        return self.filter_context(Activity.objects.filter(
+            is_deleted=False,
+            id__in=ActivityEnrollment.objects.filter(user=self.request.user).values_list('activity_id', flat=True))
+        )
+
+    def filter_context(self, qs):
+        if self.request.user.is_assistant and self.request.user.chosen_context_id:
+            return qs.filter(event__context_id=self.request.user.chosen_context_id).distinct()
+        return qs
 
     def only_my_activities(self):
         return self.request.GET.get('activities') == 'my'
@@ -1955,6 +1987,7 @@ class GetDpData(View):
 
 
 @method_decorator(login_required, name='dispatch')
+@method_decorator(context_setter, name='get')
 class ResultPage(TemplateView):
     template_name = 'result_page.html'
 
@@ -1997,3 +2030,31 @@ class EventCsvData(GetEventMixin, View):
         resp = FileResponse(b, content_type='text/csv')
         resp['Content-Disposition'] = "attachment; filename*=UTF-8''{}.csv".format(obj.get_csv_filename())
         return resp
+
+
+@login_required
+def switch_context(request):
+    """
+    Установка нового контекста для пользователя. Возвращает урл редиректа
+    """
+    if not request.user.is_assistant:
+        raise PermissionDenied
+    try:
+        if 'context_id' in request.POST and request.POST['context_id'] == '':
+            context = None
+        else:
+            context = Context.objects.get(id=request.POST.get('context_id'))
+        request.user.chosen_context = context
+        request.user.save(update_fields=['chosen_context'])
+        current_url = request.POST.get('url')
+        try:
+            url = resolve(current_url)
+            if url.url_name == 'activities':
+                redirect_url = current_url
+            else:
+                redirect_url = reverse('index')
+        except Resolver404:
+            redirect_url = reverse('index')
+        return JsonResponse({'redirect': redirect_url})
+    except (Context.DoesNotExist, ValueError, TypeError):
+        raise Http404

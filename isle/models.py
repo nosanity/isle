@@ -22,6 +22,7 @@ class User(AbstractUser):
     is_assistant = models.BooleanField(default=False)
     unti_id = models.PositiveIntegerField(null=True, db_index=True)
     leader_id = models.CharField(max_length=255, default='')
+    chosen_context = models.ForeignKey('Context', on_delete=models.SET_NULL, null=True, default=None)
 
     class Meta:
         verbose_name = _(u'Пользователь')
@@ -75,6 +76,7 @@ class ActivityEnrollment(models.Model):
 class Context(models.Model):
     timezone = models.CharField(max_length=255)
     uuid = models.CharField(max_length=255, unique=True)
+    title = models.CharField(max_length=500, default='')
 
 
 class Event(models.Model):
