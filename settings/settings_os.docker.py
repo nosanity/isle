@@ -42,3 +42,23 @@ KAFKA_HOST = os.getenv('KAFKA_HOST', '')
 KAFKA_PORT = int(os.getenv('KAFKA_PORT', 80))
 KAFKA_TOKEN = os.getenv('KAFKA_TOKEN', '')
 KAFKA_PROTOCOL = os.getenv('KAFKA_PROTOCOL', 'http')
+
+
+def get_broker_val(key, default):
+    uploads_key = 'UPLOADS_{}'.format(key)
+    if os.getenv(uploads_key):
+        return os.getenv(uploads_key)
+    return os.getenv(key, default)
+
+BROKER_HOST = get_broker_val('BROKER_HOST', 'localhost')
+BROKER_PORT = int(get_broker_val('BROKER_PORT', 5672))
+BROKER_VHOST = get_broker_val('BROKER_VHOST', "/")
+BROKER_USER = get_broker_val('BROKER_USER', "myuser")
+BROKER_PASSWORD = get_broker_val('BROKER_PASSWORD', "mypassword")
+BROKER_URL = "amqp://{user}:{password}@{host}:{port}/{vhost}".format(
+    user=BROKER_USER, password=BROKER_PASSWORD, host=BROKER_HOST, port=BROKER_PORT, vhost=BROKER_VHOST
+)
+
+MAX_MATERIALS_FOR_SYNC_GENERATION = int(os.getenv('MAX_MATERIALS_FOR_SYNC_GENERATION', 500))
+MAX_PARALLEL_CSV_GENERATIONS = int(os.getenv('MAX_PARALLEL_CSV_GENERATIONS', 5))
+TIME_TO_FAIL_CSV_GENERATION = int(os.getenv('TIME_TO_FAIL_CSV_GENERATION', 2 * 3600))

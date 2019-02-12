@@ -4,6 +4,7 @@ import pytz
 import re
 import urllib
 from functools import reduce
+from uuid import uuid4
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey
@@ -11,6 +12,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.deconstruct import deconstructible
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext_lazy as _
 from jsonfield import JSONField
@@ -77,6 +79,7 @@ class Context(models.Model):
     timezone = models.CharField(max_length=255)
     uuid = models.CharField(max_length=255, unique=True)
     title = models.CharField(max_length=500, default='')
+    guid = models.CharField(max_length=500, default='')
 
 
 class Event(models.Model):
@@ -796,3 +799,53 @@ class MetaModel(models.Model):
     uuid = models.CharField(max_length=255, unique=True)
     guid = models.CharField(max_length=255)
     title = models.CharField(max_length=500)
+
+
+@deconstructible
+class PathAndRename(object):
+    """
+    формирование уникального пути для сохранения файла
+    """
+    def __init__(self, path):
+        self.path = path
+
+    def __call__(self, instance, filename):
+        filename = '{}.csv'.format(uuid4().hex)
+        return os.path.join(self.path, uuid4().hex[0], uuid4().hex[1:3], filename)
+
+
+class CSVDump(models.Model):
+    STATUS_ORDERED = 1
+    STATUS_IN_PROGRESS = 2
+    STATUS_COMPLETE = 3
+    STATUS_ERROR = 4
+
+    STATUSES = (
+        (STATUS_ORDERED, _('ожидание генерации')),
+        (STATUS_IN_PROGRESS, _('идет генерация')),
+        (STATUS_COMPLETE, _('готово')),
+        (STATUS_ERROR, _('ошибка')),
+    )
+
+    csv_file = models.FileField(upload_to=PathAndRename('csv-dumps'), null=True, blank=True)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE)
+    header = models.CharField(max_length=255)
+    datetime_ordered = models.DateTimeField(default=timezone.now)
+    datetime_ready = models.DateTimeField(null=True, blank=True)
+    status = models.SmallIntegerField(choices=STATUSES, default=STATUS_ORDERED)
+    meta_data = JSONField(null=True)
+
+    @classmethod
+    def current_generations_for_user(cls, user):
+        """
+        Количество текущих генераций выгрузок для пользователя. Если генерация зависла в статусе
+        STATUS_ORDERED или STATUS_IN_PROGRESS, считается, что она провалилась
+        """
+        return cls.objects.filter(
+            owner=user,
+            status__in=[cls.STATUS_ORDERED, cls.STATUS_IN_PROGRESS],
+            datetime_ordered__gt=timezone.now() - timezone.timedelta(seconds=settings.TIME_TO_FAIL_CSV_GENERATION)
+        ).count()
+
+    def get_download_link(self):
+        return reverse('load_csv_dump', kwargs={'dump_id': self.id})

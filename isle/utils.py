@@ -1,5 +1,6 @@
 import csv
 import json
+import io
 import logging
 import pytz
 from collections import defaultdict, OrderedDict
@@ -386,7 +387,8 @@ def update_contexts():
                     logging.error('unknown timezone %s' % timezone)
                     continue
                 c = Context.objects.update_or_create(uuid=uuid, defaults={'timezone': timezone,
-                                                                          'title': context.get('title') or ''})[0]
+                                                                          'title': context.get('title') or '',
+                                                                          'guid': context.get('guid') or ''})[0]
                 events = []
                 for run in (context.get('runs') or []):
                     for event in (run.get('events') or []):
@@ -490,14 +492,21 @@ class EventMaterialsCSV:
         self.populate_common_data(d)
         return d
 
+    def generate_headers(self):
+        return self.field_names().values()
+
     def generate(self):
+        yield self.generate_headers()
+        for line in self.generate_for_event():
+            yield line
+
+    def generate_for_event(self):
         personal_materials = EventMaterial.objects.filter(event=self.event).\
             select_related('result_v2', 'result_v2__result', 'user')
         team_materials = EventTeamMaterial.objects.filter(event=self.event).\
             select_related('result_v2', 'result_v2__result')
         event_materials = EventOnlyMaterial.objects.filter(event=self.event)
 
-        yield self.field_names().values()
         for m in personal_materials.iterator():
             for line in self.lines_for_personal_material(m):
                 yield line.values()
@@ -634,3 +643,50 @@ class EventMaterialsCSV:
         return EventMaterial.objects.filter(event=self.event).count() + \
                EventTeamMaterial.objects.filter(event=self.event).count() + \
                EventOnlyMaterial.objects.filter(event=self.event).count() > 0
+
+
+class EventGroupMaterialsCSV(EventMaterialsCSV):
+    def __init__(self, events_qs, meta_data):
+        self.meta_data = meta_data
+        self.events_qs = events_qs
+        super().__init__(None)
+
+    def field_names(self):
+        return OrderedDict([('event_uuid', _('UUID мероприятия'))] + list(super().field_names().items()))
+
+    def populate_common_data(self, d):
+        super().populate_common_data(d)
+        d.update({'event_uuid': self.event.uid})
+
+    def generate(self):
+        yield self.generate_headers()
+        for event in self.events_qs:
+            self.event = event
+            for line in self.generate_for_event():
+                yield line
+
+    def get_csv_filename(self, do_quote=True):
+        f = quote if do_quote else lambda x: x
+        guid = str(self.meta_data['context'] and self.meta_data['context'].guid)
+        if self.meta_data['activity']:
+            return f('{}_{}'.format(guid, self.meta_data['activity'].title))
+        return f('{}_{}'.format(guid, self.meta_data['date'].strftime('%d-%m-%Y')))
+
+    def count_materials(self):
+        ids = list([i.id for i in self.events_qs])
+        return EventMaterial.objects.filter(event_id__in=ids).count() + \
+               EventTeamMaterial.objects.filter(event_id__in=ids).count() + \
+               EventOnlyMaterial.objects.filter(event_id__in=ids).count()
+
+
+class BytesCsvStreamWriter:
+    def write(self, value):
+        return value.encode('utf8')
+
+
+class BytesCsvObjWriter:
+    def __init__(self):
+        self.file = io.BytesIO()
+
+    def write(self, value):
+        self.file.write(value.encode('utf8'))

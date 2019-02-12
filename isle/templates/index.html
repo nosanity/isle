@@ -30,6 +30,12 @@
             </div>
         </div>
     {% endif %}
+    {% if request.user.is_assistant %}
+        <a class="pull-right export_event_csv" href="{% url 'get_filtered_events_csv' %}{% if activity_filter %}?activity={{ activity_filter.id }}{% endif %}">
+            <span class="glyphicon glyphicon-download-alt"></span>&nbsp;Экспортировать все
+        </a>
+        <div class="clearfix"></div>
+    {% endif %}
     <div class="row {% if activity_filter %}mt-10{% endif %}">
         <div class="col">
             <div>
@@ -114,6 +120,9 @@
     </script>
     <!-- event handlers of buttons are binded in js file below -->
     <script type="text/javascript" src="{% static 'js/pages/index.js' %}"></script>
+    {% if request.user.is_assistant %}
+        <script type="text/javascript" src="{% static 'js/pages/index_assistant.js' %}"></script>
+    {% endif %}
 {% endblock %}
 
 {% block css %}
