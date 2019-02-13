@@ -153,6 +153,7 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
                 'description': block.get('description') or '',
                 'block_type': block.get('type') or '',
                 'order': block_order,
+                'deleted': False,
             })
             created_blocks.append(b.uuid)
             results = block.get('results') or []
@@ -172,6 +173,7 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
                     'check': result.get('check') or '',
                     'order': result_order,
                     'meta': meta,
+                    'deleted': False
                 })
                 if meta and isinstance(meta, list):
                     for model in meta:
@@ -189,9 +191,9 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
                                 pass
                 created_results.append(r.uuid)
             if set(block_results) - set(created_results):
-                b.results.exclude(uuid__in=created_results).delete()
+                b.results.exclude(uuid__in=created_results).update(deleted=True)
         if set(event_blocks_uuid) - set(created_blocks):
-            event.blocks.exclude(uuid__in=created_blocks).delete()
+            event.blocks.exclude(uuid__in=created_blocks).update(deleted=True)
     except Exception:
         logging.exception('Failed to parse event structure')
 

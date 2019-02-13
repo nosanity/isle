@@ -252,8 +252,12 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
             'event': self.event,
             'can_upload': self.can_upload(),
             'can_set_public': self._can_set_public(),
+            'unattached_files': self.get_unattached_files()
         })
         return data
+
+    def get_unattached_files(self):
+        return []
 
     def can_upload(self):
         return self.request.user.is_assistant
@@ -399,6 +403,14 @@ class BaseLoadMaterialsLabsResults:
         }))
         return data
 
+    def get_unattached_files(self):
+        return self.material_model.objects.filter(**self._update_query_dict({
+            'event': self.event,
+            'result_v2__isnull': True,
+            'result__isnull': True,
+            'trace__isnull': True,
+        }))
+
     def _update_query_dict(self, d):
         """
         т.к. у базовых классов есть cached_property user или team, которое одновременно является
@@ -432,9 +444,9 @@ class BaseLoadMaterialsLabsResults:
         resp = self.check_post_allowed(request)
         if resp is not None:
             return resp
-        result_id_error = self._check_labs_result_id(request)
+        result_id_error, result_deleted = self._check_labs_result_id(request)
         if 'add_btn' in request.POST:
-            if result_id_error is not None:
+            if result_id_error is not None or result_deleted:
                 return result_id_error
             return self.add_item(request)
         elif 'action' in request.POST and request.POST['action'] in ['delete_all', 'init_result']:
@@ -443,6 +455,8 @@ class BaseLoadMaterialsLabsResults:
             if request.POST['action'] == 'delete_all':
                 return self.action_delete_all(request)
             elif request.POST['action'] == 'init_result':
+                if result_deleted:
+                    return JsonResponse({}, status=400)
                 return self.action_init_result(request)
         return self.delete_item(request)
 
@@ -530,9 +544,12 @@ class BaseLoadMaterialsLabsResults:
         try:
             result_id = int(request.POST.get('labs_result_id'))
         except (ValueError, TypeError):
-            return JsonResponse({}, status=400)
-        if not result_id or not LabsEventResult.objects.filter(id=result_id, block__event_id=self.event.id).exists():
-            return JsonResponse({}, status=400)
+            return JsonResponse({}, status=400), None
+        result = LabsEventResult.objects.filter(id=result_id, block__event_id=self.event.id).\
+            select_related('block').first()
+        if not result_id or not result:
+            return JsonResponse({}, status=400), None
+        return None, result.deleted or result.block.deleted
 
     def _get_result_key(self):
         return 'result_v2'
@@ -911,6 +928,9 @@ class LoadEventMaterials(BaseLoadMaterials):
             'blocks_form': EventMaterialForm(event=self.event),
         })
         return data
+
+    def get_unattached_files(self):
+        return self.material_model.objects.filter(event=self.event, trace__isnull=True)
 
     def get_materials(self):
         qs = EventOnlyMaterial.objects.filter(event=self.event).prefetch_related('owners')

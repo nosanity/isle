@@ -258,6 +258,7 @@ class Trace(models.Model):
     name = models.TextField(default='', verbose_name='Название')
     event_type = models.ForeignKey(EventType, on_delete=models.SET_NULL, verbose_name='Тип мероприятия',
                                    blank=True, null=True, default=None)
+    deleted = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = 'Результат'
@@ -693,6 +694,7 @@ class LabsEventBlock(models.Model):
     description = models.TextField(verbose_name=_('Описание'))
     block_type = models.CharField(max_length=255, verbose_name=_('Тип блока'))
     order = models.IntegerField(verbose_name=_('Порядок отображения в рамках мероприятия'))
+    deleted = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['order']
@@ -711,6 +713,7 @@ class LabsEventResult(models.Model):
     check = models.TextField(verbose_name=_('Способ проверки результата'))
     order = models.IntegerField(verbose_name=_('Порядок отображения в рамках блока мероприятия'))
     meta = JSONField(default=None, null=True, verbose_name=_('Ячейки, в которые попадает ЦС'))
+    deleted = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['order']
