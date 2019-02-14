@@ -280,7 +280,122 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
     e.preventDefault();
     let $obj = $(e.target);
     result_edit_switcher($obj.parents('.result-item-li'), false);
+}).delegate('.move-deleted-result', 'click', (e) => {
+    e.preventDefault();
+    let $obj = $(e.target);
+    let result = $obj.parents('.result-item-li').find('.result-materials-wrapper');
+    let labs_result = $obj.parents('.material-result-div');
+    build_move_result_modal(result, labs_result.data('result'));
+}).delegate('#btn-move-selected-result', 'click', (e) => {
+    let obj = $(e.target);
+    obj.prop('disabled', true).attr('disabled', 'disabled');
+    let post_data, result, old_result_wrapper;
+    if (obj.data('mv-type') == 'result') {
+        post_data = {
+            csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
+            action: 'move',
+            result_item_id: $(e.target).data('user_result'),
+            labs_result_id: $(e.target).data('labs_result_id'),
+            move_to: $('input[name="move-result-radiobox"]:checked').val()
+        };
+        result = $('.result-materials-wrapper[data-result-id="' + $(e.target).data('user_result') + '"]').parents('li.result-item-li');
+        old_result_wrapper = result.parents('.material-result-div').find('ul.list-group')
+    }
+    else {
+        post_data = {
+            csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
+            action: 'move_unattached',
+            material_id: obj.data('material_id'),
+            move_to: $('input[name="move-result-radiobox"]:checked').val()
+        };
+    }
+    $.ajax({
+        type: 'POST',
+        data: post_data,
+        url: '',
+        success: (data) => {
+            if (obj.data('mv-type') == 'result') {
+                let destination = data.new_result_id;
+                let result_block = $('.material-result-div[data-result="' + destination + '"]').find('ul.list-group');
+                result.appendTo(result_block);
+                $('#move_results_modal').modal('hide');
+                resultFilesNumberHandler(old_result_wrapper);
+                resultFilesNumberHandler(result_block);
+            }
+            else {
+                let destination = data.item_result_id;
+                let result_block = $('.material-result-div[data-result="' + data.result_id + '"]').find('ul.list-group');
+                successProcessFile(
+                    data,
+                    $('.material-result-div[data-result="' + data.result_id + '"]').find('form'),
+                    destination
+                );
+                $('.move-unattached-file[data-file-id="' + obj.data('material_id') + '"]').parents('li.list-group-item').remove();
+                $('#move_results_modal').modal('hide');
+                resultFilesNumberHandler(result_block);
+            }
+        },
+        error: (xhr, err) => {
+            alert('error');
+        },
+        complete () => { obj.prop('disabled', false).removeAttr('disabled'); }
+    })
+}).delegate('.move-unattached-file', 'click', (e) => {
+    e.preventDefault();
+    build_move_result_modal($(e.target), null);
 });
+
+function build_move_result_modal(result, labs_result_id) {
+    if ($('#move_results_modal').length == 0) {
+        let modal = `
+            <div id="move_results_modal" class="modal fade" role="dialog" style="max-width: 100vw;">
+              <div class="modal-dialog">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <button type="button" class="close filter-modal-dismiss" data-dismiss="modal"
+                          aria-label="Закрыть"><span aria-hidden="true">&times;</span></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="modal-move-choices"></div>
+                    <div>
+                        <button class="btn btn-success" id="btn-move-selected-result">Переместить</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+        `;
+        $('body').append($(modal));
+    }
+    let items = '';
+    let cnt = 0;
+    let label;
+    for (let i = 0; i < blocks_structure.length; i++) {
+        let block = blocks_structure[i];
+        for (let j = 0; j < block.results.length; j++) {
+            let res = block.results[j];
+            if (res.deleted || block.deleted)
+                continue;
+            if (labs_result_id && res.id == labs_result_id)
+                items += `
+                    <li><input type="radio" name="move-result-radiobox" value="${res.id}" id="move_item_${cnt}" disabled="disabled">
+                    <label for="move_item_${cnt}">${block.title}, ${res.title} (текущий)</label></li>
+                `;
+            else
+                items += `
+                    <li><input type="radio" name="move-result-radiobox" value="${res.id}" id="move_item_${cnt}">
+                    <label for="move_item_${cnt}">${block.title}, ${res.title}</label></li>
+                `;
+            cnt++;
+        }
+    }
+    $('#move_results_modal .modal-move-choices').empty().append($(`<ul class="no-bullets">${items}</ul>`));
+    if (labs_result_id)
+        $('#btn-move-selected-result').data('labs_result_id', labs_result_id).data('user_result', $(result).data('result-id')).data('mv-type', "result");
+    else
+        $('#btn-move-selected-result').data('labs_result_id', labs_result_id).data('material_id', $(result).data('file-id')).data('mv-type', "file");
+    $('#move_results_modal').modal('show');
+}
 
 $('body').delegate(maxSizeSelector, 'change', (e) => {
     if (window.FileReader && e.target.files && e.target.files[0] && e.target.files[0].size > maxSize * 1024 * 1024) {
@@ -465,6 +580,11 @@ function successProcessFile(data, $form, result_item_id) {
     let items, item;
     if (pageType == 'loadMaterials_v2') {
         if (!$form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]').length) {
+
+            if (isAssistant)
+                additional_btns = `<span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>`;
+            else
+                additional_btns = '';
             let html_wrapper = `
                 <li class="list-group-item no-left-padding result-item-li">
                     <div class="row">
@@ -478,6 +598,7 @@ function successProcessFile(data, $form, result_item_id) {
                                 <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
                                 <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
                                 <span data-url="${page_url}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
+                                ${additional_btns}
                             </div>
                         </div>
                     </div>

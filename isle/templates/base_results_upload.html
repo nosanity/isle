@@ -119,6 +119,9 @@
                                                     {% endif %}
                                                     <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
                                                     <span data-url="{{ result_item.get_page_url }}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
+                                                    {% if request.user.is_assistant %}
+                                                        <span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>
+                                                    {% endif %}
                                                 </div>
                                             </div>
                                         </div>
@@ -190,12 +193,15 @@
                 </li>
             {% endfor %}
             {% for link in unattached_files %}
-                <li class="list-group-item {% if link.confirmed and team_upload and not link.initiator_user.is_assistant %}confirmed-team-link{% elif team_upload and link.initiator_user.is_assistant %}assistant-team-link{% endif %}">
+                <li class="list-group-item">
                     <a href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
                     {% if can_upload %}
                     <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
                         {% blocktrans %}Удалить{% endblocktrans %}
                     </button>
+                    {% endif %}
+                    {% if request.user.is_assistant %}
+                        <span class="glyphicon glyphicon-move result-action-buttons pull-right move-unattached-file" data-file-id="{{ link.id }}"></span>
                     {% endif %}
                     <div><span>{{ link.comment }}</span></div>
                 </li>
@@ -214,6 +220,7 @@
         const fromUser = eval("{{ user_upload|lower }}");
         const canUpload = eval("{{ can_upload|lower }}");
         const csrfmiddlewaretoken = "{{ csrf_token }}";
+        const blocks_structure = {{ blocks_structure_json|safe }};
     </script>
     <script type="text/javascript">
         const maxSize = parseInt("{{ max_size }}");

@@ -1,6 +1,7 @@
 import csv
 import io
 import functools
+import json
 import logging
 import os
 from functools import wraps
@@ -376,6 +377,19 @@ class BaseLoadMaterialsLabsResults:
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
         blocks = self.event.blocks.prefetch_related('results')
+        structure = [
+            {
+                'title': block.title,
+                'deleted': block.deleted,
+                'results': [
+                    {
+                        'id': result.id,
+                        'deleted': result.deleted,
+                        'title': 'Результат {}.{}'.format(i, j)
+                    } for j, result in enumerate(block.results.all(), 1)
+                ]
+            } for i, block in enumerate(blocks, 1)
+        ]
         qs_results = self.results_model.objects.filter(**self._update_query_dict({
             'result__block__event_id': self.event.id
         })).order_by('-id')
@@ -400,6 +414,7 @@ class BaseLoadMaterialsLabsResults:
             'blocks': blocks,
             'old_results': self.get_old_results(),
             'links': links,
+            'blocks_structure_json': json.dumps(structure, ensure_ascii=False),
         }))
         return data
 
@@ -445,12 +460,13 @@ class BaseLoadMaterialsLabsResults:
         if resp is not None:
             return resp
         result_id_error, result_deleted = self._check_labs_result_id(request)
+        allowed_actions = ['delete_all', 'init_result', 'move', 'move_unattached']
         if 'add_btn' in request.POST:
             if result_id_error is not None or result_deleted:
                 return result_id_error
             return self.add_item(request)
-        elif 'action' in request.POST and request.POST['action'] in ['delete_all', 'init_result']:
-            if result_id_error is not None:
+        elif 'action' in request.POST and request.POST['action'] in allowed_actions:
+            if request.POST['action'] != 'move_unattached' and result_id_error is not None:
                 return result_id_error
             if request.POST['action'] == 'delete_all':
                 return self.action_delete_all(request)
@@ -458,6 +474,10 @@ class BaseLoadMaterialsLabsResults:
                 if result_deleted:
                     return JsonResponse({}, status=400)
                 return self.action_init_result(request)
+            elif request.POST['action'] == 'move':
+                return self.action_move(request)
+            elif request.POST['action'] == 'move_unattached':
+                return self.action_move_unattached(request)
         return self.delete_item(request)
 
     def action_edit_comment(self, request):
@@ -476,6 +496,81 @@ class BaseLoadMaterialsLabsResults:
                 (request.user.username, result_id, comment))
             return JsonResponse({})
         return JsonResponse({}, status=400)
+
+    def action_move(self, request):
+        """
+        перемещение объекта результата из одного блока результата в другой
+        """
+        if not request.user.is_assistant:
+            raise PermissionDenied
+        item_result = self.results_model.objects.filter(**self._update_query_dict({
+            'result_id': request.POST.get('labs_result_id'),
+            'id': request.POST.get('result_item_id'),
+        })).first()
+        if not item_result:
+            return JsonResponse({}, status=400)
+        old_result_id = item_result.result.id
+        try:
+            assert item_result.result.block.event_id == self.event.id
+            move_to = LabsEventResult.objects.select_related('block').get(id=request.POST.get('move_to'))
+            assert move_to.block.event_id == self.event.id and not move_to.deleted and not move_to.block.deleted
+        except (AssertionError, LabsEventResult.DoesNotExist, TypeError, ValueError):
+            return JsonResponse({}, status=400)
+        item_result.result = move_to
+        item_result.save(update_fields=['result'])
+        logging.info('User %s moved result %s from LabsEventResult %s to %s' %
+                     (self.request.user.email, item_result.id, old_result_id, move_to.id))
+        if self.should_send_to_kafka(item_result):
+            send_object_info(item_result, item_result.id, KafkaActions.UPDATE)
+        return JsonResponse({'new_result_id': move_to.id})
+
+    def action_move_unattached(self, request):
+        """
+        перемещение файла, у которого нет связей с трейсом или результатом, в результат
+        """
+        if not request.user.is_assistant:
+            raise PermissionDenied
+        try:
+            material = self.material_model.objects.get(**self._update_query_dict({
+                'event': self.event,
+                'id': request.POST.get('material_id'),
+                'trace__isnull': True,
+                'result__isnull': True,
+                'result_v2__isnull': True,
+            }))
+        except (self.material_model.DoesNotExist, ValueError, TypeError):
+            return JsonResponse({}, status=400)
+        try:
+            result = LabsEventResult.objects.get(
+                block__event_id=self.event.id,
+                id=request.POST.get('move_to')
+            )
+            assert not result.deleted and not result.block.deleted
+        except (AssertionError, self.material_model.DoesNotExist, ValueError, TypeError):
+            return JsonResponse({}, status=400)
+        item_result = self.results_model.objects.create(**self._update_query_dict({
+            'result': result,
+        }))
+        if self.should_send_to_kafka(item_result):
+            send_object_info(item_result, item_result.id, KafkaActions.CREATE)
+        material.result_v2 = item_result
+        material.save(update_fields=['result_v2'])
+        if self.should_send_to_kafka(item_result):
+            send_object_info(item_result, item_result.id, KafkaActions.UPDATE)
+        logging.info('User %s created result %s from unattached file %s' %
+                     (request.user.email, item_result.id, material.id))
+        return JsonResponse({
+            'material_id': material.id,
+            'url': material.get_url(),
+            'name': material.get_name(),
+            'comment': '',
+            'is_public': getattr(material, 'is_public', True),
+            'data_attrs': material.render_metadata(),
+            'can_set_public': self._can_set_public(),
+            'item_result_id': item_result.id,
+            'result_id': result.id,
+            'result_url': item_result.get_page_url(),
+        })
 
     def action_init_result(self, request):
         """
