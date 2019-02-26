@@ -60,3 +60,7 @@ def send_object_info(obj, obj_id, action):
         message_manager.send_one(outgoing_message)
     except Exception:
         logging.exception('Kafka communication failed with payload %s' % payload)
+
+
+def check_kafka():
+    return False
