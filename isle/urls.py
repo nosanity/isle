@@ -1,8 +1,9 @@
 from django.conf import settings
-from django.urls import path
+from django.urls import path, include
 from isle import views
 
 urlpatterns = [
+    path('carrier-django/', include('django_carrier_client.urls')),
     path('', views.Index.as_view(), name='index'),
     path('login/', views.login, name='login'),
     path('logout/', views.logout, name='logout'),
