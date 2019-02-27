@@ -28,15 +28,16 @@ from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
+from isle.api import LabsApi, XLEApi, DpApi, SSOApi
 from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset, \
     EventMaterialForm
-from isle.kafka import send_object_info, KafkaActions
+from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
     LabsEventResult, LabsUserResult, LabsTeamResult
 from isle.serializers import AttendanceSerializer
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
-    recalculate_user_chart_data, get_results_list
+    recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection
 
 
 def login(request):
@@ -1977,3 +1978,41 @@ class ResultPage(TemplateView):
             'structure': event.blocks.prefetch_related('results'),
             'models': result.models_list(),
         }
+
+
+class ApiCheckHealth(APIView):
+    """
+    **Описание**
+
+        Проверка статуса приложения, связи с системами, с которыми оно общается, и с базой данных
+
+    **Пример запроса**
+
+        GET /api/check/
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "labs": "ok",
+                "dp": 500,
+                "xle": "ok",
+                "sso": "ok",
+                "mysql": "ok",
+                "kafka": false,
+                "release": "1.1.0",
+            }
+        * 403 api key отсутствует или неправильный
+    """
+    permission_classes = (ApiPermission, )
+
+    def get(self, request):
+        return Response({
+            'labs': LabsApi().health_check(),
+            'dp': DpApi().health_check(),
+            'xle': XLEApi().health_check(),
+            'sso': SSOApi().health_check(),
+            'mysql': check_mysql_connection(),
+            'kafka': check_kafka(),
+            'release': get_release_version(),
+        })
