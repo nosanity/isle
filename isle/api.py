@@ -151,6 +151,7 @@ class BaseApi:
     base_url = ''
     app_token = ''
     authorization = {}
+    check_health_url = ''
 
     def add_authorization_to_kwargs(self, kwargs):
         for key, item in self.authorization.items():
@@ -206,7 +207,9 @@ class BaseApi:
 
     def health_check(self):
         try:
-            resp = requests.head(self.base_url)
+            kwargs = {'timeout': settings.CONNECTION_TIMEOUT}
+            self.add_authorization_to_kwargs(kwargs)
+            resp = requests.head('{}{}'.format(self.base_url, self.check_health_url), **kwargs)
             if resp.status_code < 400:
                 return 'ok'
             else:
@@ -220,6 +223,7 @@ class LabsApi(BaseApi):
     name = 'labs'
     base_url = settings.LABS_URL.rstrip('/')
     authorization = {'params': {'app_token': getattr(settings, 'LABS_TOKEN', '')}}
+    check_health_url = '/api/v2/type'
 
     def get_activities(self):
         return self.make_request('/api/v2/activity')
@@ -235,6 +239,7 @@ class XLEApi(BaseApi):
     name = 'xle'
     base_url = settings.XLE_URL.rstrip('/')
     authorization = {'params': {'app_token': getattr(settings, 'XLE_TOKEN', '')}}
+    check_health_url = '/api/v1/checkin'
 
     def get_attendance(self):
         return self.make_request('/api/v1/checkin')
@@ -244,6 +249,7 @@ class DpApi(BaseApi):
     name = 'dp'
     base_url = settings.DP_URL.rstrip('/')
     authorization = {'params': {'app_token': getattr(settings, 'DP_TOKEN', '')}}
+    check_health_url = '/api/v1/framework'
 
     def get_metamodel(self, uuid):
         return self.make_request_no_pagination('/api/v1/model/{}'.format(uuid))
@@ -256,3 +262,10 @@ class SSOApi(BaseApi):
 
     def push_user_to_uploads(self, user_id):
         return self.make_request_no_pagination('/api/push-user-to-uploads/', method='POST', json={'unti_id': user_id})
+
+
+class SSOApiGetPerm(BaseApi):
+    name = 'sso'
+    base_url = settings.SSO_UNTI_URL.rstrip('/')
+    authorization = {'params': {'x-api-key': getattr(settings, 'SSO_API_KEY', '')}}
+    check_health_url = '/api/check/release/'

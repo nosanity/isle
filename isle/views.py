@@ -36,7 +36,7 @@ from rest_framework.permissions import BasePermission, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
-from isle.api import LabsApi, XLEApi, DpApi, SSOApi
+from isle.api import LabsApi, XLEApi, DpApi, SSOApi, SSOApiGetPerm
 from isle.filters import LabsUserResultFilter, LabsTeamResultFilter
 from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset, \
     EventMaterialForm, EditTeamForm
@@ -1391,15 +1391,28 @@ class Paginator(PageNumberPagination):
     page_size = 20
 
 
-class ApiPermission(BasePermission):
+class BaseApiKeyPermission(BasePermission):
     def has_permission(self, request, view):
         if request.method == 'OPTIONS':
             return True
         api_key = getattr(settings, 'API_KEY', '')
-        key = request.META.get('HTTP_X_API_KEY')
+        key = self.get_key_from_request(request)
         if key and api_key and key == api_key:
             return True
         return False
+
+    def get_key_from_request(self, request):
+        pass
+
+
+class ApiPermission(BaseApiKeyPermission):
+    def get_key_from_request(self, request):
+        return request.META.get('HTTP_X_API_KEY')
+
+
+class ApiKeyGetPermission(BaseApiKeyPermission):
+    def get_key_from_request(self, request):
+        return request.query_params.get('x-api-key')
 
 
 class AttendanceApi(ListAPIView):
@@ -2436,11 +2449,18 @@ class ApiCheckHealth(APIView):
 
     **Пример запроса**
 
-        GET /api/check/
+        GET /api/check/?x-api-key=key
+        GET /api/check/labs/?x-api-key=key
+        GET /api/check/dp/?x-api-key=key
+        GET /api/check/xle/?x-api-key=key
+        GET /api/check/sso/?x-api-key=key
+        GET /api/check/mysql/?x-api-key=key
+        GET /api/check/kafka/?x-api-key=key
+        GET /api/check/release/?x-api-key=key
 
     **Пример ответа**
 
-        * 200 успешно
+        * если запрашивался статус по всем системам, вернет словарь и код 200
             {
                 "labs": "ok",
                 "dp": 500,
@@ -2450,20 +2470,42 @@ class ApiCheckHealth(APIView):
                 "kafka": false,
                 "release": "1.1.0",
             }
+
+        * если запрашивался статус по конкретной системе, вернется только код (200, если все ок),
+          а если запрашивался релиз, в ответе также будет код релиза
+
         * 403 api key отсутствует или неправильный
     """
-    permission_classes = (ApiPermission, )
+    permission_classes = (ApiKeyGetPermission, )
 
-    def get(self, request):
-        return Response({
-            'labs': LabsApi().health_check(),
-            'dp': DpApi().health_check(),
-            'xle': XLEApi().health_check(),
-            'sso': SSOApi().health_check(),
-            'mysql': check_mysql_connection(),
-            'kafka': check_kafka(),
-            'release': get_release_version(),
-        })
+    supported_types = (
+        ('labs', LabsApi().health_check),
+        ('dp', DpApi().health_check),
+        ('xle', XLEApi().health_check),
+        ('sso', SSOApiGetPerm().health_check),
+        ('mysql', check_mysql_connection),
+        ('kafka', check_kafka),
+        ('release', get_release_version),
+    )
+
+    def get(self, request, sys_type=''):
+        if not sys_type:
+            return Response(dict([(key, _callable()) for key, _callable in self.supported_types]))
+        if sys_type not in dict(self.supported_types):
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        _callable = dict(self.supported_types)[sys_type]
+        code = _callable()
+        if sys_type == 'release':
+            if code:
+                return Response(code)
+            return Response(status=500)
+        if code == 'ok':
+            code = 200
+        elif isinstance(code, int):
+            pass
+        else:
+            code = 500
+        return Response(status=code)
 
 
 class CSVResponseGeneratorMixin:

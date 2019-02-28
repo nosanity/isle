@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from django.conf import settings
 from django.utils import timezone
-from carrier_client.manager import MessageManager, MessageManagerException
+from carrier_client.manager import MessageManager, MessageManagerException, check_kafka_status
 from carrier_client.message import OutgoingMessage
 from django_carrier_client.helpers import MessageManagerHelper
 from isle.api import SSOApi, ApiError
@@ -15,6 +15,7 @@ message_manager = MessageManager(
     port=settings.KAFKA_PORT,
     protocol=settings.KAFKA_PROTOCOL,
     auth=settings.KAFKA_TOKEN,
+    timeout=settings.CONNECTION_TIMEOUT,
 )
 
 
@@ -65,7 +66,16 @@ def send_object_info(obj, obj_id, action):
 
 
 def check_kafka():
-    return False
+    resp = check_kafka_status(
+        settings.KAFKA_HOST,
+        settings.KAFKA_PORT,
+        protocol=settings.KAFKA_PROTOCOL,
+        auth=settings.KAFKA_TOKEN,
+        timeout=settings.CONNECTION_TIMEOUT,
+    )
+    if isinstance(resp, int):
+        return 'ok' if resp < 400 else resp
+    return resp
 
 
 class KafkaBaseListener:

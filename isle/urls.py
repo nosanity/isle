@@ -51,6 +51,7 @@ urlpatterns = [
     path('api/all-team-results/', views.AllTeamResultsView.as_view()),
     path('api/get-dp-data/', views.GetDpData.as_view()),
     path('api/check/', views.ApiCheckHealth.as_view()),
+    path('api/check/<str:sys_type>/', views.ApiCheckHealth.as_view()),
     path('<str:uid>/<int:unti_id>/<str:result_type>/<int:result_id>', views.ResultPage.as_view(), name='result-page'),
 ]
 
