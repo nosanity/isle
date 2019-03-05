@@ -193,6 +193,17 @@ class BaseApi:
             logging.exception('%s connection error' % self.name)
             raise ApiError
 
+    def health_check(self):
+        try:
+            resp = requests.head(self.base_url)
+            if resp.status_code < 400:
+                return 'ok'
+            else:
+                logging.error('Health check returned code %s for system %s' % (resp.status_code, self.name))
+                return resp.status_code
+        except requests.RequestException:
+            logging.exception('Health check error for system %s' % self.name)
+
 
 class LabsApi(BaseApi):
     name = 'labs'
@@ -225,3 +236,8 @@ class DpApi(BaseApi):
 
     def get_metamodel(self, uuid):
         return self.make_request_no_pagination('/api/v1/model/{}'.format(uuid))
+
+
+class SSOApi(BaseApi):
+    name = 'sso'
+    base_url = settings.SSO_UNTI_URL.rstrip('/')

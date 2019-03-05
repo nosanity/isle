@@ -2,6 +2,7 @@ import csv
 import json
 import io
 import logging
+import os
 import pytz
 from collections import defaultdict, OrderedDict
 from io import StringIO
@@ -449,6 +450,22 @@ def get_results_list(event=None):
                 i['result__block__title'],
                 i['result__title'],
             ]))
+
+
+def get_release_version():
+    try:
+        with open(os.path.join(settings.BASE_DIR, 'release')) as f:
+            return f.read().strip()
+    except:
+        logging.exception('Failed to read release version')
+
+
+def check_mysql_connection():
+    try:
+        Context.objects.first()
+        return 'ok'
+    except:
+        logging.exception('Mysql check failed')
 
 
 class EventMaterialsCSV:
