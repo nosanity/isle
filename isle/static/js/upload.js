@@ -338,7 +338,7 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
         error: (xhr, err) => {
             alert('error');
         },
-        complete () => { obj.prop('disabled', false).removeAttr('disabled'); }
+        complete: () => { obj.prop('disabled', false).removeAttr('disabled'); }
     })
 }).delegate('.move-unattached-file', 'click', (e) => {
     e.preventDefault();
