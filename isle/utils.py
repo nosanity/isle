@@ -699,13 +699,26 @@ class EventGroupMaterialsCSV(EventMaterialsCSV):
 
 
 class BytesCsvStreamWriter:
+    def __init__(self, encoding):
+        self.encoding = encoding
+
     def write(self, value):
-        return value.encode('utf8')
+        return value.encode(self.encoding)
 
 
 class BytesCsvObjWriter:
-    def __init__(self):
+    def __init__(self, encoding):
         self.file = io.BytesIO()
+        self.encoding = encoding
 
     def write(self, value):
-        self.file.write(value.encode('utf8'))
+        self.file.write(value.encode(self.encoding))
+
+
+def get_csv_encoding_for_request(request):
+    try:
+        os_family = request.user_agent.os.family or ''
+    except AttributeError:
+        os_family = ''
+    overridden_encoding = settings.CSV_ENCODING_FOR_OS.get(os_family.lower())
+    return overridden_encoding or settings.DEFAULT_CSV_ENCODING

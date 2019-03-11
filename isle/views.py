@@ -1,4 +1,5 @@
 import csv
+import codecs
 import io
 import functools
 import json
@@ -44,7 +45,7 @@ from isle.serializers import AttendanceSerializer
 from isle.tasks import generate_events_csv
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
-    EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter
+    EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request
 
 
 def login(request):
@@ -2176,7 +2177,7 @@ class ApiCheckHealth(APIView):
 
 class CSVResponseGeneratorMixin:
     def get_csv_response(self, obj):
-        b = BytesCsvStreamWriter()
+        b = BytesCsvStreamWriter(get_csv_encoding_for_request(self.request))
         c = csv.writer(b, delimiter=';')
         resp = StreamingHttpResponse(
             (c.writerow(list(map(str, row))) for row in obj.generate()),
@@ -2220,6 +2221,7 @@ class EventsCsvData(IndexPageEventsFilterMixin, CSVResponseGeneratorMixin, View)
                 'max_csv': settings.MAX_PARALLEL_CSV_GENERATIONS,
                 'can_generate': CSVDump.current_generations_for_user(request.user) < \
                                 settings.MAX_PARALLEL_CSV_GENERATIONS,
+                'page_url': reverse('csv-dumps-list'),
             })
         if num <= settings.MAX_MATERIALS_FOR_SYNC_GENERATION:
             return self.get_csv_response(obj)
@@ -2231,7 +2233,8 @@ class EventsCsvData(IndexPageEventsFilterMixin, CSVResponseGeneratorMixin, View)
         csv_dump = CSVDump.objects.create(
             owner=request.user, header=obj.get_csv_filename(do_quote=False), meta_data=task_meta
         )
-        generate_events_csv.delay(csv_dump.id, [i.id for i in events], task_meta)
+        generate_events_csv.delay(csv_dump.id, [i.id for i in events], get_csv_encoding_for_request(self.request),
+                                  task_meta)
         return JsonResponse({'page_url': reverse('csv-dumps-list'), 'dump_id': csv_dump.id})
 
 

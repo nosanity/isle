@@ -7,7 +7,7 @@ from isle.utils import EventGroupMaterialsCSV, BytesCsvObjWriter
 
 
 @task
-def generate_events_csv(dump_id, event_ids, meta):
+def generate_events_csv(dump_id, event_ids, encoding, meta):
     CSVDump.objects.filter(id=dump_id).update(status=CSVDump.STATUS_IN_PROGRESS)
     events = Event.objects.filter(id__in=event_ids).order_by('id')
     try:
@@ -16,7 +16,7 @@ def generate_events_csv(dump_id, event_ids, meta):
         if meta['context']:
             meta['context'] = Context.objects.get(id=meta['context'])
         obj = EventGroupMaterialsCSV(events, meta)
-        b = BytesCsvObjWriter()
+        b = BytesCsvObjWriter(encoding)
         c = csv.writer(b, delimiter=';')
         for line in obj.generate():
             c.writerow(list(map(str, line)))
