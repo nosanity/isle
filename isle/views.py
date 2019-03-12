@@ -1,24 +1,30 @@
 import csv
+import codecs
 import io
 import functools
+import json
 import logging
 import os
+from functools import wraps
 from itertools import permutations, combinations
 from collections import defaultdict, Counter
+from urllib.parse import quote
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import logout as base_logout
+from django.core.files.storage import default_storage
 from django.core.exceptions import PermissionDenied, SuspiciousOperation
 from django.db import transaction
 from django.db.models import Count, Q
-from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404, FileResponse
+from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404, FileResponse, \
+    StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
+from django.urls import reverse, resolve, Resolver404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
-from django.views.generic import TemplateView, View
+from django.views.generic import TemplateView, View, ListView
 import requests
 from dal import autocomplete
 from rest_framework import status
@@ -34,10 +40,12 @@ from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResul
 from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
-    LabsEventResult, LabsUserResult, LabsTeamResult
+    LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump
 from isle.serializers import AttendanceSerializer
+from isle.tasks import generate_events_csv
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
-    recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection
+    recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
+    EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request
 
 
 def login(request):
@@ -48,13 +56,74 @@ def logout(request):
     return base_logout(request, next_page='index')
 
 
+def context_setter(f):
+    """
+    декоратор для установки контекста ассистенту при заходе на страницы мероприятия и связанных страниц в случае,
+    если его текущий контекст не совпадает с контекстом этого мероприятия
+    """
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            uid = kwargs.get('uid')
+            if uid:
+                event = Event.objects.filter(uid=uid).first()
+                if event and request.user.is_authenticated and request.user.is_assistant and \
+                        request.user.chosen_context_id != event.context_id:
+                    request.user.chosen_context_id = event.context_id
+                    request.user.save(update_fields=['chosen_context_id'])
+            return view_func(request, *args, **kwargs)
+        return _wrapped_view
+    return decorator(f)
+
+
+class IndexPageEventsFilterMixin:
+    DATE_FORMAT = '%Y-%m-%d'
+
+    def get_date(self):
+        try:
+            date = timezone.datetime.strptime(self.request.GET.get('date'), self.DATE_FORMAT).date()
+        except:
+            if not self.request.user.is_assistant or self.activity_filter:
+                return
+            date = timezone.localtime(timezone.now()).date()
+        return date
+
+    @cached_property
+    def activity_filter(self):
+        try:
+            return Activity.objects.get(id=self.request.GET.get('activity'))
+        except (ValueError, TypeError, Activity.DoesNotExist):
+            return
+
+    def get_events(self):
+        if self.request.user.is_assistant:
+            events = Event.objects.filter(is_active=True)
+        else:
+            events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user).
+                                          values_list('event_id', flat=True))
+        events = events.filter(event_type_id__in=get_allowed_event_type_ids())
+        date = self.get_date()
+        if date:
+            min_dt = timezone.make_aware(timezone.datetime.combine(date, timezone.datetime.min.time()))
+            max_dt = min_dt + timezone.timedelta(days=1)
+            events = events.filter(dt_start__gte=min_dt, dt_start__lt=max_dt)
+        if self.activity_filter:
+            events = events.filter(activity=self.activity_filter)
+        events = events.order_by('{}dt_start'.format('' if self.is_asc_sort() else '-'))
+        if self.request.user.is_assistant and self.request.user.chosen_context_id:
+            events = events.filter(context_id=self.request.user.chosen_context_id)
+        return events
+
+    def is_asc_sort(self):
+        return self.request.GET.get('sort') != 'desc'
+
+
 @method_decorator(login_required, name='dispatch')
-class Index(TemplateView):
+class Index(IndexPageEventsFilterMixin, TemplateView):
     """
     все эвенты (доступные пользователю)
     """
     template_name = 'index.html'
-    DATE_FORMAT = '%Y-%m-%d'
 
     def get_context_data(self, **kwargs):
         date = self.get_date()
@@ -100,42 +169,6 @@ class Index(TemplateView):
             ctx.update({'event_num': event_num, 'trace_num': trace_num})
         return ctx
 
-    def get_date(self):
-        try:
-            date = timezone.datetime.strptime(self.request.GET.get('date'), self.DATE_FORMAT).date()
-        except:
-            if not self.request.user.is_assistant or self.activity_filter:
-                return
-            date = timezone.localtime(timezone.now()).date()
-        return date
-
-    @cached_property
-    def activity_filter(self):
-        try:
-            return Activity.objects.get(id=self.request.GET.get('activity'))
-        except (ValueError, TypeError, Activity.DoesNotExist):
-            return
-
-    def get_events(self):
-        if self.request.user.is_assistant:
-            events = Event.objects.filter(is_active=True)
-        else:
-            events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user).
-                                          values_list('event_id', flat=True))
-        events = events.filter(event_type_id__in=get_allowed_event_type_ids())
-        date = self.get_date()
-        if date:
-            min_dt = timezone.make_aware(timezone.datetime.combine(date, timezone.datetime.min.time()))
-            max_dt = min_dt + timezone.timedelta(days=1)
-            events = events.filter(dt_start__gte=min_dt, dt_start__lt=max_dt)
-        if self.activity_filter:
-            events = events.filter(activity=self.activity_filter)
-        events = events.order_by('{}dt_start'.format('' if self.is_asc_sort() else '-'))
-        return events
-
-    def is_asc_sort(self):
-        return self.request.GET.get('sort') != 'desc'
-
 
 class GetEventMixin:
     @cached_property
@@ -164,6 +197,7 @@ def get_event_participants(event):
     return User.objects.filter(id__in=users).order_by('last_name', 'first_name', 'second_name')
 
 
+@method_decorator(context_setter, name='get')
 class EventView(GetEventMixinWithAccessCheck, TemplateView):
     """
     Просмотр статистики загрузок материалов по эвентам
@@ -207,6 +241,7 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
         }
 
 
+@method_decorator(context_setter, name='get')
 class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
     template_name = 'load_materials.html'
     material_model = None
@@ -221,8 +256,12 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
             'event': self.event,
             'can_upload': self.can_upload(),
             'can_set_public': self._can_set_public(),
+            'unattached_files': self.get_unattached_files()
         })
         return data
+
+    def get_unattached_files(self):
+        return []
 
     def can_upload(self):
         return self.request.user.is_assistant
@@ -341,6 +380,19 @@ class BaseLoadMaterialsLabsResults:
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
         blocks = self.event.blocks.prefetch_related('results')
+        structure = [
+            {
+                'title': block.title,
+                'deleted': block.deleted,
+                'results': [
+                    {
+                        'id': result.id,
+                        'deleted': result.deleted,
+                        'title': 'Результат {}.{}'.format(i, j)
+                    } for j, result in enumerate(block.results.all(), 1)
+                ]
+            } for i, block in enumerate(blocks, 1)
+        ]
         qs_results = self.results_model.objects.filter(**self._update_query_dict({
             'result__block__event_id': self.event.id
         })).order_by('-id')
@@ -365,8 +417,17 @@ class BaseLoadMaterialsLabsResults:
             'blocks': blocks,
             'old_results': self.get_old_results(),
             'links': links,
+            'blocks_structure_json': json.dumps(structure, ensure_ascii=False),
         }))
         return data
+
+    def get_unattached_files(self):
+        return self.material_model.objects.filter(**self._update_query_dict({
+            'event': self.event,
+            'result_v2__isnull': True,
+            'result__isnull': True,
+            'trace__isnull': True,
+        }))
 
     def _update_query_dict(self, d):
         """
@@ -401,18 +462,25 @@ class BaseLoadMaterialsLabsResults:
         resp = self.check_post_allowed(request)
         if resp is not None:
             return resp
-        result_id_error = self._check_labs_result_id(request)
+        result_id_error, result_deleted = self._check_labs_result_id(request)
+        allowed_actions = ['delete_all', 'init_result', 'move', 'move_unattached']
         if 'add_btn' in request.POST:
-            if result_id_error is not None:
+            if result_id_error is not None or result_deleted:
                 return result_id_error
             return self.add_item(request)
-        elif 'action' in request.POST and request.POST['action'] in ['delete_all', 'init_result']:
-            if result_id_error is not None:
+        elif 'action' in request.POST and request.POST['action'] in allowed_actions:
+            if request.POST['action'] != 'move_unattached' and result_id_error is not None:
                 return result_id_error
             if request.POST['action'] == 'delete_all':
                 return self.action_delete_all(request)
             elif request.POST['action'] == 'init_result':
+                if result_deleted:
+                    return JsonResponse({}, status=400)
                 return self.action_init_result(request)
+            elif request.POST['action'] == 'move':
+                return self.action_move(request)
+            elif request.POST['action'] == 'move_unattached':
+                return self.action_move_unattached(request)
         return self.delete_item(request)
 
     def action_edit_comment(self, request):
@@ -431,6 +499,81 @@ class BaseLoadMaterialsLabsResults:
                 (request.user.username, result_id, comment))
             return JsonResponse({})
         return JsonResponse({}, status=400)
+
+    def action_move(self, request):
+        """
+        перемещение объекта результата из одного блока результата в другой
+        """
+        if not request.user.is_assistant:
+            raise PermissionDenied
+        item_result = self.results_model.objects.filter(**self._update_query_dict({
+            'result_id': request.POST.get('labs_result_id'),
+            'id': request.POST.get('result_item_id'),
+        })).first()
+        if not item_result:
+            return JsonResponse({}, status=400)
+        old_result_id = item_result.result.id
+        try:
+            assert item_result.result.block.event_id == self.event.id
+            move_to = LabsEventResult.objects.select_related('block').get(id=request.POST.get('move_to'))
+            assert move_to.block.event_id == self.event.id and not move_to.deleted and not move_to.block.deleted
+        except (AssertionError, LabsEventResult.DoesNotExist, TypeError, ValueError):
+            return JsonResponse({}, status=400)
+        item_result.result = move_to
+        item_result.save(update_fields=['result'])
+        logging.info('User %s moved result %s from LabsEventResult %s to %s' %
+                     (self.request.user.email, item_result.id, old_result_id, move_to.id))
+        if self.should_send_to_kafka(item_result):
+            send_object_info(item_result, item_result.id, KafkaActions.UPDATE)
+        return JsonResponse({'new_result_id': move_to.id})
+
+    def action_move_unattached(self, request):
+        """
+        перемещение файла, у которого нет связей с трейсом или результатом, в результат
+        """
+        if not request.user.is_assistant:
+            raise PermissionDenied
+        try:
+            material = self.material_model.objects.get(**self._update_query_dict({
+                'event': self.event,
+                'id': request.POST.get('material_id'),
+                'trace__isnull': True,
+                'result__isnull': True,
+                'result_v2__isnull': True,
+            }))
+        except (self.material_model.DoesNotExist, ValueError, TypeError):
+            return JsonResponse({}, status=400)
+        try:
+            result = LabsEventResult.objects.get(
+                block__event_id=self.event.id,
+                id=request.POST.get('move_to')
+            )
+            assert not result.deleted and not result.block.deleted
+        except (AssertionError, self.material_model.DoesNotExist, ValueError, TypeError):
+            return JsonResponse({}, status=400)
+        item_result = self.results_model.objects.create(**self._update_query_dict({
+            'result': result,
+        }))
+        if self.should_send_to_kafka(item_result):
+            send_object_info(item_result, item_result.id, KafkaActions.CREATE)
+        material.result_v2 = item_result
+        material.save(update_fields=['result_v2'])
+        if self.should_send_to_kafka(item_result):
+            send_object_info(item_result, item_result.id, KafkaActions.UPDATE)
+        logging.info('User %s created result %s from unattached file %s' %
+                     (request.user.email, item_result.id, material.id))
+        return JsonResponse({
+            'material_id': material.id,
+            'url': material.get_url(),
+            'name': material.get_name(),
+            'comment': '',
+            'is_public': getattr(material, 'is_public', True),
+            'data_attrs': material.render_metadata(),
+            'can_set_public': self._can_set_public(),
+            'item_result_id': item_result.id,
+            'result_id': result.id,
+            'result_url': item_result.get_page_url(),
+        })
 
     def action_init_result(self, request):
         """
@@ -499,9 +642,12 @@ class BaseLoadMaterialsLabsResults:
         try:
             result_id = int(request.POST.get('labs_result_id'))
         except (ValueError, TypeError):
-            return JsonResponse({}, status=400)
-        if not result_id or not LabsEventResult.objects.filter(id=result_id, block__event_id=self.event.id).exists():
-            return JsonResponse({}, status=400)
+            return JsonResponse({}, status=400), None
+        result = LabsEventResult.objects.filter(id=result_id, block__event_id=self.event.id).\
+            select_related('block').first()
+        if not result_id or not result:
+            return JsonResponse({}, status=400), None
+        return None, result.deleted or result.block.deleted
 
     def _get_result_key(self):
         return 'result_v2'
@@ -880,6 +1026,9 @@ class LoadEventMaterials(BaseLoadMaterials):
             'blocks_form': EventMaterialForm(event=self.event),
         })
         return data
+
+    def get_unattached_files(self):
+        return self.material_model.objects.filter(event=self.event, trace__isnull=True)
 
     def get_materials(self):
         qs = EventOnlyMaterial.objects.filter(event=self.event).prefetch_related('owners')
@@ -1490,9 +1639,16 @@ class ActivitiesView(TemplateView):
 
     def get_activities(self):
         if not self.only_my_activities():
-            return Activity.objects.filter(is_deleted=False)
-        return Activity.objects.filter(is_deleted=False, id__in=ActivityEnrollment.objects.filter(user=self.request.user).
-                                       values_list('activity_id', flat=True))
+            return self.filter_context(Activity.objects.filter(is_deleted=False))
+        return self.filter_context(Activity.objects.filter(
+            is_deleted=False,
+            id__in=ActivityEnrollment.objects.filter(user=self.request.user).values_list('activity_id', flat=True))
+        )
+
+    def filter_context(self, qs):
+        if self.request.user.is_assistant and self.request.user.chosen_context_id:
+            return qs.filter(event__context_id=self.request.user.chosen_context_id).distinct()
+        return qs
 
     def only_my_activities(self):
         return self.request.GET.get('activities') == 'my'
@@ -1956,6 +2112,7 @@ class GetDpData(View):
 
 
 @method_decorator(login_required, name='dispatch')
+@method_decorator(context_setter, name='get')
 class ResultPage(TemplateView):
     template_name = 'result_page.html'
 
@@ -2016,3 +2173,131 @@ class ApiCheckHealth(APIView):
             'kafka': check_kafka(),
             'release': get_release_version(),
         })
+
+
+class CSVResponseGeneratorMixin:
+    def get_csv_response(self, obj):
+        b = BytesCsvStreamWriter(get_csv_encoding_for_request(self.request))
+        c = csv.writer(b, delimiter=';')
+        resp = StreamingHttpResponse(
+            (c.writerow(list(map(str, row))) for row in obj.generate()),
+            content_type="text/csv"
+        )
+        resp['Content-Disposition'] = "attachment; filename*=UTF-8''{}.csv".format(obj.get_csv_filename())
+        return resp
+
+
+class EventCsvData(GetEventMixin, CSVResponseGeneratorMixin, View):
+    def get(self, request, *args, **kwargs):
+        if not request.user.is_assistant:
+            raise PermissionDenied
+        obj = EventMaterialsCSV(self.event)
+        if request.GET.get('check_empty'):
+            return JsonResponse({'has_contents': obj.has_contents()})
+        return self.get_csv_response(obj)
+
+
+@method_decorator(login_required, name='dispatch')
+class EventsCsvData(IndexPageEventsFilterMixin, CSVResponseGeneratorMixin, View):
+    """
+    Выгрузка csv по нескольким мероприятиям сразу
+    """
+    def get(self, request):
+        if not request.user.is_assistant:
+            raise PermissionDenied
+        events = self.get_events()
+        meta_data = {
+            'activity': self.activity_filter,
+            'date': self.get_date(),
+            'context': request.user.chosen_context,
+        }
+        obj = EventGroupMaterialsCSV(events, meta_data)
+        num = obj.count_materials()
+        if request.GET.get('check_empty'):
+            return JsonResponse({
+                'has_contents': num > 0,
+                'max_num': settings.MAX_MATERIALS_FOR_SYNC_GENERATION,
+                'sync': num <= settings.MAX_MATERIALS_FOR_SYNC_GENERATION,
+                'max_csv': settings.MAX_PARALLEL_CSV_GENERATIONS,
+                'can_generate': CSVDump.current_generations_for_user(request.user) < \
+                                settings.MAX_PARALLEL_CSV_GENERATIONS,
+                'page_url': reverse('csv-dumps-list'),
+            })
+        if num <= settings.MAX_MATERIALS_FOR_SYNC_GENERATION:
+            return self.get_csv_response(obj)
+        if CSVDump.current_generations_for_user(request.user) >= settings.MAX_PARALLEL_CSV_GENERATIONS:
+            raise PermissionDenied
+        task_meta = meta_data.copy()
+        task_meta['activity'] = self.activity_filter and self.activity_filter.id
+        task_meta['context'] = request.user.chosen_context and request.user.chosen_context.id
+        csv_dump = CSVDump.objects.create(
+            owner=request.user, header=obj.get_csv_filename(do_quote=False), meta_data=task_meta
+        )
+        generate_events_csv.delay(csv_dump.id, [i.id for i in events], get_csv_encoding_for_request(self.request),
+                                  task_meta)
+        return JsonResponse({'page_url': reverse('csv-dumps-list'), 'dump_id': csv_dump.id})
+
+
+@login_required
+def switch_context(request):
+    """
+    Установка нового контекста для пользователя. Возвращает урл редиректа
+    """
+    if not request.user.is_assistant:
+        raise PermissionDenied
+    try:
+        if 'context_id' in request.POST and request.POST['context_id'] == '':
+            context = None
+        else:
+            context = Context.objects.get(id=request.POST.get('context_id'))
+        request.user.chosen_context = context
+        request.user.save(update_fields=['chosen_context'])
+        current_url = request.POST.get('url')
+        try:
+            url = resolve(current_url)
+            if url.url_name == 'activities':
+                redirect_url = current_url
+            else:
+                redirect_url = reverse('index')
+        except Resolver404:
+            redirect_url = reverse('index')
+        return JsonResponse({'redirect': redirect_url})
+    except (Context.DoesNotExist, ValueError, TypeError):
+        raise Http404
+
+
+@method_decorator(login_required, name='dispatch')
+class LoadCsvDump(View):
+    def get(self, request, **kwargs):
+        if not request.user.is_assistant:
+            raise PermissionDenied
+        obj = get_object_or_404(CSVDump, id=kwargs['dump_id'], status=CSVDump.STATUS_COMPLETE)
+        resp = FileResponse(default_storage.open(obj.csv_file.name))
+        resp['Content-Disposition'] = "attachment; filename*=UTF-8''{header}.csv".format(header=quote(obj.header))
+        return resp
+
+
+@method_decorator(login_required, name='dispatch')
+class CSVDumpsList(ListView):
+    model = CSVDump
+    paginate_by = 50
+    template_name = 'my_csv_dumps.html'
+
+    def get_queryset(self):
+        return self.model.objects.filter(owner=self.request.user).order_by('-datetime_ordered').select_related('owner')
+
+    def get_context_data(self, *, object_list=None, **kwargs):
+        if not self.request.user.is_assistant:
+            raise PermissionDenied
+        data = super().get_context_data(object_list=object_list, **kwargs)
+        context_ids = {}
+        object_list = data['object_list']
+        for obj in object_list:
+            meta_data = obj.meta_data if isinstance(obj.meta_data, dict) else {}
+            context_ids[obj.id] = meta_data.get('context')
+        contexts = dict(Context.objects.filter(id__in=filter(None, context_ids.values())).values_list('id', 'guid'))
+        for obj in object_list:
+            obj.meta = {
+                'context_guid': contexts.get(context_ids[obj.id]),
+            }
+        return data

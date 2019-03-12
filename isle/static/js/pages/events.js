@@ -27,6 +27,25 @@ if (isAssistant) {
     });
 }
 
+$('.export_event_csv').on('click', (e) => {
+    e.preventDefault();
+    var obj = $(e.target);
+    if (obj[0].tagName == 'SPAN')
+        obj = obj.parent('a');
+    var url = obj.attr('href') + '?check_empty=1';
+    $.ajax({
+        method: 'GET',
+        url: url,
+        success: (data) => {
+            if (data.has_contents)
+                window.location = obj.attr('href');
+            else
+                alert('Ни одного файла или результата не загружено в мероприятие');
+        },
+        error: () => { alert('Произошла ошибка'); }
+    })
+});
+
 function inputAttendanceChange(obj) {
     const $obj = $(obj);
     const isChecked = $obj.prop('checked');

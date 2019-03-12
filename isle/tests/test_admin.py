@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from isle.admin import EventAdmin, EventTypeAdmin
-from isle.models import Event, EventType, User, Activity, Context
+from isle.models import Event, EventType, User, Activity, Context, Trace
 
 
 class MockRequest:
@@ -101,7 +101,7 @@ class TestEventTypeAdmin(OnlyChangePermissionTestMixin, TestCase):
             'title': 'title',
             'description': 'description',
             'visible': True,
-            'trace_data': [{"trace_type": "Презентация", "name": "Презентация продукта"}],
+            'trace_data': None,
         }
         et = EventType.objects.create(**init_data)
         new_data = {
@@ -118,3 +118,30 @@ class TestEventTypeAdmin(OnlyChangePermissionTestMixin, TestCase):
         self.assertEqual(EventType.objects.get(id=et.id).description, init_data['description'])
         self.assertEqual(EventType.objects.get(id=et.id).visible, new_data['visible'])
         self.assertEqual(EventType.objects.get(id=et.id).trace_data, json.loads(new_data['trace_data']))
+
+    def test_delete_trace(self):
+        et_uuid = str(uuid4())
+        init_data = {
+            'uuid': et_uuid,
+            'title': 'title',
+            'description': 'description',
+            'visible': True,
+            'trace_data': '',
+        }
+        et = EventType.objects.create(**init_data)
+        new_data = init_data
+        new_data['trace_data'] = json.dumps([
+            {"trace_type": "Презентация1", "name": "Презентация продукта1"},
+            {"trace_type": "Презентация2", "name": "Презентация продукта2"}
+        ])
+        self.client.post(reverse('admin:isle_eventtype_change', kwargs={'object_id': et.id}), new_data)
+        self.assertEqual(Trace.objects.filter(deleted=False).count(), 2)
+
+        new_data['trace_data'] = json.dumps([
+            {"trace_type": "Презентация1", "name": "Презентация продукта1"},
+        ])
+        with self.assertLogs('', level='WARNING') as log:
+            self.client.post(reverse('admin:isle_eventtype_change', kwargs={'object_id': et.id}), new_data)
+            self.assertEqual(len(log.output), 1)
+        self.assertEqual(Trace.objects.filter(deleted=False).count(), 1)
+        self.assertEqual(Trace.objects.count(), 2)

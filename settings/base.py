@@ -32,6 +32,8 @@ INSTALLED_APPS = [
     'social_django',
     'rest_framework',
     'django_carrier_client',
+    'djcelery',
+    'django_user_agents'
 ]
 
 MIDDLEWARE = [
@@ -43,6 +45,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'isle.middleware.CustomSocialAuthMiddleware',
+    'django_user_agents.middleware.UserAgentMiddleware',
 ]
 
 ROOT_URLCONF = 'settings.urls'
@@ -58,6 +61,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'isle.context_processors.context',
             ],
             'builtins': [
                 'isle.templatetags.helpers',
@@ -183,9 +187,20 @@ KAFKA_PORT = 80
 KAFKA_TOKEN = ''
 KAFKA_PROTOCOL = 'http'
 
+# количество всех материалов в выбранных материалов, более которого генерация выгрузки должна идти асинхронно
+MAX_MATERIALS_FOR_SYNC_GENERATION = 500
+# максимальное количество одновременно генерируемых выгрузок для пользователя
+MAX_PARALLEL_CSV_GENERATIONS = 5
+# время в секундах, после которого генерация считается проваленой
+TIME_TO_FAIL_CSV_GENERATION = 2 * 3600
+
+DEFAULT_CSV_ENCODING = 'utf-8'
+CSV_ENCODING_FOR_OS = {
+    'windows': 'windows-1251',
+}
+
 from os import getenv
 from split_settings.tools import include
-
 settings_path = getenv('UPLOADS_SETTINGS_PATH', 'local_settings.py')
 try:
     include(settings_path)
@@ -201,3 +216,6 @@ define = [
 for name in define:
     if not locals().get(name):
         raise Exception('"{}" must be defined'.format(name))
+
+import djcelery
+djcelery.setup_loader()

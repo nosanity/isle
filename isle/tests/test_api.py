@@ -63,9 +63,9 @@ class TestActivityAPI(TestCase):
             self.assertEqual(Activity.objects.filter(is_deleted=True).count(), 1)
             self.assertEqual(Activity.objects.filter(main_author='').count(), 1)
             self.assertEqual(EventType.objects.count(), 1)
-            self.assertEqual(LabsEventBlock.objects.count(), 3)
+            self.assertEqual(LabsEventBlock.objects.count(), 5)
             self.assertEqual(Event.objects.filter(blocks__isnull=True).count(), 0)
-            self.assertEqual(LabsEventResult.objects.count(), 3)
+            self.assertEqual(LabsEventResult.objects.count(), 6)
             self.assertEqual(LabsEventBlock.objects.filter(results__isnull=True).count(), 0)
 
     def test_events_load_with_changed_data(self):
@@ -92,11 +92,15 @@ class TestActivityAPI(TestCase):
             timezone.localdate(Event.objects.get(uid='d18093f5-dd5c-41e3-a772-0103402ddf2c').dt_start),
             timezone.localdate(parse_datetime('2028-07-11T02:00:00+03:00'))
         )
-        self.assertTrue(
+        self.assertEqual(
             LabsEventResult.objects.filter(
-                uuid='37104284-9513-4016-91ba-1ec54998f144',
-                block__event__uid='d18093f5-dd5c-41e3-a772-0103402ddf2c',
-                title='Базовый результат').exists()
+                block__event__uid='d18093f5-dd5c-41e3-a772-0103402ddf2c', deleted=False
+            ).count(), 4
+        )
+        self.assertEqual(
+            LabsEventBlock.objects.filter(
+                event__uid='d18093f5-dd5c-41e3-a772-0103402ddf2c', deleted=False
+            ).count(), 3
         )
         with patch.object(LabsApi, 'get_activities', return_value=iter([load_test_data('changed_api_data.json')])):
             self.assertTrue(refresh_events_data())
@@ -117,16 +121,26 @@ class TestActivityAPI(TestCase):
                 timezone.localdate(Event.objects.get(uid='d18093f5-dd5c-41e3-a772-0103402ddf2c').dt_start),
                 timezone.localdate(timezone.now())
             )
-            self.assertFalse(
-                LabsEventResult.objects.filter(
-                    uuid='37104284-9513-4016-91ba-1ec54998f144').exists()
-            )
-            self.assertTrue(
-                LabsEventResult.objects.filter(
-                    uuid='37104284-9513-4016-91ba-1ec54998f145',
-                    block__event__uid='d18093f5-dd5c-41e3-a772-0103402ddf2c',
-                    title='Базовый результат.').exists()
-            )
+            self.assertEqual(
+            LabsEventResult.objects.filter(
+                block__event__uid='d18093f5-dd5c-41e3-a772-0103402ddf2c', deleted=False
+            ).count(), 3
+        )
+        self.assertEqual(
+            LabsEventBlock.objects.filter(
+                event__uid='d18093f5-dd5c-41e3-a772-0103402ddf2c', deleted=False
+            ).count(), 2
+        )
+        self.assertEqual(
+            LabsEventResult.objects.filter(
+                block__event__uid='d18093f5-dd5c-41e3-a772-0103402ddf2c'
+            ).count(), 4
+        )
+        self.assertEqual(
+            LabsEventBlock.objects.filter(
+                event__uid='d18093f5-dd5c-41e3-a772-0103402ddf2c'
+            ).count(), 3
+        )
 
     def test_delete_events(self):
         with patch.object(LabsApi, 'get_activities', return_value=iter([load_test_data('api_data.json')])):

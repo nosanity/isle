@@ -85,5 +85,5 @@ class EventTypeAdmin(RemoveDeleteActionMixin, admin.ModelAdmin):
                 Trace.objects.create(event_type=obj, **i)
             for trace_id, item in traces.items():
                 if item not in added_traces:
-                    Trace.objects.filter(id=trace_id).delete()
+                    Trace.objects.filter(id=trace_id).update(deleted=True)
                     logging.warning('Trace #%s %s was deleted' % (trace_id, item))

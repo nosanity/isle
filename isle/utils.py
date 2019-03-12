@@ -1,10 +1,12 @@
 import csv
 import json
+import io
 import logging
 import os
 import pytz
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from io import StringIO
+from urllib.parse import quote
 from datetime import datetime
 from django.conf import settings
 from django.core.cache import caches
@@ -12,10 +14,13 @@ from django.core.files.storage import default_storage
 from django.db import models
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.utils.functional import cached_property
+from django.utils.translation import ugettext as _
 import requests
 from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
-                         LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel)
+                         LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
+                         Team)
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -149,6 +154,7 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
                 'description': block.get('description') or '',
                 'block_type': block.get('type') or '',
                 'order': block_order,
+                'deleted': False,
             })
             created_blocks.append(b.uuid)
             results = block.get('results') or []
@@ -168,6 +174,7 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
                     'check': result.get('check') or '',
                     'order': result_order,
                     'meta': meta,
+                    'deleted': False
                 })
                 if meta and isinstance(meta, list):
                     for model in meta:
@@ -185,9 +192,9 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
                                 pass
                 created_results.append(r.uuid)
             if set(block_results) - set(created_results):
-                b.results.exclude(uuid__in=created_results).delete()
+                b.results.exclude(uuid__in=created_results).update(deleted=True)
         if set(event_blocks_uuid) - set(created_blocks):
-            event.blocks.exclude(uuid__in=created_blocks).delete()
+            event.blocks.exclude(uuid__in=created_blocks).update(deleted=True)
     except Exception:
         logging.exception('Failed to parse event structure')
 
@@ -382,7 +389,9 @@ def update_contexts():
                 except pytz.UnknownTimeZoneError:
                     logging.error('unknown timezone %s' % timezone)
                     continue
-                c = Context.objects.update_or_create(uuid=uuid, defaults={'timezone': timezone})[0]
+                c = Context.objects.update_or_create(uuid=uuid, defaults={'timezone': timezone,
+                                                                          'title': context.get('title') or '',
+                                                                          'guid': context.get('guid') or ''})[0]
                 events = []
                 for run in (context.get('runs') or []):
                     for event in (run.get('events') or []):
@@ -457,3 +466,259 @@ def check_mysql_connection():
         return 'ok'
     except:
         logging.exception('Mysql check failed')
+
+
+class EventMaterialsCSV:
+    """
+    класс, генерирующий строки для csv выгрузки всех файлов мероприятия
+    """
+    TYPE_PERSONAL = 1
+    TYPE_TEAM = 2
+    TYPE_EVENT = 3
+    DT_FORMAT = '%d/%m/%Y %H:%M:%S'
+
+    def __init__(self, event):
+        self.event = event
+        self.teams_data_cache = {}
+
+    def field_names(self):
+        return OrderedDict([
+            ('type', _('Тип результатов')),
+            ('title', _('Название активности')),
+            ('dt_start', _('Дата начала')),
+            ('dt_end', _('Дата окончания')),
+            ('initiator', _('Кто загрузил (UntiID)')),
+            ('team_id', _('ID команды')),
+            ('team_title', _('Название команды')),
+            ('unti_id', _('UntiID пользователя')),
+            ('leader_id', _('LeaderID')),
+            ('last_name', _('Фамилия')),
+            ('first_name', _('Имя')),
+            ('second_name', _('Отчество')),
+            ('block_title', _('Название блока')),
+            ('result_title', _('Ожидаемый результат')),
+            ('file_url', _('Ссылка на артефакт')),
+            ('file_extension', _('Расширение файла артефакта')),
+            ('comment', _('Комментарий')),
+            ('sector', _('сектор')),
+            ('level', _('уровень')),
+            ('sublevel', _('подуровень')),
+            ('lines_num', _('Количество строк с файлом')),
+        ])
+
+    def default_line(self):
+        d = OrderedDict([(k, '') for k in self.field_names()])
+        self.populate_common_data(d)
+        return d
+
+    def generate_headers(self):
+        return self.field_names().values()
+
+    def generate(self):
+        yield self.generate_headers()
+        for line in self.generate_for_event():
+            yield line
+
+    def generate_for_event(self):
+        personal_materials = EventMaterial.objects.filter(event=self.event).\
+            select_related('result_v2', 'result_v2__result', 'user')
+        team_materials = EventTeamMaterial.objects.filter(event=self.event).\
+            select_related('result_v2', 'result_v2__result')
+        event_materials = EventOnlyMaterial.objects.filter(event=self.event)
+
+        for m in personal_materials.iterator():
+            for line in self.lines_for_personal_material(m):
+                yield line.values()
+        for m in team_materials.iterator():
+            for line in self.lines_for_team_material(m):
+                yield line.values()
+        for m in event_materials.iterator():
+            for line in self.lines_for_event_material(m):
+                yield line.values()
+
+    def lines_for_personal_material(self, m):
+        default = self.default_line()
+        self.populate_material_data(default, m, self.TYPE_PERSONAL)
+        self.populate_user_data(default, m.user)
+        self.populate_result_data(default, m)
+        meta = self.get_meta(m)
+        meta_objects_num = max(len(meta), 1)
+        default['lines_num'] = meta_objects_num
+        if meta:
+            for item in meta:
+                line = default.copy()
+                self.populate_meta(line, item)
+                yield line
+        else:
+            yield default
+
+    def lines_for_team_material(self, m):
+        default = self.default_line()
+        self.populate_material_data(default, m, self.TYPE_TEAM)
+        self.populate_result_data(default, m)
+        meta = self.get_meta(m)
+        meta_objects_num = max(len(meta), 1)
+        team_data = self._get_team_data(m.team_id)
+        default.update({
+            'lines_num': meta_objects_num * len(team_data['members']),
+            'team_id': m.team_id,
+            'team_title': team_data['title'],
+        })
+        for user in team_data['members']:
+            user_line = default.copy()
+            self.populate_user_data(user_line, user)
+            if meta:
+                for item in meta:
+                    line = user_line.copy()
+                    self.populate_meta(line, item)
+                    yield line
+            else:
+                yield user_line
+
+    def lines_for_event_material(self, m):
+        default = self.default_line()
+        self.populate_material_data(default, m, self.TYPE_EVENT)
+        default['lines_num'] = 1
+        yield default
+
+    def populate_common_data(self, d):
+        d.update({
+            'title': self.event.title,
+            'dt_start': self.dt_start,
+            'dt_end': self.dt_end,
+        })
+
+    def populate_material_data(self, d, m, material_type):
+        d.update({
+            'initiator': m.initiator or '',
+            'file_url': m.get_url(),
+            'file_extension': m.get_extension(),
+            'comment': self.get_comment(m, material_type),
+            'type': self.get_type(material_type),
+        })
+
+    def populate_user_data(self, d, user):
+        d.update({
+            'unti_id': user.unti_id or '',
+            'leader_id': user.leader_id or '',
+            'last_name': user.last_name,
+            'first_name': user.first_name,
+            'second_name': user.second_name,
+        })
+
+    def populate_result_data(self, d, m):
+        d.update({
+            'block_title': m.result_v2 and m.result_v2.result.block.title or '',
+            'result_title': m.result_v2 and m.result_v2.result.title or '',
+        })
+
+    def populate_meta(self, d, meta_item):
+        d.update({
+            'sector': meta_item.get('sector', ''),
+            'level': meta_item.get('level', ''),
+            'sublevel': meta_item.get('sublevel', ''),
+        })
+
+    def get_meta(self, m):
+        if m.result_v2 and isinstance(m.result_v2.result.meta, list) and \
+                all(isinstance(i, dict) for i in m.result_v2.result.meta):
+            return m.result_v2.result.meta
+        return []
+
+    def get_type(self, m_type):
+        return {
+            self.TYPE_PERSONAL: _('Персональный'),
+            self.TYPE_TEAM: _('Групповой'),
+            self.TYPE_EVENT: _('Материал мероприятия'),
+        }.get(m_type)
+
+    @cached_property
+    def dt_start(self):
+        return self.get_formatted_dt(self.event.dt_start)
+
+    @cached_property
+    def dt_end(self):
+        return self.get_formatted_dt(self.event.dt_end)
+
+    def get_formatted_dt(self, dt):
+        return dt and dt.strftime(self.DT_FORMAT) or ''
+
+    def get_comment(self, m, m_type):
+        if m_type != self.TYPE_EVENT and m.result_v2:
+            return m.result_v2.comment
+        return m.comment
+
+    def _get_team_data(self, team_id):
+        if team_id not in self.teams_data_cache:
+            team = Team.objects.prefetch_related('users').get(id=team_id)
+            team_data = {'members': list(team.users.all()), 'title': team.name}
+            self.teams_data_cache[team_id] = team_data
+        return self.teams_data_cache[team_id]
+
+    def get_csv_filename(self):
+        return quote('{} - {}'.format(self.event.title, self.dt_start))
+
+    def has_contents(self):
+        return EventMaterial.objects.filter(event=self.event).count() + \
+               EventTeamMaterial.objects.filter(event=self.event).count() + \
+               EventOnlyMaterial.objects.filter(event=self.event).count() > 0
+
+
+class EventGroupMaterialsCSV(EventMaterialsCSV):
+    def __init__(self, events_qs, meta_data):
+        self.meta_data = meta_data
+        self.events_qs = events_qs
+        super().__init__(None)
+
+    def field_names(self):
+        return OrderedDict([('event_uuid', _('UUID мероприятия'))] + list(super().field_names().items()))
+
+    def populate_common_data(self, d):
+        super().populate_common_data(d)
+        d.update({'event_uuid': self.event.uid})
+
+    def generate(self):
+        yield self.generate_headers()
+        for event in self.events_qs:
+            self.event = event
+            for line in self.generate_for_event():
+                yield line
+
+    def get_csv_filename(self, do_quote=True):
+        f = quote if do_quote else lambda x: x
+        guid = str(self.meta_data['context'] and self.meta_data['context'].guid)
+        if self.meta_data['activity']:
+            return f('{}_{}'.format(guid, self.meta_data['activity'].title))
+        return f('{}_{}'.format(guid, self.meta_data['date'].strftime('%d-%m-%Y')))
+
+    def count_materials(self):
+        ids = list([i.id for i in self.events_qs])
+        return EventMaterial.objects.filter(event_id__in=ids).count() + \
+               EventTeamMaterial.objects.filter(event_id__in=ids).count() + \
+               EventOnlyMaterial.objects.filter(event_id__in=ids).count()
+
+
+class BytesCsvStreamWriter:
+    def __init__(self, encoding):
+        self.encoding = encoding
+
+    def write(self, value):
+        return value.encode(self.encoding)
+
+
+class BytesCsvObjWriter:
+    def __init__(self, encoding):
+        self.file = io.BytesIO()
+        self.encoding = encoding
+
+    def write(self, value):
+        self.file.write(value.encode(self.encoding))
+
+
+def get_csv_encoding_for_request(request):
+    try:
+        os_family = request.user_agent.os.family or ''
+    except AttributeError:
+        os_family = ''
+    overridden_encoding = settings.CSV_ENCODING_FOR_OS.get(os_family.lower())
+    return overridden_encoding or settings.DEFAULT_CSV_ENCODING

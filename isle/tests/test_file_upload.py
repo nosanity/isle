@@ -214,6 +214,24 @@ class BaseUpload:
             self.assertEqual(resp.status_code, 400)
             self.assertEqual(self.result_model.objects.count(), 0)
 
+    def test_upload_to_deleted_result(self):
+        self.login(self.user)
+        LabsEventResult.objects.filter(id=self.event_block_result.id).update(deleted=True)
+        resp = self.client.post(self.page_url, {
+            'action': 'init_result',
+            'labs_result_id': str(self.event_block_result.id),
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_upload_to_deleted_block(self):
+        self.login(self.user)
+        LabsEventBlock.objects.filter(id=self.event_block.id).update(deleted=True)
+        resp = self.client.post(self.page_url, {
+            'action': 'init_result',
+            'labs_result_id': str(self.event_block_result.id),
+        })
+        self.assertEqual(resp.status_code, 400)
+
 
 class TestPersonalUpload(BaseUpload, TestCase):
     def setUp(self):

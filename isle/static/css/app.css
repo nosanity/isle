@@ -356,3 +356,20 @@ nav.navbar {
 .large-font {
     font-size: 4em;
 }
+
+.context-switching-select {
+    margin-bottom: -5px;
+    margin-left: 20px;
+}
+
+.export-results a, .export-results span {
+    display: block !important;
+}
+
+.paginator-pages a, .paginator-pages span:not(:first-child) {
+    margin: auto 3px;
+}
+
+.ml--15 {
+    margin-left: -15px;
+}

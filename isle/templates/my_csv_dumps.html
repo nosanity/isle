@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% load tz %}
+
+{% block title %}Результаты экспорта цифрового следа{% endblock %}
+
+{% block content %}
+    <div class="row">
+        <h2 class="ml--15">Результаты экспорта цифрового следа</h2>
+        <div class="row export-results">
+            {% for obj in object_list %}
+                {% if obj.status == 3 %}<a href="{{ obj.get_download_link }}">{% else %}<span>{% endif %}
+                    {% timezone 'Europe/Moscow' %}
+                        {{ obj.datetime_ordered|date:'d/m/Y H:i' }}&nbsp;msk,
+                    {% endtimezone %}
+                    {{ obj.owner.unti_id }},
+                    {{ obj.meta.context_guid|default:'-' }},
+                    {{ obj.header }}.csv,
+                    {{ obj.get_status_display }}
+                {% if obj.status == 3 %}</a>{% else %}</span>{% endif %}
+            {% endfor %}
+        </div>
+        {% if is_paginated %}
+            <div class="row paginator-pages mt-20">
+                <span>Страница:</span>
+                {% for num in paginator.page_range %}
+                    {% if page_obj.number == num %}
+                        <span>{{ num }}</span>
+                    {% else %}
+                        <a href="{% url 'csv-dumps-list' %}?page={{ num }}">{{ num }}</a>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

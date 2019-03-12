@@ -132,6 +132,46 @@
                                 "uuid": "36712e5b-a0c3-40b5-b976-dc5903453e21",
                                 "description": null,
                                 "type": ""
+                            },
+                            {
+                                "results": [
+                                    {
+                                        "check": "",
+                                        "meta": null,
+                                        "title": "Базовый результат 2",
+                                        "fix": "",
+                                        "uuid": "37104284-9513-4016-91ba-1ec54998f145",
+                                        "format": null
+                                    },
+                                    {
+                                        "check": "",
+                                        "meta": null,
+                                        "title": "Базовый результат 2",
+                                        "fix": "",
+                                        "uuid": "37104284-9513-4016-91ba-1ec54998f146",
+                                        "format": null
+                                    }
+                                ],
+                                "title": "Базовый блок 2",
+                                "uuid": "36712e5b-a0c3-40b5-b976-dc5903453e22",
+                                "description": null,
+                                "type": ""
+                            },
+                            {
+                                "results": [
+                                    {
+                                        "check": "",
+                                        "meta": null,
+                                        "title": "Базовый результат 3",
+                                        "fix": "",
+                                        "uuid": "37104284-9513-4016-91ba-1ec54998f147",
+                                        "format": null
+                                    }
+                                ],
+                                "title": "Базовый блок 3",
+                                "uuid": "36712e5b-a0c3-40b5-b976-dc5903453e23",
+                                "description": null,
+                                "type": ""
                             }
                         ],
                         "activity_uuid": "fd37d2a7-2d26-4321-bcb9-2b09025d38a3",

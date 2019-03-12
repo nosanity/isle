@@ -18,7 +18,8 @@
     <div>
         {% for block in blocks %}
             <div class="block-div mt-40">
-                <h4>{% blocktrans with n=block.order %}Блок {{ n }}{% endblocktrans %}</h4>
+                <h4>{% blocktrans with n=block.order %}Блок {{ n }}{% endblocktrans %}
+                    {% if block.deleted %} ({% blocktrans %}Удалено{% endblocktrans %}){% endif %}</h4>
                 <p>
                     <b>{% trans "Название:" %}</b> {{ block.title }}
                     <br>
@@ -28,7 +29,8 @@
                 </p>
                 {% for result in block.results.all %}
                     <div class="material-result-div" data-result="{{ result.id }}">
-                        <h4>{% blocktrans with n1=block.order n2=result.order %}Результат {{ n1 }}.{{ n2 }}{% endblocktrans %}</h4>
+                        <h4>{% blocktrans with n1=block.order n2=result.order %}Результат {{ n1 }}.{{ n2 }}{% endblocktrans %}
+                            {% if block.deleted or result.deleted %} ({% blocktrans %}Удалено{% endblocktrans %}){% endif %}</h4>
                         <div class="row">
                             <div class="col-md-6">
                                 <p>
@@ -40,7 +42,7 @@
                                 </p>
                             </div>
                             <div class="col-md-6">
-                                {% if can_upload %}
+                                {% if can_upload and not block.deleted and not result.deleted %}
                                 <button class="btn btn-warning load-results-btn">
                                     {% if not result.results|length %}{% trans "Загрузить" %}{% else %}{% trans "Загрузить еще один результат" %}{% endif %}
                                 </button>
@@ -117,6 +119,9 @@
                                                     {% endif %}
                                                     <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
                                                     <span data-url="{{ result_item.get_page_url }}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
+                                                    {% if request.user.is_assistant %}
+                                                        <span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>
+                                                    {% endif %}
                                                 </div>
                                             </div>
                                         </div>
@@ -172,7 +177,7 @@
         </div>
     {% endif %}
 
-    {% if links %}
+    {% if links or unattached_files %}
         <h4 class="mt-60">Отдельные файлы</h4>
 
         <ul class="list-group list-group-flush">
@@ -183,8 +188,22 @@
                     <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
                         {% blocktrans %}Удалить{% endblocktrans %}
                     </button>
-                    <div><span>{{ link.comment }}</span></div>
                     {% endif %}
+                    <div><span>{{ link.comment }}</span></div>
+                </li>
+            {% endfor %}
+            {% for link in unattached_files %}
+                <li class="list-group-item">
+                    <a href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
+                    {% if can_upload %}
+                    <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
+                        {% blocktrans %}Удалить{% endblocktrans %}
+                    </button>
+                    {% endif %}
+                    {% if request.user.is_assistant %}
+                        <span class="glyphicon glyphicon-move result-action-buttons pull-right move-unattached-file" data-file-id="{{ link.id }}"></span>
+                    {% endif %}
+                    <div><span>{{ link.comment }}</span></div>
                 </li>
             {% endfor %}
         </ul>
@@ -201,6 +220,7 @@
         const fromUser = eval("{{ user_upload|lower }}");
         const canUpload = eval("{{ can_upload|lower }}");
         const csrfmiddlewaretoken = "{{ csrf_token }}";
+        const blocks_structure = {{ blocks_structure_json|safe }};
     </script>
     <script type="text/javascript">
         const maxSize = parseInt("{{ max_size }}");
