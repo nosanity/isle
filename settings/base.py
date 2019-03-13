@@ -195,9 +195,7 @@ MAX_PARALLEL_CSV_GENERATIONS = 5
 TIME_TO_FAIL_CSV_GENERATION = 2 * 3600
 
 DEFAULT_CSV_ENCODING = 'utf-8'
-CSV_ENCODING_FOR_OS = {
-    'windows': 'windows-1251',
-}
+CSV_ENCODING_FOR_OS = {}
 
 from os import getenv
 from split_settings.tools import include
