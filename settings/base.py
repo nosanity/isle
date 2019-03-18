@@ -33,7 +33,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'django_carrier_client',
     'djcelery',
-    'django_user_agents'
+    'django_user_agents',
+    'mptt',
 ]
 
 MIDDLEWARE = [

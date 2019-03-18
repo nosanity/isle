@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static tz %}
 {% block content %}
-    {% if request.user.is_assistant %}
+    {% if is_assistant %}
         <div>
             <a href="{% url 'activities' %}">Активности</a>
             &nbsp;/&nbsp;
@@ -30,7 +30,7 @@
             </div>
         </div>
     {% endif %}
-    {% if request.user.is_assistant %}
+    {% if is_assistant %}
         <a class="pull-right export_event_csv" href="{% url 'get_filtered_events_csv' %}{% if activity_filter %}?activity={{ activity_filter.id }}{% endif %}">
             <span class="glyphicon glyphicon-download-alt"></span>&nbsp;Экспортировать все
         </a>
@@ -43,15 +43,26 @@
                     <label>Дата</label>
                     <input type="date" id="choose-date" class="form-control">
                     <button class="btn btn-primary" id="btn-date-refresh">Фильтровать</button>
-                    {% if not request.user.is_assistant %}
+                    {% if not is_assistant %}
                         <a href='/'><button class="btn btn-info">Сбросить фильтр</button></a>
                     {% endif %}
                 </form>
             </div>
+            {% if has_assistant_role %}
+                <div>
+                    <form class="form-inline">
+                        <label>Смотреть как</label>
+                        <select id="select-view-mode" class="form-control">
+                            <option value="as_assistant" {% if is_assistant %}selected{% endif %}>ассистент</option>
+                            <option value="as_user" {% if not is_assistant %}selected{% endif %}>пользователь</option>
+                        </select>
+                    </form>
+                </div>
+            {% endif %}
         </div>
     </div>
     <div class="text-muted index-statistics-block">
-        {% if request.user.is_assistant %}
+        {% if is_assistant %}
             Мероприятий: {{ objects|length }}. Загружено элементов: {{ elements_cnt }}. Загружено пользователями: {{ elements_user_cnt }}.
         {% else %}
             Мероприятий: {{ event_num }};&nbsp;&nbsp;Элементов цифрового следа: {{ trace_num }}
@@ -67,7 +78,7 @@
                             <th>Автор</th>
                             <th><span class="sort-col glyphicon"></span>&nbsp;Дата и время начала</th>
                             <th>Дата и время окончания</th>
-                            {% if request.user.is_assistant %}
+                            {% if is_assistant %}
                                 <th>Количество участников/чекинов</th>
                                 <th>Загружено элементов</th>
                             {% else %}
@@ -88,9 +99,9 @@
                                 <span class="nowrap">{{ event.get_dt_end|date:"d E, H:i" }}</span>
                             </td>
                             {% endlocaltime %}
-                            {% if request.user.is_assistant %}
+                            {% if is_assistant %}
                                 <td class="text-center">{{ event.prop_enrollments }} / {{ event.prop_checkins }}</td>
-                                <td class="text-center">{{ event.trace_count }}</td>
+                                <td class="text-center">{{ event.trace_cnt }}</td>
                             {% else %}
                                 <td class="text-center">{{ event.user_materials_num }}</td>
                                 <td class="text-center">{{ event.team_materials_num }}</td>
@@ -103,7 +114,7 @@
     </div>
     {% if not objects %}
         <div class="alert alert-danger" role="alert">
-            {% if request.user.is_assistant %}
+            {% if is_assistant %}
                 В выбранный день нет активных мероприятий
             {% else %}
                 Вы не записаны на мероприятия в выбранный день
@@ -117,10 +128,11 @@
     <script type="text/javascript">
         const date = "{{ date }}";
         const sortAsc = eval("{% if sort_asc %}true{% else %}false{% endif %}");
+        const isAssistant = eval("{{ is_assistant|lower }}");
     </script>
     <!-- event handlers of buttons are binded in js file below -->
     <script type="text/javascript" src="{% static 'js/pages/index.js' %}"></script>
-    {% if request.user.is_assistant %}
+    {% if is_assistant %}
         <script type="text/javascript" src="{% static 'js/pages/index_assistant.js' %}"></script>
     {% endif %}
 {% endblock %}

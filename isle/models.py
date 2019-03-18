@@ -16,6 +16,7 @@ from django.utils.deconstruct import deconstructible
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext_lazy as _
 from jsonfield import JSONField
+from mptt.models import MPTTModel, TreeForeignKey
 
 
 class User(AbstractUser):
@@ -36,6 +37,44 @@ class User(AbstractUser):
     @property
     def fio(self):
         return ' '.join(filter(None, [self.last_name, self.first_name, self.second_name]))
+
+    def is_assistant_for_context(self, context):
+        """
+        Проверка является ли пользователь ассистентом в контексте. Да, если у него есть роль ассистента
+        в этом контексте или одном из его предков
+        """
+        if not context:
+            return False
+        q = models.Q()
+        for context_uuid in context.get_ancestors(include_self=True).values_list('uuid', flat=True):
+            q |= models.Q(role__context_uuid=context_uuid)
+        return UserContextRole.active_objects.filter(
+            user=self, role__tag__slug__in=settings.ASSISTANT_TAGS_NAME
+        ).filter(q).exists()
+
+    def has_assistant_role(self):
+        return UserContextRole.active_objects.filter(
+            user=self, role__tag__slug__in=settings.ASSISTANT_TAGS_NAME
+        ).exists()
+
+    def is_global_assistant(self):
+        ctx = Context.get_global_context()
+        if ctx:
+            return UserContextRole.active_objects.filter(
+                user=self, role__tag__slug__in=settings.ASSISTANT_TAGS_NAME, role__context_uuid=ctx.uuid
+            ).exists()
+        return False
+
+    def get_available_context_uuids(self):
+        """
+        uuid контекстов, для которых пользователь является ассистентом
+        """
+        qs = UserContextRole.active_objects.filter(
+            user=self, role__tag__slug__in=settings.ASSISTANT_TAGS_NAME
+        ).values_list('role__context_uuid')
+        contexts = Context.objects.filter(uuid__in=qs)
+        return list(Context.objects.get_queryset_descendants(contexts, include_self=True)
+                    .values_list('uuid').distinct())
 
 
 class EventType(models.Model):
@@ -75,11 +114,82 @@ class ActivityEnrollment(models.Model):
         unique_together = ('user', 'activity')
 
 
-class Context(models.Model):
+class Context(MPTTModel):
+    TYPE_OPEN = 'open'
+    TYPE_CLOSED = 'closed'
+    CT_TYPES = (
+        (TYPE_OPEN, _('Открытый')),
+        (TYPE_CLOSED, _('Закрытый')),
+    )
+
+    STATUS_DRAFT = 'draft'
+    STATUS_ACTIVE = 'active'
+    STATUS_ARCHIVE = 'archive'
+    STATUS_ENDED = 'ended'
+    STATUS_DELETED = 'deleted'
+    STATUSES = (
+        (STATUS_ACTIVE, _('Активный')),
+        (STATUS_DRAFT, _('Черновик')),
+        (STATUS_ARCHIVE, _('Архивный')),
+        (STATUS_ENDED, _('Завершен')),
+        (STATUS_DELETED, _('Удален')),
+    )
+
     timezone = models.CharField(max_length=255)
     uuid = models.CharField(max_length=255, unique=True)
-    title = models.CharField(max_length=500, default='')
-    guid = models.CharField(max_length=500, default='')
+    title = models.CharField(max_length=500, default='',)
+    guid = models.SlugField(max_length=255, default='')
+    parent = TreeForeignKey('self', on_delete=models.CASCADE, null=True, related_name='children',
+                            db_index=True, verbose_name=_('Контекст верхнего уровня'), default=None)
+    status = models.CharField(max_length=30, choices=STATUSES, verbose_name=_('Статус'), default=STATUS_DRAFT)
+    datetime_start = models.DateTimeField(verbose_name=_('Дата и время начала'), null=True, blank=True, default=None)
+    datetime_end = models.DateTimeField(verbose_name=_('Дата и время окончания'), null=True, blank=True, default=None)
+    ct_type = models.CharField(max_length=30, choices=CT_TYPES, default=TYPE_OPEN, verbose_name=_('Тип'))
+    description = models.TextField(verbose_name=_('Описание'), default='')
+    is_global = models.BooleanField(default=False)
+
+    @classmethod
+    def get_global_context(cls):
+        return cls.objects.filter(is_global=True).first()
+
+    def get_assistants(self):
+        return UserContextRole.active_objects.filter(
+            role__tag__slug__in=settings.ASSISTANT_TAGS_NAME,
+            role__context_uuid__in=self.get_ancestors(include_self=True).values_list('uuid', flat=True)
+        )
+
+    def is_assistant(self, user):
+        return self.get_assistants().filter(user=user).exists()
+
+
+class Tag(models.Model):
+    slug = models.SlugField(unique=True)
+    is_active = models.BooleanField(default=True)
+
+
+class ContextRole(models.Model):
+    context_uuid = models.CharField(max_length=50)
+    tag = models.ForeignKey(Tag, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ('context_uuid', 'tag')
+
+
+class UserContextRoleManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(is_active=True, role__tag__is_active=True)
+
+
+class UserContextRole(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    role = models.ForeignKey(ContextRole, on_delete=models.CASCADE)
+    is_active = models.BooleanField(default=True)
+
+    active_objects = UserContextRoleManager()
+    objects = models.Manager()
+
+    class Meta:
+        unique_together = ('user', 'role')
 
 
 class Event(models.Model):

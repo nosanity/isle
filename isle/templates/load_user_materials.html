@@ -102,7 +102,7 @@
                                     <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
                                         {% blocktrans %}Удалить{% endblocktrans %}
                                     </button>
-                                {% if show_owners and not request.user.is_assistant %}
+                                {% if show_owners and not is_assistant %}
                                     <button value="{{ link.id }}" class="btn {% if link.is_owner %}btn-danger{% else %}btn-success{% endif %} btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
                                         {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
                                     </button>
@@ -110,7 +110,7 @@
                                 {% if link.initiator_user and team_upload %}<div>({{ link.initiator_user.fio }})</div>{% endif %}
                                     <div><span>{{ link.comment }}</span></div>
                                 {% endif %}
-                                {% if show_owners and not request.user.is_assistant and not can_upload %}
+                                {% if show_owners and not is_assistant and not can_upload %}
                                     <button value="{{ link.id }}" class="btn {% if link.is_owner %}btn-danger{% else %}btn-success{% endif %} btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
                                         {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
                                     </button>
@@ -143,17 +143,17 @@
                 <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
                     {% blocktrans %}Удалить{% endblocktrans %}
                 </button>
-                {% if request.user.is_assistant %}
+                {% if is_assistant %}
                     <button value="{{ link.id }}" class="btn btn-danger btn-sm pull-right transfer-material-btn">
                         Переместить
                     </button>
                 {% endif %}
-                {% if team_upload and request.user.is_assistant and not link.confirmed %}
+                {% if team_upload and is_assistant and not link.confirmed %}
                     <button value="{{ link.id }}" class="btn btn-success btn-sm pull-right confirm-material-btn">
                         {% blocktrans %}Подтвердить{% endblocktrans %}
                     </button>
                 {% endif %}
-                {% if show_owners and not request.user.is_assistant %}
+                {% if show_owners and not is_assistant %}
                     <button value="{{ link.id }}" class="btn {% if link.is_owner %}btn-danger{% else %}btn-success{% endif %} btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
                         {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
                     </button>
@@ -161,7 +161,7 @@
                 {% if link.initiator_user and team_upload %}<div>({{ link.initiator_user.fio }})</div>{% endif %}
                 <div><span>{{ link.comment }}</span></div>
                 {% endif %}
-                {% if show_owners and not request.user.is_assistant and not can_upload %}
+                {% if show_owners and not is_assistant and not can_upload %}
                     <button value="{{ link.id }}" class="btn {% if link.is_owner %}btn-danger{% else %}btn-success{% endif %} btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
                         {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
                     </button>
@@ -185,7 +185,7 @@
     {{ block.super }}
     <script type="text/javascript">
         const pageType = "loadUserMaterials";
-        const isAssistant = eval("{{ request.user.is_assistant|lower }}");
+        const isAssistant = eval("{{ is_assistant|lower }}");
         const eventUpload = eval("{{ event_upload|lower }}");
         const teamUpload = eval("{{ team_upload|lower }}");
         const fromUser = eval("{{ user_upload|lower }}");

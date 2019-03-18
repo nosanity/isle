@@ -6,7 +6,7 @@ from carrier_client.manager import MessageManager, MessageManagerException
 from carrier_client.message import OutgoingMessage
 from django_carrier_client.helpers import MessageManagerHelper
 from isle.api import SSOApi, ApiError
-from isle.models import LabsUserResult, LabsTeamResult
+from isle.models import LabsUserResult, LabsTeamResult, Tag
 
 
 message_manager = MessageManager(
@@ -70,7 +70,7 @@ def check_kafka():
 
 class KafkaBaseListener:
     topic = ''
-    actions = []
+    actions = (KafkaActions.CREATE, KafkaActions.UPDATE, KafkaActions.DELETE)
     msg_type = ''
 
     def handle_message(self, msg):
@@ -103,4 +103,37 @@ class SSOUserChangeListener(KafkaBaseListener):
             logging.error('Got wrong object id from kafka: %s' % obj_id)
 
 
+class SSOUserRoleChangedListener(KafkaBaseListener):
+    topic = settings.KAFKA_TOPIC_SSO
+    msg_type = 'user_roles'
+
+    def _handle_for_id(self, obj_id, action):
+        try:
+            assert isinstance(obj_id, dict)
+            for user_id in obj_id.get('user_roles', {}).get('id', {})['users']:
+                try:
+                    SSOApi().push_user_to_uploads(user_id)
+                except ApiError:
+                    pass
+        except (AssertionError, AttributeError, KeyError):
+            logging.error('Got wrong object id for user roles from kafka: %s' % obj_id)
+
+
+class SSOTagStatusChangeListener(KafkaBaseListener):
+    topic = settings.KAFKA_TOPIC_SSO
+    msg_type = 'tag'
+    actions = (KafkaActions.CREATE, KafkaActions.DELETE)
+
+    def _handle_for_id(self, obj_id, action):
+        try:
+            assert isinstance(obj_id, dict)
+            slug = obj_id.get('tag', {}).get('id')
+            status = False if action == KafkaActions.DELETE else True
+            Tag.objects.update_or_create(slug=slug, defaults={'is_active': status})
+        except (AssertionError, TypeError, ValueError):
+            logging.error('Got wrong object id for tag from kafka: %s' % obj_id)
+
+
 MessageManagerHelper.set_manager_to_listen(SSOUserChangeListener())
+MessageManagerHelper.set_manager_to_listen(SSOUserRoleChangedListener())
+MessageManagerHelper.set_manager_to_listen(SSOTagStatusChangeListener())

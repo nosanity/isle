@@ -6,7 +6,7 @@ class Command(BaseCommand):
     help = 'Обновить список эвентов и активностей из LABS, а также трейсы'
 
     def handle(self, *args, **options):
+        update_contexts()
         refresh_events_data()
         update_events_traces()
-        update_contexts()
         update_event_entries()

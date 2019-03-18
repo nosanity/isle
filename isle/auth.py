@@ -1,6 +1,7 @@
 from django.conf import settings
 from social_core.backends.oauth import BaseOAuth2
 from social_core.utils import handle_http_errors
+from isle.models import UserContextRole, Tag, ContextRole
 
 
 def update_user(strategy, details, user=None, backend=None, *args, **kwargs):
@@ -12,11 +13,35 @@ def update_user(strategy, details, user=None, backend=None, *args, **kwargs):
         user.last_name = data['lastname']
         user.second_name = data.get('secondname', '') or ''
         user.icon = data.get('image') or {}
-        tags = data.get('tags') or []
-        user.is_assistant = any(i in tags for i in settings.ASSISTANT_TAGS_NAME)
         user.unti_id = data.get('unti_id')
         user.leader_id = data.get('leader_id') or ''
         user.save()
+        update_roles(user, data.get('roles'))
+
+
+def update_roles(user, roles):
+    if not isinstance(roles, dict):
+        return
+    context_roles = {(i.context_uuid, i.tag_id): i.id for i in ContextRole.objects.iterator()}
+    current_tags = dict(Tag.objects.values_list('slug', 'id'))
+    user_context_roles = []
+    for context_uuid, tags in roles.items():
+        for tag in tags:
+            current_tag_id = current_tags.get('slug')
+            if not current_tag_id:
+                current_tag_id = Tag.objects.get_or_create(slug=tag)[0].id
+                current_tags[tag] = current_tag_id
+            current_context_role_id = context_roles.get((context_uuid, current_tag_id))
+            if not current_context_role_id:
+                # если нужный контекст еще не подтянулся в uploads, соответствующая роль для
+                # него все равно будет создана
+                current_context_role_id = ContextRole.objects.get_or_create(
+                    context_uuid=context_uuid, tag_id=current_tag_id)[0].id
+                context_roles[(context_uuid, current_tag_id)] = current_context_role_id
+            user_context_roles.append(UserContextRole.objects.update_or_create(
+                user=user, role_id=current_context_role_id, defaults={'is_active': True}
+            )[0].id)
+    UserContextRole.active_objects.filter(user=user).exclude(id__in=user_context_roles).update(is_active=False)
 
 
 class UNTIBackend(BaseOAuth2):

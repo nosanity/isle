@@ -172,8 +172,8 @@ class BaseApi:
             try:
                 kwargs['params']['page'] = page
                 resp = requests.request(method, url, **kwargs)
-                total_pages = int(resp.headers['X-Pagination-Page-Count'])
                 assert resp.ok, 'status_code %s' % resp.status_code
+                total_pages = int(resp.headers['X-Pagination-Page-Count'])
                 yield resp.json()
                 page += 1
             except (ValueError, TypeError, AssertionError):
@@ -190,7 +190,8 @@ class BaseApi:
         """
         запрос, не предполагающий пагинацию в ответе
         """
-        url = '{}{}'.format(self.base_url, url)
+        if not url.startswith(('http://', 'https://')):
+            url = '{}{}'.format(self.base_url, url)
         kwargs.setdefault('timeout', settings.CONNECTION_TIMEOUT)
         self.add_authorization_to_kwargs(kwargs)
         try:
@@ -203,6 +204,13 @@ class BaseApi:
         except AssertionError:
             logging.exception('%s connection error' % self.name)
             raise ApiError
+
+    def django_paginated_request(self, url, method='GET', **kwargs):
+        resp = self.make_request_no_pagination(url, method=method, **kwargs)
+        yield resp['results']
+        while resp['next']:
+            resp = self.make_request_no_pagination(resp['next'], method=method, **kwargs)
+            yield resp['results']
 
     def health_check(self):
         try:
@@ -256,3 +264,6 @@ class SSOApi(BaseApi):
 
     def push_user_to_uploads(self, user_id):
         return self.make_request_no_pagination('/api/push-user-to-uploads/', method='POST', json={'unti_id': user_id})
+
+    def get_contexts(self):
+        return self.django_paginated_request('/api/context/')
