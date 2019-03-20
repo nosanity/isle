@@ -411,22 +411,12 @@ class TeamResult(ResultAbstract):
             res[field_name] = UserRole.get_initial_data_for_team_result(self.team, self.id)
 
 
-class AbstractMaterial(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+class BaseMaterial(models.Model):
     url = models.URLField(blank=True)
     file = models.FileField(blank=True, max_length=300)
-    trace = models.ForeignKey(Trace, on_delete=models.CASCADE, null=True, default=None)
-    initiator = models.PositiveIntegerField(blank=True, null=True)
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, default=None)
-    object_id = models.PositiveIntegerField(null=True, default=None)
-    parent = GenericForeignKey()
-    deleted = models.BooleanField(default=False)
     file_type = models.CharField(max_length=1000, default='')
     file_size = models.PositiveIntegerField(default=None, null=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True)
-
-    objects = NotDeletedEntries()
-    all_objects = models.Manager()
 
     class Meta:
         abstract = True
@@ -438,6 +428,22 @@ class AbstractMaterial(models.Model):
             if self.file.url.startswith('/'):
                 return '{}{}'.format(settings.BASE_URL, self.file.url)
             return self.file.url
+
+
+class AbstractMaterial(BaseMaterial):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    trace = models.ForeignKey(Trace, on_delete=models.CASCADE, null=True, default=None)
+    initiator = models.PositiveIntegerField(blank=True, null=True)
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, default=None)
+    object_id = models.PositiveIntegerField(null=True, default=None)
+    parent = GenericForeignKey()
+    deleted = models.BooleanField(default=False)
+
+    objects = NotDeletedEntries()
+    all_objects = models.Manager()
+
+    class Meta:
+        abstract = True
 
     def get_file_name(self):
         if self.url:
@@ -852,3 +858,28 @@ class CSVDump(models.Model):
 
     def get_download_link(self):
         return reverse('load_csv_dump', kwargs={'dump_id': self.id})
+
+
+class PLEUserResult(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    comment = models.TextField(default='')
+    meta = JSONField()
+
+    def get_json(self, with_materials=True):
+        data = {
+            'id': self.id,
+            'user': self.user.unti_id,
+            'meta': self.meta,
+            'comment': self.comment,
+        }
+        if with_materials:
+            materials = Material.objects.filter(ple_result=self)
+            data['materials'] = [{'uploads_url': i.get_url(), 'id': i.id} for i in materials]
+        return data
+
+    def get_url(self):
+        return reverse('api-ple-result', kwargs={'result_id': self.id})
+
+
+class Material(BaseMaterial):
+    ple_result = models.ForeignKey(PLEUserResult, on_delete=models.CASCADE)

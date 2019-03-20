@@ -150,20 +150,30 @@ class BaseApi:
     name = ''
     base_url = ''
     app_token = ''
+    authorization = {}
 
-    def make_request(self, url, method='GET'):
+    def add_authorization_to_kwargs(self, kwargs):
+        for key, item in self.authorization.items():
+            if key in kwargs and isinstance(kwargs[key], dict):
+                kwargs[key].update(item)
+            else:
+                kwargs[key] = item
+
+    def make_request(self, url, method='GET', **kwargs):
         """
         итератор по всем страницам ответа
         """
         url = '{}{}'.format(self.base_url, url)
         page = 1
         total_pages = None
+        kwargs.setdefault('timeout', settings.CONNECTION_TIMEOUT)
+        self.add_authorization_to_kwargs(kwargs)
         while total_pages is None or page <= total_pages:
             try:
-                resp = requests.request(method, url, params={'app_token': self.app_token, 'page': page},
-                                        timeout=settings.CONNECTION_TIMEOUT)
-                total_pages = int(resp.headers['X-Pagination-Page-Count'])
+                kwargs['params']['page'] = page
+                resp = requests.request(method, url, **kwargs)
                 assert resp.ok, 'status_code %s' % resp.status_code
+                total_pages = int(resp.headers['X-Pagination-Page-Count'])
                 yield resp.json()
                 page += 1
             except (ValueError, TypeError, AssertionError):
@@ -176,14 +186,16 @@ class BaseApi:
                 logging.exception('%s connection error' % self.name)
                 raise ApiError
 
-    def make_request_no_pagination(self, url, method='GET'):
+    def make_request_no_pagination(self, url, method='GET', **kwargs):
         """
         запрос, не предполагающий пагинацию в ответе
         """
-        url = '{}{}'.format(self.base_url, url)
+        if not url.startswith(('http://', 'https://')):
+            url = '{}{}'.format(self.base_url, url)
+        kwargs.setdefault('timeout', settings.CONNECTION_TIMEOUT)
+        self.add_authorization_to_kwargs(kwargs)
         try:
-            resp = requests.request(method, url, params={'app_token': self.app_token},
-                                    timeout=settings.CONNECTION_TIMEOUT)
+            resp = requests.request(method, url, **kwargs)
             assert resp.ok, 'status_code %s' % resp.status_code
             return resp.json()
         except (ValueError, TypeError, AssertionError):
@@ -208,7 +220,7 @@ class BaseApi:
 class LabsApi(BaseApi):
     name = 'labs'
     base_url = settings.LABS_URL.rstrip('/')
-    app_token = getattr(settings, 'LABS_TOKEN', '')
+    authorization = {'params': {'app_token': getattr(settings, 'LABS_TOKEN', '')}}
 
     def get_activities(self):
         return self.make_request('/api/v2/activity')
@@ -223,7 +235,7 @@ class LabsApi(BaseApi):
 class XLEApi(BaseApi):
     name = 'xle'
     base_url = settings.XLE_URL.rstrip('/')
-    app_token = getattr(settings, 'XLE_TOKEN', '')
+    authorization = {'params': {'app_token': getattr(settings, 'XLE_TOKEN', '')}}
 
     def get_attendance(self):
         return self.make_request('/api/v1/checkin')
@@ -232,12 +244,25 @@ class XLEApi(BaseApi):
 class DpApi(BaseApi):
     name = 'dp'
     base_url = settings.DP_URL.rstrip('/')
-    app_token = getattr(settings, 'DP_TOKEN', '')
+    authorization = {'params': {'app_token': getattr(settings, 'DP_TOKEN', '')}}
 
     def get_metamodel(self, uuid):
         return self.make_request_no_pagination('/api/v1/model/{}'.format(uuid))
 
 
+class PLEApi(BaseApi):
+    name = 'ple'
+    base_url = settings.PLE_URL.rstrip('/')
+    authorization = {'params': {'app_token': getattr(settings, 'PLE_TOKEN', '')}}
+
+    def send_user_result_report(self, url, data):
+        self.make_request_no_pagination(url, method='POST', json=data)
+
+
 class SSOApi(BaseApi):
     name = 'sso'
     base_url = settings.SSO_UNTI_URL.rstrip('/')
+    authorization = {'headers': {'x-sso-api-key': getattr(settings, 'SSO_API_KEY', '')}}
+
+    def push_user_to_uploads(self, user_id):
+        return self.make_request_no_pagination('/api/push-user-to-uploads/', method='POST', json={'unti_id': user_id})

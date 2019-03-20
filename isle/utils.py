@@ -17,6 +17,7 @@ from django.utils.dateparse import parse_datetime
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext as _
 import requests
+from celery.task.control import inspect
 from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
@@ -722,3 +723,15 @@ def get_csv_encoding_for_request(request):
         os_family = ''
     overridden_encoding = settings.CSV_ENCODING_FOR_OS.get(os_family.lower())
     return overridden_encoding or settings.DEFAULT_CSV_ENCODING
+
+
+def check_celery_active():
+    if settings.DEBUG and getattr(settings, 'CELERY_ALWAYS_EAGER', False):
+        return True
+    try:
+        stat = inspect().stats()
+        if not stat:
+            return False
+        return True
+    except IOError:
+        return False

@@ -174,6 +174,9 @@ XLE_TOKEN = ''
 DP_URL = ''
 DP_TOKEN = ''
 
+PLE_URL = ''
+PLE_TOKEN = ''
+
 # базовый урл uploads
 BASE_URL = ''
 
@@ -208,7 +211,7 @@ except IOError as e:
 
 define = [
     'SSO_UNTI_URL', 'SSO_API_KEY', 'SSO_API_KEY', 'SOCIAL_AUTH_UNTI_SECRET', 'LABS_URL', 'LABS_TOKEN',
-    'XLE_URL', 'XLE_TOKEN', 'DP_URL', 'DP_TOKEN', 'BASE_URL'
+    'XLE_URL', 'XLE_TOKEN', 'DP_URL', 'DP_TOKEN', 'BASE_URL', 'PLE_URL', 'PLE_TOKEN'
 ]
 
 for name in define:
