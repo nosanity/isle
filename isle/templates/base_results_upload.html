@@ -18,24 +18,20 @@
     <div>
         {% for block in blocks %}
             <div class="block-div mt-40">
-                <h4>{% blocktrans with n=block.order %}Блок {{ n }}{% endblocktrans %}
+		    <h4>{% blocktrans with n=block.order %}{{ n }}. {% endblocktrans %}{{block.title }}
                     {% if block.deleted %} ({% blocktrans %}Удалено{% endblocktrans %}){% endif %}</h4>
                 <p>
-                    <b>{% trans "Название:" %}</b> {{ block.title }}
-                    <br>
                     <b>{% trans "Тип:" %}</b> {{ block.block_type }}
                     <br>
                     <b>{% trans "Деятельность:" %}</b> {{ block.description }}
                 </p>
                 {% for result in block.results.all %}
                     <div class="material-result-div" data-result="{{ result.id }}">
-                        <h4>{% blocktrans with n1=block.order n2=result.order %}Результат {{ n1 }}.{{ n2 }}{% endblocktrans %}
+			    <h4>{% blocktrans with n1=block.order n2=result.order %}{{ n1 }}.{{ n2 }}. {% endblocktrans %} {{ result.title }}
                             {% if block.deleted or result.deleted %} ({% blocktrans %}Удалено{% endblocktrans %}){% endif %}</h4>
                         <div class="row">
                             <div class="col-md-6">
                                 <p>
-                                    <b>{% trans "Ожидаемый результат:" %}</b> {{ result.check }}
-                                    <br>
                                     <b>{% trans "Формат работы:" %}</b> {{ result.result_format }}
                                     <br>
                                     <b>{% trans "Способ фиксации:" %}</b> {{ result.fix }}
