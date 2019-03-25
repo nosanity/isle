@@ -1,12 +1,71 @@
 {% extends 'base.html' %}
-{% load i18n static %}
+{% load i18n static tz %}
 
 {% block content %}
-    <h2> {{ event.title }} </h2>
     <a href="{% url 'event-view' uid=event.uid %}">
-        <button class="btn btn-light float-right">К странице мероприятия</button>
+        <button class="btn btn-light font-red"><i class="glyphicon glyphicon-arrow-left"></i>&nbsp;К странице мероприятия</button>
     </a>
+    <h2>{% blocktrans %}Материалы мероприятия{% endblocktrans %}</h2>
+    <div class="inline-divs-wrapper">
+        <div>
+            <p><b>{% trans "Мероприятие:" %}</b> {{ event.title }}
+            <br>
+            {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }}{% endlocaltime %}</p>
+        </div>
+        {% if can_upload %}
+            <div class="pull-right"><button class="btn btn-warning add-event-material-assistant">{% trans "Добавить" %}</button></div>
+        {% endif %}
+    </div>
     {% csrf_token %}
+    <div class="add-event-materials-wrapper material-result-div hidden">
+        <h3>{% trans "Добавление материалов" %}</h3>
+        <form class="trace-form" method="post">
+            {% csrf_token %}
+            <select name="trace_name" class="material-type-select form-control mb-20">
+                <option value="">-- Выберите тип материала --</option>
+                {% for trace in traces %}
+                    <option value="{{ trace.trace.id }}">{{ trace.trace.name }}</option>
+                {% endfor %}
+            </select>
+
+            <div class="row">
+                <div class="col-sm-12 col-md-3 mb-10">
+                    <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
+                        <a class="nav-link active" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы</a>
+                        <a class="nav-link" id="v-pills-profile-tab" data-toggle="pill" href="#v-pills-profile" role="tab" aria-controls="v-pills-profile" aria-selected="false">Ссылки</a>
+                    </div>
+                </div>
+                <div class="col-sm-12 col-md-9">
+                    <div class="tab-content" id="v-pills-tabContent">
+                        <div class="tab-pane fade show active" id="v-pills-home" role="tabpanel" aria-labelledby="v-pills-home-tab">
+                            {% if allow_file_upload %}
+                                <label class="btn btn-block btn-file border label-overflow select-files-btn">
+                                    {% trans "Выбрать файлы" %}
+                                    <input type="file" multiple name="file_field" class="form-control hidden">
+                                </label>
+                            {% endif %}
+                            <div><span class="file-name"></span></div>
+                            <div class="uploads"></div>
+                        </div>
+                        <div class="tab-pane fade" id="v-pills-profile" role="tabpanel" aria-labelledby="v-pills-profile-tab">
+                            <input type="url" name="url_field" class="form-control full-width" id="url" placeholder="Укажите URL-ссылку на материал">
+                        </div>
+                        <div class="materials-form-comment-div">
+                            <textarea maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Описание файлов (не обязательно)"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-sm-3">
+                    <button name="add_btn" type="submit" class="btn btn-success btn-block add-material-btn" disabled="disabled">{% trans "Сохранить" %}</button>
+                </div>
+                <div class="col-sm-3">
+                    <span class="btn btn-danger btn-block hide-add-event-materials-form-btn">{% trans "Отменить" %}</span>
+                </div>
+            </div>
+        </form>
+    </div>
     <div class="clearfix"></div>
     {% if request.user.is_assistant and event_upload %}
         <div class="modal fade text-left" tabindex="-1" role="dialog" id="transfer-modal">
@@ -45,79 +104,18 @@
         </div>
     {% endif %}
 
-    {% if team_upload %}
-        <h4> Команда: '{{ team_name }}' </h4>
-        <table class="table table-hover table-bordered table-striped mt-20">
-            <thead class="thead-light">
-                <tr>
-                  <th scope="col">ФИО</th>
-                  <th scope="col">Фото</th>
-                  <th scope="col">Элементов следа</th>
-                  <th scope="col">Загрузка</th>
-                </tr>
-            </thead>
-            {% for student in students %}
-                <tr>
-                    <td>{{ student.get_full_name }}</td>
-                    <td>{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
-                    <td>{{ student.materials_num }}</td>
-                    <td>
-                        {% if event.is_active %}
-                            {% if student.unti_id == request.user.unti_id or request.user.is_assistant %}
-                                <a class="btn btn-primary btn-sm" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
-                            {% endif %}
-                        {% endif %}
-                    </td>
-                </tr>
-            {% endfor %}
-        </table>
-    {% endif %}
-
     {% for trace in traces %}
-        <h5>{{ trace.trace.name }}</h5>
-        <form method="post" class="trace-form">
-            {% csrf_token %}
-            <input name="trace_name" type="hidden" value="{{ trace.trace.id }}">
+        <div class="event-trace-materials-wrapper" data-trace-id="{{ trace.trace.id }}">
+            <h5 class="event-trace-name" {% if not trace.links %}style="display:none"{% endif %}>{{ trace.trace.name }}</h5>
             <ul id="trace-ul" class="list-group list-group-flush">
                 {% for link in trace.links %}
-                    <li class="list-group-item {% if link.confirmed and team_upload and not link.initiator_user.is_assistant %}confirmed-team-link{% elif team_upload and link.initiator_user.is_assistant %}assistant-team-link{% endif %}">
+                    <li class="list-group-item {% if link.confirmed and team_upload and not link.initiator_user.is_assistant %}confirmed-team-link{% elif team_upload and link.initiator_user.is_assistant %}assistant-team-link{% endif %}" data-comment="{{ link.comment }}" data-material-id="{{ link.id }}">
                         <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
-                        {% if can_set_public %}
-                            <label>Публичный
-                            <input type="checkbox" data-link-id="{{ link.id }}" class="upload_is_public"  {% if link.is_public %}checked{% endif %}>
-                            </label>
-                        {% endif %}
                         {% if can_upload %}
-                        <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
-                            {% blocktrans %}Удалить{% endblocktrans %}
-                        </button>
-                        {% if request.user.is_assistant %}
-                            <button value="{{ link.id }}" class="btn btn-danger btn-sm pull-right transfer-material-btn">
-                                Переместить
-                            </button>
-                        {% endif %}
-                        {% if team_upload and request.user.is_assistant and not link.confirmed %}
-                            <button value="{{ link.id }}" class="btn btn-success btn-sm pull-right confirm-material-btn">
-                                {% blocktrans %}Подтвердить{% endblocktrans %}
-                            </button>
-                        {% endif %}
-                        {% if show_owners and not request.user.is_assistant %}
-                            <button value="{{ link.id }}" class="btn {% if link.is_owner %}btn-danger{% else %}btn-success{% endif %} btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
-                                {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
-                            </button>
-                        {% endif %}
-                        {% if event_upload and request.user.is_assistant %}
-                            <button value="{{ link.id }}" class="btn btn-success btn-sm pull-right edit-event-block-material">
-                                Редактировать
-                            </button>
-                        {% endif %}
-                        {% if link.initiator_user and team_upload %}<div>({{ link.initiator_user.fio }})</div>{% endif %}
-                        {% if not request.user.is_assistant %}<div><span>{{ link.comment }}</span></div>{% endif %}
-                        {% endif %}
-                        {% if show_owners and not request.user.is_assistant and not can_upload %}
-                            <button value="{{ link.id }}" class="btn {% if link.is_owner %}btn-danger{% else %}btn-success{% endif %} btn-sm pull-right my-material-btn" data-url="{{ link.ownership_url }}" {% if link.is_owner %}data-owner=""{% endif %}>
-                                {% if link.is_owner %}Это не мое{% else %}Это мое{% endif %}
-                            </button>
+                            <span name="material_id" value="{{ link.id }}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
+                            </span>
+                            <span value="{{ link.id }}" class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
+                            </span>
                         {% endif %}
                         {% if request.user.is_assistant %}
                             <div>
@@ -125,76 +123,17 @@
                                     {{ link.get_info_string }}
                                 </span>
                             </div>
+                        {% else %}
+                            <div><span>{{ link.comment }}</span></div>
                         {% endif %}
                         {% if show_owners %}<div><span class="material-owners">{% if link.get_owners %}Связан с: {% endif %}{{ link.get_owners|join:', ' }}</span></div>{% endif %}
                         <div class="info-string-edit"></div>
                     </li>
                 {% endfor %}
-                {% if not trace.links and not can_upload %}
-                    <p class="materials-form-no-files">
-                        Пока материалов не загружено
-                    </p>
-                {% endif %}
-                {% if can_upload %}
-                    <li class="list-group-item form-inline list-group-border">
-                        <a class="btn btn-block" data-toggle="collapse" href="#collapseExample-{{ trace.trace.id }}" role="button" aria-expanded="false" aria-controls="collapseExample" >+ Добавить новые материалы </a>
-                        <div class="row collapse mt-10" id="collapseExample-{{ trace.trace.id }}">
-                            {% render_event_block_form trace.trace.id|stringformat:'i' event %}
-                            <div class="col-sm-12 col-md-3 mb-10">
-                                <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
-                                    <a class="nav-link active" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы</a>
-                                    <a class="nav-link" id="v-pills-profile-tab" data-toggle="pill" href="#v-pills-profile-{{ trace.trace.id }}" role="tab" aria-controls="v-pills-profile" aria-selected="false">Ссылки</a>
-                                </div>
-                            </div>
-                            <div class="col-sm-12 col-md-9">
-                                <div class="tab-content" id="v-pills-tabContent">
-                                    <div class="tab-pane fade show active" id="v-pills-home-{{ trace.trace.id }}" role="tabpanel" aria-labelledby="v-pills-home-tab">                  
-                                        {% if allow_file_upload %}
-                                            <label class="btn btn-block btn-success btn-file border label-overflow">
-                                                {% trans "Выберите файлы для загрузки" %}
-                                                <input type="file" multiple name="file_field" class="form-control hidden">
-                                            </label>
-                                        {% endif %}
-                                        <div><span class="file-name"></span></div>
-                                        <div class="uploads"></div>
-                                    </div>
-                                    <div class="tab-pane fade" id="v-pills-profile-{{ trace.trace.id }}" role="tabpanel" aria-labelledby="v-pills-profile-tab">
-                                        <input type="url" name="url_field" class="form-control full-width" id="url" placeholder="Укажите URL-ссылку на материал">
-                                    </div>
-                                    {% if with_public_checkbox %}
-                                        <label for="is_public">Публичный</label>
-                                        <input id="is_public" type="checkbox" name="is_public" class="form-control">
-                                    {% endif %}
-                                    <div class="materials-form-comment-div">
-                                        <textarea id="description" maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Введите описание"></textarea>
-                                    </div>
-                                    <button name="add_btn" type="submit" class="btn btn-primary btn-block add-material-btn" disabled="disabled">{% trans "Добавить" %}</button>
-                                </div>
-                            </div>
-                        </div>
-                    </li>
-                {% endif %}
-            </ul>
-        </form>
-    {% endfor %}
-
-    {% if user_upload or team_upload %}
-        <h4>Отдельные файлы</h4>
-        <div class="row">
-            <ul class="list-group list-group-flush full-width">
-                {% for link in other_materials %}
-                    <li class="list-group-item">
-                        <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
-                    </li>
-                {% endfor %}
-                {% if not other_materials %}
-                    <p class="materials-form-no-files pl-15">
-                        Пока материалов не загружено
-                    </p>
-                {% endif %}
             </ul>
         </div>
-    {% endif %}
+    {% endfor %}
+
     {% if unattached_files %}
         <h4 class="mt-60">Отдельные файлы</h4>
 
@@ -207,9 +146,6 @@
             {% endfor %}
         </ul>
     {% endif %}
-    <a href="{% url 'event-view' uid=event.uid %}">
-        <button class="btn btn-light mt-20">К странице мероприятия</button>
-    </a>
 {% endblock %}
 
 {% block js %}
@@ -225,6 +161,11 @@
         const transferUrl = "{% url 'transfer' uid=event.uid %}";
         const addEventBlockUrl = "{% url 'add-event-block' uid=event.uid %}";
         const eventBlockEditRendererUrl = "{% url 'event-block-edit-renderer' uid=event.uid %}";
+        const tracesDict = {
+            {% for trace in traces %}
+                {{ trace.trace.id }}: "{{ trace.trace.name }}",
+            {% endfor %}
+        }
     </script>
     {% if team.id %}
         <script type="text/javascript">
@@ -245,6 +186,7 @@
     {% include "includes/_link_preview.html" %}
 {% endblock %}
 
-{% block footer %}
-    {{ blocks_form.media }}
+{% block css %}
+    {{ block.super }}
+    <link href="{% static 'css/bootstrap-glyphicons.min.css' %}" rel="stylesheet">
 {% endblock %}

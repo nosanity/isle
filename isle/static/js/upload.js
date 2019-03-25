@@ -122,6 +122,10 @@ function isFormValid($form) {
     const urlFilled = !!$urlField.first().val();
     const fileFilled = !!($fileField && !!$fileField.val());
 
+    if (pageType  == 'loadMaterials') {
+        return !!$form.find('select[name=trace_name]').val() && !(urlFilled == fileFilled);
+    }
+
     return !(urlFilled == fileFilled);
 }
 
@@ -181,23 +185,35 @@ function result_edit_switcher(result, editable) {
     }
 }
 
+function show_trace_name(trace_id) {
+    let wrapper = $('div.event-trace-materials-wrapper[data-trace-id=' + trace_id + ']');
+    let files_num = wrapper.find('ul.list-group li').length;
+    if (wrapper.find('ul.list-group li').length > 0) {
+        wrapper.find('.event-trace-name').show();
+    }
+    else {
+        wrapper.find('.event-trace-name').hide();
+    }
+}
+
 // handlers
 
-$('body').delegate('button.delete-material-btn', 'click', (e) => {
+$('body').delegate('.delete-material-btn', 'click', (e) => {
     e.preventDefault();
-    if ($(':focus').attr('name') == 'material_id') {
+    if ($(':focus').attr('name') == 'material_id' || pageType == 'loadMaterials') {
         if (confirm('Вы действительно хотите удалить этот файл?')) {
             let obj;
-            if ($(e.target).prop('tagName') == 'SPAN') {
+            if ($(e.target).prop('tagName') == 'SPAN' && pageType != 'loadMaterials') {
                 $obj = $(e.target).parents('button')
             }
             else {
                 $obj = $(e.target);
             }
+            const trace_id = $obj.parents('div.event-trace-materials-wrapper').data('trace-id');
             const data = {
                 csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val() || csrfmiddlewaretoken,
-                trace_name: $obj.parents('form.trace-form').children('input[name=trace_name]').val(),
-                material_id: $obj.val()
+                trace_name: trace_id,
+                material_id: $obj.val() || $obj.attr('value')
             }
             if (pageType == 'loadMaterials_v2') {
                 data['labs_result_id'] = $obj.parents('.material-result-div').data('result');
@@ -215,6 +231,9 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
                     let el = $obj.parents('div.result-items-wrapper');
                     $obj.parent('li').remove();
                     resultFilesNumberHandler(el);
+                    if (pageType == 'loadMaterials') {
+                        show_trace_name(trace_id);
+                    }
                 },
                 error: (xhr, err) => {
                     // TODO show appropriate message
@@ -343,7 +362,17 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
 }).delegate('.move-unattached-file', 'click', (e) => {
     e.preventDefault();
     build_move_result_modal($(e.target), null);
+}).delegate('.add-event-material-assistant', 'click', (e) => {
+    $('.add-event-materials-wrapper').removeClass('hidden');
+}).delegate('.hide-add-event-materials-form-btn', 'click', (e) => {
+    $('.add-event-materials-wrapper').addClass('hidden');
 });
+
+if (pageType == 'loadMaterials') {
+    $('body').delegate('form.trace-form select[name=trace_name]', 'change', (e) => {
+        setActivateButton($(e.target).parents('form.trace-form'));
+    })
+}
 
 function build_move_result_modal(result, labs_result_id) {
     if ($('#move_results_modal').length == 0) {
@@ -609,8 +638,7 @@ function successProcessFile(data, $form, result_item_id) {
         item = $form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]');
     }
     else {
-        items = $form.children('ul.list-group').children('li');
-        item = $(items[items.length - 1]);
+        items = $('.event-trace-materials-wrapper[data-trace-id=' + data.trace_id + ']').find('ul.list-group');
     }
     const data_attrs = data.data_attrs;
     let html = null;
@@ -676,17 +704,13 @@ function successProcessFile(data, $form, result_item_id) {
             `;
         } else {
             html = `
-                <li class="list-group-item ${data.uploader_name && isAssistant ? 'assistant-team-link' : ''}">
-                    <a href="${url}">${name}</a>
+                <li class="list-group-item ${data.uploader_name && isAssistant ? 'assistant-team-link' : ''}" data-comment="${data.comment}" data-material-id="${mId}">
+                    <a class="link_preview" href="${url}" ${data_attrs}>${name}</a>
                     &nbsp;
-                    <button name="material_id" value="${mId}" class="btn btn-warning btn-sm pull-right delete-material-btn">
-                        Удалить
-                    </button>
-                    &nbsp;
-                    <button value="${mId}" class="btn btn-success btn-sm pull-right edit-event-block-material">
-                        Редактировать
-                    </button>
-                    ${data.uploader_name ? '<div>(' + data.uploader_name + ')</div>' : ''}
+                    <span name="material_id" value="${mId}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
+                    </span>
+                    <span value="${mId}" class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
+                    </span>
                     <div>
                         <span class="text-muted assistant-info-string">${data.info_string}</span>
                     </div>
@@ -700,7 +724,10 @@ function successProcessFile(data, $form, result_item_id) {
         item.parent('div').find('.result-comment').html(comment);
         resultFilesNumberHandler(item.parents('div.result-items-wrapper'));
     }
-    else { item.before($(html)); }
+    else {
+        items.append($(html));
+        show_trace_name(data.trace_id);
+    }
     if (pageType == 'loadUserMaterials') {
         $('.save-result-btn').prop('disabled', false);
         clearForm($form); 

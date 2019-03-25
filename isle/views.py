@@ -1018,6 +1018,34 @@ class LoadEventMaterials(BaseLoadMaterials):
     material_model = EventOnlyMaterial
     extra_context = {'with_comment_input': True, 'show_owners': True, 'event_upload': True}
 
+    def post(self, request, *args, **kwargs):
+        if request.user.is_authenticated and request.user.is_assistant and 'change_material_info' in request.POST:
+            return self.change_material_info(request)
+        return super().post(request, *args, **kwargs)
+
+    def change_material_info(self, request):
+        result_key, result_value = self.get_result_key_and_value(request)
+        if not result_value:
+            return JsonResponse({}, status=400)
+        try:
+            material = self.material_model.objects.get(id=request.POST.get('material_id'), event=self.event)
+            original_trace_id = material.trace_id
+        except (self.material_model.DoesNotExist, ValueError, TypeError):
+            return JsonResponse({}, status=400)
+        comment = request.POST.get('comment') or ''
+        material.trace = result_value
+        material.comment = comment
+        material.save(update_fields=['comment', 'trace'])
+        logging.info('User %s updated material %s. Trace_id: %s, comment: %s' %
+                     (request.user.username, material.id, result_value.id, comment))
+        return JsonResponse({
+            'comment': comment,
+            'trace_id': result_value.id,
+            'info_str': material.get_info_string(),
+            'original_trace_id': original_trace_id,
+            'material_id': material.id,
+        })
+
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
         data.update({
@@ -1031,15 +1059,14 @@ class LoadEventMaterials(BaseLoadMaterials):
         return self.material_model.objects.filter(event=self.event, trace__isnull=True)
 
     def get_materials(self):
-        qs = EventOnlyMaterial.objects.filter(event=self.event).prefetch_related('owners')
+        qs = EventOnlyMaterial.objects.filter(event=self.event)
         for item in qs:
             if not self.request.user.is_assistant:
                 item.is_owner = self.request.user in item.owners.all()
                 item.ownership_url = reverse('event-material-owner', kwargs={
                     'uid': self.event.uid, 'material_id': item.id})
         self.set_initiator_users_to_qs(qs)
-        return qs.prefetch_related('related_users', 'related_teams', 'related_teams__users').\
-            select_related('event_block')
+        return qs
 
     def _delete_item(self, trace, material_id):
         material = EventOnlyMaterial.objects.filter(
@@ -1066,6 +1093,7 @@ class LoadEventMaterials(BaseLoadMaterials):
         form = EventMaterialForm(instance=material, data=self.request.POST, prefix=str(trace.id), event=self.event)
         if form.is_valid():
             material = form.save()
+        resp['trace_id'] = trace.id
         resp['info_string'] = material.get_info_string()
         logging.info('User %s created block info for material %s: %s' %
                      (self.request.user.username, material.id, resp['info_string']))

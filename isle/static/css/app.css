@@ -373,3 +373,8 @@ nav.navbar {
 .ml--15 {
     margin-left: -15px;
 }
+
+.event-upload-form .material-type-select {
+    width: auto;
+    min-width: 50%;
+}
