@@ -1,4 +1,4 @@
-<p class="mr-auto">
+<p class="mr-auto context-switcher-wrapper">
     {% if request.user.is_authenticated and request.user.is_assistant %}
         {% csrf_token %}
         <select class="context-switching-select form-control" data-url="{% url 'switch_context' %}">
