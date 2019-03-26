@@ -360,6 +360,8 @@ nav.navbar {
 .context-switching-select {
     margin-bottom: -5px;
     margin-left: 20px;
+    max-width: 300px;
+    text-overflow: ellipsis;
 }
 
 .export-results a, .export-results span {
