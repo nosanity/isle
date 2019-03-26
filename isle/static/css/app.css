@@ -56,6 +56,10 @@ nav.navbar {
     background-color: rgba(186, 214, 141, 0.7);
 }
 
+#event-users-table .event-participants-self td {
+    border-bottom: solid #fff 5px;
+}
+
 .materials-form-comment-div {
     margin-top: 10px;
 }
@@ -447,4 +451,22 @@ nav.navbar {
 
 .nav-row {
     flex-direction: row;
+}
+
+.btn-grey {
+    background-color: #ccc;
+    color: #000;
+}
+
+img.user-img {
+    width: 50px;
+    height: 50px;
+}
+
+.user-images-cell {
+    display: inline-block;
+}
+
+.td-user-images {
+    max-width: 180px;
 }

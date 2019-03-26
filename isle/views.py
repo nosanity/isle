@@ -231,10 +231,12 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             u.can_delete = u.id in can_delete
             u.added_by_chat_bot = u.id in chat_bot_added
         event_entry = EventEntry.objects.filter(event=self.event, user=self.request.user).first()
+        teams = Team.objects.filter(event=self.event).select_related('creator').prefetch_related('users')
+        teams = sorted(list(teams), key=lambda x: (int(x.id not in user_teams), x.name.lower()))
         return {
             'students': users,
             'event': self.event,
-            'teams': Team.objects.filter(event=self.event).select_related('creator').order_by('name'),
+            'teams': teams,
             'user_teams': user_teams,
             'event_entry': event_entry,
             'event_entry_id': getattr(event_entry, 'id', 0),
@@ -1482,18 +1484,6 @@ class ConfirmTeamMaterial(GetEventMixin, View):
             logging.info('User %s confirmed team %s upload %s' %
                          (request.user.username, team.id, request.POST.get('material_id')))
         except (Team.DoesNotExist, EventTeamMaterial.DoesNotExist, ValueError, TypeError, AssertionError):
-            return JsonResponse({}, status=404)
-        return JsonResponse({})
-
-
-class ConfirmTeamView(GetEventMixin, View):
-    def post(self, request, uid=None):
-        if not request.user.is_authenticated or not request.user.is_assistant:
-            return JsonResponse({}, status=403)
-        try:
-            assert Team.objects.filter(event=self.event, id=request.POST.get('team_id')).update(confirmed=True)
-            logging.info('User %s confirmed team %s' % (request.user.username, request.POST.get('team_id')))
-        except (Team.DoesNotExist, TypeError, ValueError, AssertionError):
             return JsonResponse({}, status=404)
         return JsonResponse({})
 

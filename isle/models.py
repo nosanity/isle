@@ -37,6 +37,9 @@ class User(AbstractUser):
     def fio(self):
         return ' '.join(filter(None, [self.last_name, self.first_name, self.second_name]))
 
+    def get_full_name(self):
+        return ' '.join(filter(None, [self.last_name, self.first_name]))
+
 
 class EventType(models.Model):
     ext_id = models.PositiveIntegerField(verbose_name='Внешний id', null=True)
@@ -167,6 +170,9 @@ class Event(models.Model):
     @cached_property
     def get_results(self):
         return EventBlock.objects.filter(event=self).order_by('id')
+
+    def get_xle_link(self):
+        return '{}/event/{}/'.format(settings.XLE_URL, self.uid)
 
 
 class BlockType:

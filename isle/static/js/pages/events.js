@@ -12,11 +12,6 @@ $('.approve-text-btn').click((e) => {
 });
 
 if (isAssistant) {
-    $('.btn-confirm-team').on('click', (e) => {
-        e.preventDefault();
-        confirmTeam(e.target);
-    });
-
     $('input.attendance').on('change', (e) => {
         inputAttendanceChange(e.target);
     });
@@ -69,27 +64,6 @@ function inputAttendanceChange(obj) {
             $obj.prop('checked', !isChecked);
         }
     });    
-}
-
-function confirmTeam(obj) {
-    const $obj = $(obj);
-    const data = {
-        csrfmiddlewaretoken: csrfmiddlewaretoken, 
-        team_id: $obj.val()
-    };
-    $.ajax({
-        url: confirmTeamUrl,
-        method: 'POST',
-        data: data,
-        success: () => {
-            $obj.parents('tr').addClass('confirmed-team-link');
-            $obj.remove();
-        },
-        error: () => {
-            // TODO show appropriate message
-            alert('error');
-        }
-    });
 }
 
 function deleteAttendance(obj) {
