@@ -4,11 +4,11 @@ from social_django.models import UserSocialAuth
 from isle.models import Team, User, EventBlock, EventOnlyMaterial, UserResult, TeamResult, UserRole, EventEntry
 
 
-class CreateTeamForm(forms.ModelForm):
+class BaseTeamForm(forms.ModelForm):
     def __init__(self, **kwargs):
         qs = kwargs.pop('users_qs')
         self.event = kwargs.pop('event')
-        self.creator = kwargs.pop('creator')
+        self.creator = kwargs.pop('creator', None)
         super().__init__(**kwargs)
         self.fields['users'].queryset = qs
 
@@ -17,12 +17,27 @@ class CreateTeamForm(forms.ModelForm):
         fields = ['name', 'users']
 
     def save(self, commit=True):
-        instance = super().save(commit=False)
+        instance = self.get_instance()
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance, 'users' in self.changed_data
+
+    def get_instance(self):
+        return super().save(commit=False)
+
+
+class CreateTeamForm(BaseTeamForm):
+    def get_instance(self):
+        instance = super().get_instance()
         instance.event = self.event
         instance.creator = self.creator
         instance.confirmed = self.creator.is_assistant
-        instance.save()
-        self.save_m2m()
+        return instance
+
+
+class EditTeamForm(BaseTeamForm):
+    pass
 
 
 class AddUserForm(forms.Form):

@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static i18n tz %}
+{% load static i18n tz helpers %}
 
 {% block title %}Страница мероприятия "{{ event.title }}"{% endblock %}
 
@@ -170,6 +170,7 @@
                   <th scope="col">Количество участников</th>
                   <th scope="col">Элементов следа</th>
                   <th scope="col">Результаты</th>
+                  <th scope="col">Редактирование</th>
                   {% if request.user.is_assistant %}
                       <th scope="col">Подтверждение</th>
                   {% endif %}
@@ -187,6 +188,13 @@
                             {% if request.user.is_assistant or team.id in user_teams %}
                                 <a class="btn btn-primary btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
                             {% endif %}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if team|user_can_edit_team:request.user %}
+                            <a class="btn btn-success" href="{% url 'edit-team' uid=event.uid team_id=team.id %}">
+                                {% blocktrans %}Редактировать{% endblocktrans %}
+                            </a>
                         {% endif %}
                     </td>
                     {% if request.user.is_assistant %}

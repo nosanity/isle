@@ -8,6 +8,7 @@ urlpatterns = [
     path('logout/', views.logout, name='logout'),
     path('update-attendance/<str:uid>', views.UpdateAttendanceView.as_view(), name='update-attendance-view'),
     path('create-team/<str:uid>/', views.CreateTeamView.as_view(), name='create-team'),
+    path('edit-team/<str:uid>/<int:team_id>/', views.EditTeamView.as_view(), name='edit-team'),
     path('confirm-team/<str:uid>/', views.ConfirmTeamView.as_view(), name='confirm-team'),
     path('load-team/<str:uid>/<int:team_id>/', views.LoadTeamMaterialsResult.as_view(), name='load-team-materials'),
     path('confirm-team-material/<str:uid>/<int:team_id>/', views.ConfirmTeamMaterial.as_view(),

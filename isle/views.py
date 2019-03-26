@@ -36,13 +36,13 @@ from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
 from isle.api import LabsApi, XLEApi, DpApi, SSOApi
 from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset, \
-    EventMaterialForm
+    EventMaterialForm, EditTeamForm
 from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
     LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump
 from isle.serializers import AttendanceSerializer
-from isle.tasks import generate_events_csv
+from isle.tasks import generate_events_csv, team_members_set_changed
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
     EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request
@@ -1099,29 +1099,68 @@ class LoadEventMaterials(BaseLoadMaterials):
                      (self.request.user.username, material.id, resp['info_string']))
 
 
-class CreateTeamView(GetEventMixin, TemplateView):
-    template_name = 'create_team.html'
+class BaseTeamView(GetEventMixin):
+    template_name = 'create_or_edit_team.html'
+    form_class = CreateTeamForm
 
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated or not (request.user.is_assistant or
-                EventEntry.objects.filter(event=self.event, user=request.user).exists()):
+                self.has_permission(request)):
             return HttpResponseForbidden()
         return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
-        users = self.get_available_users()
-        return {'students': users, 'event': self.event}
+        data = super().get_context_data(**kwargs)
+        data.update({'students': self.get_available_users(), 'event': self.event})
+        return data
 
     def get_available_users(self):
         return get_event_participants(self.event)
 
-    def post(self, request, uid=None):
-        form = CreateTeamForm(data=request.POST, event=self.event, users_qs=self.get_available_users(),
-                              creator=request.user)
+    def post(self, request, **kwargs):
+        form = self.form_class(data=request.POST, event=self.event, users_qs=self.get_available_users(),
+                               creator=request.user, instance=self.team)
         if not form.is_valid():
             return JsonResponse({}, status=400)
-        form.save()
+        team, members_changed = form.save()
+        self.team_saved(team, members_changed)
         return JsonResponse({'redirect': reverse('event-view', kwargs={'uid': self.event.uid})})
+
+    def team_saved(self, team, members_changed):
+        pass
+
+    @cached_property
+    def team(self):
+        return None
+
+
+class CreateTeamView(BaseTeamView, TemplateView):
+    extra_context = {'edit': False}
+
+    def has_permission(self, request):
+        return EventEntry.objects.filter(event=self.event, user=request.user).exists()
+
+
+class EditTeamView(BaseTeamView, TemplateView):
+    form_class = EditTeamForm
+    extra_context = {'edit': True}
+
+    def has_permission(self, request):
+        return self.team is not None and self.team.user_can_edit_team(request.user)
+
+    @cached_property
+    def team(self):
+        return Team.objects.filter(id=self.kwargs['team_id']).prefetch_related('users').first()
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        data['team'] = self.team
+        data['students'] = sorted(list(data['students']), key=lambda x: x not in self.team.users.all())
+        return data
+
+    def team_saved(self, team, members_changed):
+        if members_changed and LabsTeamResult.objects.filter(team=team).exists():
+            team_members_set_changed.delay(team.id)
 
 
 class AddUserToEvent(GetEventMixin, TemplateView):

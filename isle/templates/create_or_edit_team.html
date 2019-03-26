@@ -1,13 +1,19 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Создание команды{% endblock %}
+{% block title %}
+    {% if edit %}
+        Редактирование команды
+    {% else %}
+        Создание команды
+    {% endif %}
+{% endblock %}
 
 {% block content %}
     <form method="post" id="team-form" class="form-inline">
         {% csrf_token %}
         <label>Название команды</label>
-        <input type="text" name="name" class="form-control">
+        <input type="text" name="name" class="form-control" {% if edit %}value="{{ team.name }}"{% endif %}>
         <table class="table table-hover table-bordered table-striped mt-20">
             <thead class="thead-light">
                 <tr>
@@ -21,12 +27,14 @@
                 <td>{{ student.get_full_name }}</td>
                 <td>{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
                 <td>
-                    <input type="checkbox" name="users" value="{{ student.id }}">
+                    <input type="checkbox" name="users" value="{{ student.id }}" {% if edit and student in team.users.all %}checked{% endif %}>
                 </td>
             </tr>
         {% endfor %}
         </table>
-        <button class="btn btn-primary" id="submit" type="submit" disabled>Создать</button>
+        <button class="btn btn-primary" id="submit" type="submit" disabled>
+            {% if edit %}Сохранить{% else %}Создать{% endif %}
+        </button>
     </form>
     <a href="{% url 'event-view' uid=event.uid %}">
         <button class="btn btn-default mt-20">К странице мероприятия</button>

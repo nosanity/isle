@@ -2,7 +2,8 @@ import csv
 import logging
 from django.utils import timezone
 from celery import task
-from isle.models import Event, CSVDump, Activity, Context
+from isle.kafka import send_object_info, KafkaActions
+from isle.models import Event, CSVDump, Activity, Context, LabsTeamResult
 from isle.utils import EventGroupMaterialsCSV, BytesCsvObjWriter
 
 
@@ -28,3 +29,9 @@ def generate_events_csv(dump_id, event_ids, encoding, meta):
     except Exception:
         logging.exception('Failed to generate events csv')
         CSVDump.objects.filter(id=dump_id).update(status=CSVDump.STATUS_ERROR)
+
+
+@task
+def team_members_set_changed(team_id):
+    for result in LabsTeamResult.objects.filter(team_id=team_id).iterator():
+        send_object_info(result, result.id, KafkaActions.UPDATE)

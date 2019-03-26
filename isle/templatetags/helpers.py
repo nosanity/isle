@@ -27,3 +27,8 @@ def render_event_block_form(prefix, event):
     отрисовка форм с различными префиксами, чтобы автокомплиты не конфликтовали
     """
     return {'blocks_form': EventMaterialForm(event=event, prefix=prefix)}
+
+
+@register.filter
+def user_can_edit_team(team, user):
+    return team.user_can_edit_team(user)

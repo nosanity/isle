@@ -566,6 +566,9 @@ class Team(models.Model):
     def __str__(self):
         return self.name
 
+    def user_can_edit_team(self, user):
+        return user.is_assistant or user.id == self.creator_id or user in self.users.all()
+
 
 class EventTeamMaterial(AbstractMaterial):
     team = models.ForeignKey(Team, on_delete=models.CASCADE)
