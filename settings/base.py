@@ -33,7 +33,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'django_carrier_client',
     'djcelery',
-    'django_user_agents'
+    'django_user_agents',
+    'mptt',
 ]
 
 MIDDLEWARE = [
@@ -186,6 +187,7 @@ KAFKA_HOST = ''
 KAFKA_PORT = 80
 KAFKA_TOKEN = ''
 KAFKA_PROTOCOL = 'http'
+KAFKA_TOPIC_SSO = 'sso'
 
 # количество всех материалов в выбранных материалов, более которого генерация выгрузки должна идти асинхронно
 MAX_MATERIALS_FOR_SYNC_GENERATION = 500

@@ -17,7 +17,7 @@ from django.utils.dateparse import parse_datetime
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext as _
 import requests
-from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi
+from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi, SSOApi
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
                          Team)
@@ -44,6 +44,7 @@ def refresh_events_data():
     try:
         event_types = {}
         existing_uids = set(Event.objects.values_list('uid', flat=True))
+        context_uuid_to_id = dict(Context.objects.values_list('uuid', 'id'))
         fetched_events = set()
         metamodels = set()
         filter_dict = lambda d, excl: {k: d.get(k) for k in d if k not in excl}
@@ -88,6 +89,7 @@ def refresh_events_data():
                     run_json = filter_dict(run, RUN_EXCLUDE_KEYS)
                     events = run.get('events') or []
                     for event in events:
+                        context_id = context_uuid_to_id.get(event.get('context_uuid'))
                         event_json = filter_dict(event, EVENT_EXCLUDE_KEYS)
                         uid = event['uuid']
                         timeslot = event.get('timeslot')
@@ -99,6 +101,7 @@ def refresh_events_data():
                         e, e_created = Event.objects.update_or_create(uid=uid, defaults={
                             'is_active': is_active,
                             'activity': current_activity,
+                            'context_id': context_id,
                             'data': {'event': event_json, 'run': run_json, 'activity': activity_json},
                             'dt_start': dt_start, 'dt_end': dt_end, 'title': title, 'event_type': event_type})
                         update_event_structure(
@@ -374,10 +377,11 @@ def recalculate_user_chart_data(user):
 
 def update_contexts():
     """
-    апдейт контекстов и привязка к ним эвентов
+    апдейт контекстов
     """
     try:
-        for data in LabsApi().get_contexts():
+        uuid_to_id = {}
+        for data in SSOApi().get_contexts():
             for context in data:
                 timezone = context.get('timezone')
                 uuid = context.get('uuid')
@@ -389,20 +393,33 @@ def update_contexts():
                 except pytz.UnknownTimeZoneError:
                     logging.error('unknown timezone %s' % timezone)
                     continue
-                c = Context.objects.update_or_create(uuid=uuid, defaults={'timezone': timezone,
-                                                                          'title': context.get('title') or '',
-                                                                          'guid': context.get('guid') or ''})[0]
-                events = []
-                for run in (context.get('runs') or []):
-                    for event in (run.get('events') or []):
-                        uuid = event.get('uuid')
-                        if uuid:
-                            events.append(uuid)
-                Event.objects.filter(uid__in=events).update(context=c)
+                c = Context.objects.update_or_create(uuid=uuid, defaults={
+                    'timezone': timezone,
+                    'status': context.get('status') or '',
+                    'ct_type': context.get('ct_type') or '',
+                    'title': context.get('title') or '',
+                    'guid': context.get('guid') or '',
+                    'datetime_start': safe_parse_date(context.get('datetime_start')),
+                    'datetime_end': safe_parse_date(context.get('datetime_end')),
+                    'description': context.get('description') or '',
+                    # контексты упорядочены так, что родительские контексты идут в выдаче раньше
+                    'parent_id': uuid_to_id.get(context.get('parent')),
+                    'is_global': not uuid_to_id.get(context.get('parent')),
+                })[0]
+                uuid_to_id[uuid] = c.id
     except ApiError:
         return
     except Exception:
         logging.exception('Failed to parse contexts')
+    finally:
+        Context.objects.rebuild()
+
+
+def safe_parse_date(val):
+    try:
+        return parse_datetime(val)
+    except (ValueError, TypeError):
+        return
 
 
 def get_results_list(event=None):

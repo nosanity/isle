@@ -6,7 +6,7 @@ from django.conf import settings
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 from isle.models import (Event, User, Team, EventMaterial, EventTeamMaterial, EventOnlyMaterial, EventEntry,
-                         LabsTeamResult, LabsUserResult, LabsEventResult)
+                         LabsTeamResult, LabsUserResult, LabsEventResult, Tag, Context, ContextRole, UserContextRole)
 from isle.views import EventCsvData
 
 
@@ -36,7 +36,11 @@ class TestGenerationTime(TestCase):
                 leader_id=i + 1,
             ))
         self._bulk_create(users, User)
-        self.assistant = User.objects.create_user('assistant', 'assistant@example.com', 'password', is_assistant=True)
+        self.assistant = User.objects.create_user('assistant', 'assistant@example.com', 'password')
+        tag = Tag.objects.create(slug=settings.ASSISTANT_TAGS_NAME[0])
+        context = Context.get_global_context()
+        role = ContextRole.objects.create(context_uuid=context.uuid, tag=tag)
+        UserContextRole.objects.create(user=self.assistant, role=role, is_active=True)
 
         fill_events = Event.objects.filter(blocks__isnull=False, event_type__isnull=False)[:filled]
         personal_materials, team_materials, event_materials = [], [], []

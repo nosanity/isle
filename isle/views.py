@@ -40,12 +40,15 @@ from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResul
 from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
-    LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump
+    LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, UserContextRole
 from isle.serializers import AttendanceSerializer
 from isle.tasks import generate_events_csv
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
     EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request
+
+
+VIEW_MODE_COOKIE_NAME = 'index-view-mode'
 
 
 def login(request):
@@ -67,7 +70,7 @@ def context_setter(f):
             uid = kwargs.get('uid')
             if uid:
                 event = Event.objects.filter(uid=uid).first()
-                if event and request.user.is_authenticated and request.user.is_assistant and \
+                if event and request.user.is_authenticated and request.user.has_assistant_role() and \
                         request.user.chosen_context_id != event.context_id:
                     request.user.chosen_context_id = event.context_id
                     request.user.save(update_fields=['chosen_context_id'])
@@ -83,10 +86,23 @@ class IndexPageEventsFilterMixin:
         try:
             date = timezone.datetime.strptime(self.request.GET.get('date'), self.DATE_FORMAT).date()
         except:
-            if not self.request.user.is_assistant or self.activity_filter:
+            if not self.current_mode_is_assistant or self.activity_filter:
                 return
             date = timezone.localtime(timezone.now()).date()
         return date
+
+    @cached_property
+    def current_user_has_assistant_role(self):
+        return self.request.user.has_assistant_role()
+
+    @cached_property
+    def current_mode_is_assistant(self):
+        """
+        просматривает ли пользователь страницу в режиме ассистента
+        """
+        if self.current_user_has_assistant_role:
+            return self.request.COOKIES.get(VIEW_MODE_COOKIE_NAME) != 'as_user'
+        return False
 
     @cached_property
     def activity_filter(self):
@@ -96,8 +112,13 @@ class IndexPageEventsFilterMixin:
             return
 
     def get_events(self):
-        if self.request.user.is_assistant:
+        if self.current_mode_is_assistant:
             events = Event.objects.filter(is_active=True)
+            if self.request.user.chosen_context_id:
+                events = events.filter(context_id=self.request.user.chosen_context_id)
+            else:
+                if not self.request.user.is_global_assistant():
+                    events = events.filter(uid__in=self.request.user.get_available_context_uuids())
         else:
             events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user).
                                           values_list('event_id', flat=True))
@@ -110,7 +131,7 @@ class IndexPageEventsFilterMixin:
         if self.activity_filter:
             events = events.filter(activity=self.activity_filter)
         events = events.order_by('{}dt_start'.format('' if self.is_asc_sort() else '-'))
-        if self.request.user.is_assistant and self.request.user.chosen_context_id:
+        if self.current_mode_is_assistant and self.request.user.chosen_context_id:
             events = events.filter(context_id=self.request.user.chosen_context_id)
         return events
 
@@ -127,32 +148,56 @@ class Index(IndexPageEventsFilterMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         date = self.get_date()
-        objects = self.get_events()
+        objects = self.get_events().select_related('context')
         ctx = {
             'objects': objects,
             'date': date.strftime(self.DATE_FORMAT) if date else None,
             'date_obj': date,
             'sort_asc': self.is_asc_sort(),
             'activity_filter': self.activity_filter,
+            'has_assistant_role': self.current_user_has_assistant_role,
+            'is_assistant': self.current_mode_is_assistant,
         }
-        if self.request.user.is_assistant:
-            fdict = {
-                'initiator__in': User.objects.filter(is_assistant=True).values_list('unti_id', flat=True)
-            }
+        if self.current_mode_is_assistant:
+            by_context = defaultdict(list)
+            context_assistants = {}
+            for obj in objects:
+                if not obj.context_id:
+                    continue
+                by_context[obj.context_id].append(obj.id)
+                if obj.context_id not in context_assistants:
+                    context_assistants[obj.context_id] = list(
+                        obj.context.get_assistants().filter(user__unti_id__isnull=False)
+                            .values_list('user__unti_id', flat=True)
+                    )
+            # формирование запроса для выборки материалов, загруженных ассистентами контекста
+            q = Q(initiator__isnull=True, event__in=objects)
+            for ct_id, event_ids in by_context.items():
+                if context_assistants[ct_id]:
+                    q |= Q(event_id__in=event_ids, initiator__in=context_assistants[ct_id])
+            event_material_cnt = EventOnlyMaterial.objects.filter(event__in=objects).count()
+            all_elements_cnt = EventMaterial.objects.filter(event__in=objects).count() + \
+                               EventTeamMaterial.objects.filter(event__in=objects).count() + \
+                               event_material_cnt
+            loaded_by_assistants = EventMaterial.objects.filter(q).count() + \
+                                   EventTeamMaterial.objects.filter(q).count() + \
+                                   event_material_cnt
             ctx.update({
-                'elements_cnt': EventMaterial.objects.filter(event__in=objects).count() +
-                                EventTeamMaterial.objects.filter(event__in=objects).count() +
-                                EventOnlyMaterial.objects.filter(event__in=objects).count(),
-                'elements_user_cnt': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count() +
-                                     EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count(),
+                'elements_cnt': all_elements_cnt,
+                'elements_user_cnt': all_elements_cnt - loaded_by_assistants,
             })
-            if self.request.user.is_assistant:
-                enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
-                check_ins = dict(EventEntry.objects.filter(is_active=True).values_list('event_id')
-                                 .annotate(cnt=Count('user_id')))
-                for obj in objects:
-                    obj.prop_enrollments = enrollments.get(obj.id, 0)
-                    obj.prop_checkins = check_ins.get(obj.id, 0)
+            enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
+            check_ins = dict(EventEntry.objects.filter(is_active=True).values_list('event_id')
+                             .annotate(cnt=Count('user_id')))
+            event_files_cnt = defaultdict(int)
+            for model in (EventMaterial, EventTeamMaterial, EventOnlyMaterial):
+                qs = model.objects.filter(event__is_active=True).values_list('event_id').annotate(cnt=Count('id'))
+                for eid, num in qs.iterator():
+                    event_files_cnt[eid] += num
+            for obj in objects:
+                obj.prop_enrollments = enrollments.get(obj.id, 0)
+                obj.prop_checkins = check_ins.get(obj.id, 0)
+                obj.trace_cnt = event_files_cnt.get(obj.id, 0)
         else:
             user_materials_num = dict(EventMaterial.objects.filter(event__in=objects, user=self.request.user)
                                       .values_list('event_id').annotate(cnt=Count('user_id')))
@@ -179,12 +224,18 @@ class GetEventMixin:
     def dispatch(self, request, *args, **kwargs):
         return super().dispatch(request, *args, **kwargs)
 
+    @cached_property
+    def current_user_is_assistant(self):
+        if not self.request.user.is_authenticated:
+            return False
+        return self.request.user.is_assistant_for_context(self.event.context)
+
 
 class GetEventMixinWithAccessCheck(GetEventMixin):
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return HttpResponseRedirect('{}?next={}'.format(reverse('login'), request.get_full_path()))
-        if request.user.is_assistant or EventEntry.objects.filter(user=request.user, event=self.event).exists():
+        if self.current_user_is_assistant or EventEntry.objects.filter(user=request.user, event=self.event).exists():
             return super().dispatch(request, *args, **kwargs)
         return render(request, 'to_xle.html', {
             'link': getattr(settings, 'XLE_URL', 'https://xle.2035.university/feedback'),
@@ -214,7 +265,7 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
         chat_bot_added = set(Attendance.objects.filter(event=self.event, confirmed_by_system=Attendance.SYSTEM_CHAT_BOT)
                              .values_list('user_id', flat=True))
         user_teams = []
-        if not self.request.user.is_assistant:
+        if not self.current_user_is_assistant:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users, is_public=True).
                        values_list('user_id').annotate(num=Count('event_id')))
             num[self.request.user.id] = EventMaterial.objects.filter(event=self.event, user=self.request.user).count()
@@ -231,6 +282,9 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             u.can_delete = u.id in can_delete
             u.added_by_chat_bot = u.id in chat_bot_added
         event_entry = EventEntry.objects.filter(event=self.event, user=self.request.user).first()
+        assistants = []
+        if self.event.context:
+            assistants = list(self.event.context.get_assistants().values_list('user_id', flat=True))
         return {
             'students': users,
             'event': self.event,
@@ -238,6 +292,8 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             'user_teams': user_teams,
             'event_entry': event_entry,
             'event_entry_id': getattr(event_entry, 'id', 0),
+            'is_assistant': self.current_user_is_assistant,
+            'event_assistants': assistants,
         }
 
 
@@ -256,6 +312,7 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
             'event': self.event,
             'can_upload': self.can_upload(),
             'can_set_public': self._can_set_public(),
+            'is_assistant': self.current_user_is_assistant,
             'unattached_files': self.get_unattached_files()
         })
         return data
@@ -264,7 +321,7 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
         return []
 
     def can_upload(self):
-        return self.request.user.is_assistant
+        return self.current_user_is_assistant
 
     def _can_set_public(self):
         return False
@@ -504,7 +561,7 @@ class BaseLoadMaterialsLabsResults:
         """
         перемещение объекта результата из одного блока результата в другой
         """
-        if not request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         item_result = self.results_model.objects.filter(**self._update_query_dict({
             'result_id': request.POST.get('labs_result_id'),
@@ -531,7 +588,7 @@ class BaseLoadMaterialsLabsResults:
         """
         перемещение файла, у которого нет связей с трейсом или результатом, в результат
         """
-        if not request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         try:
             material = self.material_model.objects.get(**self._update_query_dict({
@@ -724,7 +781,7 @@ class BaseLoadMaterialsResults(object):
         resp = self.check_post_allowed(request)
         if resp is not None:
             return resp
-        if not request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         if 'add_btn' not in request.POST:
             return self.delete_item(request)
@@ -768,7 +825,7 @@ class LoadMaterials(BaseLoadMaterials):
         return self.request.user.unti_id == int(self.kwargs['unti_id'])
 
     def can_upload(self):
-        return self.request.user.is_assistant or int(self.kwargs['unti_id']) == self.request.user.unti_id
+        return self.current_user_is_assistant or int(self.kwargs['unti_id']) == self.request.user.unti_id
 
     def get_materials(self):
         if self.can_upload():
@@ -864,14 +921,6 @@ class LoadMaterialsAssistant(BaseLoadMaterialsResults, LoadMaterials):
         return JsonResponse({})
 
 
-def choose_view(assistant_view, user_view):
-    def wrapped(request, *args, **kwargs):
-        if request.user.is_authenticated and request.user.is_assistant:
-            return assistant_view.as_view()(request, *args, **kwargs)
-        return user_view.as_view()(request, *args, **kwargs)
-    return wrapped
-
-
 class LoadTeamMaterials(BaseLoadMaterials):
     """
     Просмотр/загрузка командных материалов по эвенту
@@ -899,7 +948,7 @@ class LoadTeamMaterials(BaseLoadMaterials):
         users = {i.unti_id: i for i in User.objects.filter(unti_id__in=filter(None, [j.initiator for j in qs]))}
         for item in qs:
             item.initiator_user = users.get(item.initiator)
-            if not self.request.user.is_assistant:
+            if not self.current_user_is_assistant:
                 item.is_owner = self.request.user in item.owners.all()
                 item.ownership_url = reverse('team-material-owner', kwargs={
                     'uid': self.event.uid, 'material_id': item.id, 'team_id': self.team.id})
@@ -907,12 +956,12 @@ class LoadTeamMaterials(BaseLoadMaterials):
 
     def can_upload(self):
         # командные файлы загружает ассистент или участники этой команды
-        return self.request.user.is_assistant or self.team.users.filter(id=self.request.user.id).exists()
+        return self.current_user_is_assistant or self.team.users.filter(id=self.request.user.id).exists()
 
     def post(self, request, *args, **kwargs):
         # загрузка и удаление файлов доступны только для эвентов, доступных для оцифровки, и по
         # командам, сформированным в данном эвенте
-        if not self.event.is_active or not (self.request.user.is_assistant or
+        if not self.event.is_active or not (self.current_user_is_assistant or
                 Team.objects.filter(event=self.event, id=self.kwargs['team_id']).exists()):
             return JsonResponse({}, status=403)
         try:
@@ -948,7 +997,7 @@ class LoadTeamMaterials(BaseLoadMaterials):
 
     def get_material_fields(self, request):
         return dict(event=self.event, team=self.team, comment=request.POST.get('comment', ''),
-                    confirmed=self.request.user.is_assistant)
+                    confirmed=self.current_user_is_assistant)
 
 
 class LoadTeamMaterialsResult(BaseLoadMaterialsLabsResults, LoadTeamMaterials):
@@ -1033,7 +1082,7 @@ class LoadEventMaterials(BaseLoadMaterials):
     def get_materials(self):
         qs = EventOnlyMaterial.objects.filter(event=self.event).prefetch_related('owners')
         for item in qs:
-            if not self.request.user.is_assistant:
+            if not self.current_user_is_assistant:
                 item.is_owner = self.request.user in item.owners.all()
                 item.ownership_url = reverse('event-material-owner', kwargs={
                     'uid': self.event.uid, 'material_id': item.id})
@@ -1075,7 +1124,7 @@ class CreateTeamView(GetEventMixin, TemplateView):
     template_name = 'create_team.html'
 
     def dispatch(self, request, *args, **kwargs):
-        if not request.user.is_authenticated or not (request.user.is_assistant or
+        if not request.user.is_authenticated or not (self.current_user_is_assistant or
                 EventEntry.objects.filter(event=self.event, user=request.user).exists()):
             return HttpResponseForbidden()
         return super().dispatch(request, *args, **kwargs)
@@ -1103,7 +1152,7 @@ class AddUserToEvent(GetEventMixin, TemplateView):
     template_name = 'add_user.html'
 
     def dispatch(self, request, *args, **kwargs):
-        if request.user.is_authenticated and request.user.is_assistant:
+        if request.user.is_authenticated and self.current_user_is_assistant:
             return super().dispatch(request, *args, **kwargs)
         return HttpResponseForbidden()
 
@@ -1136,7 +1185,7 @@ class AddUserToEvent(GetEventMixin, TemplateView):
 
 class RemoveUserFromEvent(GetEventMixin, View):
     def post(self, request, uid=None):
-        if not request.user.is_authenticated or not request.user.is_assistant:
+        if not request.user.is_authenticated or not self.current_user_is_assistant:
             return JsonResponse({}, status=403)
         try:
             entry = EventEntry.objects.get(event=self.event, user_id=request.POST.get('user_id'),
@@ -1153,11 +1202,16 @@ class RemoveUserFromEvent(GetEventMixin, View):
 class UserAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
         event_id = self.forwarded.get('event_id')
-        if not self.request.user.is_authenticated or not self.request.user.is_assistant or not event_id:
+        event = Event.objects.filter(id=event_id).first()
+        is_assistant = event and self.request.user.is_authenticated and \
+                       self.request.user.is_assistant_for_context(event.context)
+        if not is_assistant or not event_id:
             return User.objects.none()
-        qs = User.objects.filter(is_assistant=False).exclude(
+        qs = User.objects.exclude(
             id__in=EventEntry.objects.filter(event_id=event_id).values_list('user_id', flat=True)
         ).filter(id__in=UserSocialAuth.objects.all().values_list('user__id', flat=True))
+        if event and event.context:
+            qs = qs.exclude(id__in=event.context.get_assistants().values_list('user_id', flat=True))
         if self.q:
             qs = self.search_user(qs, self.q)
         return qs
@@ -1214,7 +1268,8 @@ class EventItemAutocompleteBase(autocomplete.Select2QuerySetView):
     def get_queryset(self):
         exclude = self.forwarded.get('exclude') or []
         event_id = str(self.forwarded.get('event'))
-        if not event_id.isdigit() or not (self.request.user.is_authenticated and self.request.user.is_assistant):
+        if not event_id.isdigit() or not (self.request.user.is_authenticated and
+                                          self.request.user.has_assistant_role()):
             return self.model.objects.none()
         return self.model.objects.filter(**self.get_filters(event_id)).exclude(id__in=exclude)
 
@@ -1371,7 +1426,7 @@ class UpdateAttendanceView(GetEventMixin, View):
         if not user_id or 'status' not in request.POST:
             return JsonResponse({}, status=400)
         user = User.objects.filter(id=user_id).first()
-        if not request.user.is_assistant:
+        if not self.current_user_is_assistant:
             return JsonResponse({}, status=400)
         is_confirmed = request.POST.get('status') == 'true'
         Attendance.objects.update_or_create(
@@ -1405,7 +1460,7 @@ class IsMaterialPublic(GetEventMixin, View):
 
 class ConfirmTeamMaterial(GetEventMixin, View):
     def post(self, request, uid=None, team_id=None):
-        if not request.user.is_authenticated or not request.user.is_assistant:
+        if not request.user.is_authenticated or not self.current_user_is_assistant:
             return JsonResponse({}, status=403)
         try:
             team = Team.objects.get(event=self.event, id=team_id)
@@ -1421,7 +1476,7 @@ class ConfirmTeamMaterial(GetEventMixin, View):
 
 class ConfirmTeamView(GetEventMixin, View):
     def post(self, request, uid=None):
-        if not request.user.is_authenticated or not request.user.is_assistant:
+        if not request.user.is_authenticated or not self.current_user_is_assistant:
             return JsonResponse({}, status=403)
         try:
             assert Team.objects.filter(event=self.event, id=request.POST.get('team_id')).update(confirmed=True)
@@ -1433,7 +1488,7 @@ class ConfirmTeamView(GetEventMixin, View):
 
 class BaseOwnershipChecker(GetEventMixin, View):
     def post(self, request, **kwargs):
-        if request.user.is_assistant or not EventEntry.objects.filter(event=self.event, user=request.user):
+        if self.current_user_is_assistant or not EventEntry.objects.filter(event=self.event, user=request.user):
             return JsonResponse({}, status=403)
         material = self.get_material()
         confirm = request.POST.get('confirm')
@@ -1554,7 +1609,7 @@ class Statistics(TemplateView):
 
 class TransferView(GetEventMixin, View):
     def dispatch(self, request, *args, **kwargs):
-        if request.user.is_authenticated and not request.user.is_assistant:
+        if request.user.is_authenticated and not self.current_user_is_assistant:
             return HttpResponseForbidden()
         return super().dispatch(request, *args, **kwargs)
 
@@ -1646,8 +1701,11 @@ class ActivitiesView(TemplateView):
         )
 
     def filter_context(self, qs):
-        if self.request.user.is_assistant and self.request.user.chosen_context_id:
-            return qs.filter(event__context_id=self.request.user.chosen_context_id).distinct()
+        if self.request.user.has_assistant_role():
+            if self.request.user.chosen_context_id:
+                return qs.filter(event__context_id=self.request.user.chosen_context_id)
+            else:
+                qs = qs.filter(event__context__uuid__in=self.request.user.get_available_context_uuids())
         return qs
 
     def only_my_activities(self):
@@ -1702,7 +1760,7 @@ class ImportEventBlocks(GetEventMixin, TemplateView):
     template_name = 'includes/_blocks_form.html'
 
     def get_context_data(self, **kwargs):
-        if not self.request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         try:
             event = Event.objects.get(id=self.request.GET.get('id'), activity_id=self.event.activity_id)
@@ -1716,7 +1774,7 @@ class CheckEventBlocks(GetEventMixin, View):
     проверка того, что для текущей структуры мероприятия нет файлов мероприятия, привязанных к блокам
     """
     def get(self, request, **kwargs):
-        if request.user.is_assistant:
+        if self.current_user_is_assistant:
             return JsonResponse({
                 'blocks_with_materials': EventOnlyMaterial.objects.filter(event_block__event=self.event).exists(),
             })
@@ -1725,7 +1783,7 @@ class CheckEventBlocks(GetEventMixin, View):
 
 class DeleteEventBlock(GetEventMixin, View):
     def get(self, request, **kwargs):
-        if request.user.is_authenticated and request.user.is_assistant:
+        if request.user.is_authenticated and self.current_user_is_assistant:
             block = EventBlock.objects.filter(id=kwargs['block_id']).first()
             if not block:
                 raise Http404
@@ -1733,7 +1791,7 @@ class DeleteEventBlock(GetEventMixin, View):
         raise PermissionDenied
 
     def post(self, request, **kwargs):
-        if request.user.is_authenticated and request.user.is_assistant:
+        if request.user.is_authenticated and self.current_user_is_assistant:
             EventBlock.objects.filter(id=kwargs['block_id']).delete()
             return JsonResponse({'redirect': reverse('create-blocks', kwargs={'uid': self.event.uid})})
         raise PermissionDenied
@@ -1744,7 +1802,7 @@ class BaseCreateResult(GetEventMixin, View):
     result_model = UserResult
 
     def post(self, request, **kwargs):
-        if not request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         instance = None
         if request.POST.get('result_id'):
@@ -1802,7 +1860,7 @@ class RolesFormsetRender(GetEventMixin, TemplateView):
     template_name = 'includes/_user_roles_formset.html'
 
     def get_context_data(self, **kwargs):
-        if not self.request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         try:
             result = TeamResult.objects.get(id=self.request.GET.get('id'))
@@ -1822,7 +1880,7 @@ class AddEventBlockToMaterial(GetEventMixin, View):
         изменение блока, пользователей и команд у файла мероприятия ассистентом
         """
         pref = request.POST.get('custom_form_prefix')
-        if not request.user.is_assistant or not pref:
+        if not self.current_user_is_assistant or not pref:
             raise PermissionDenied
         try:
             material = EventOnlyMaterial.objects.get(id=EventBlockEditRenderer.parse_material_id_from_prefix(pref))
@@ -1845,7 +1903,7 @@ class EventBlockEditRenderer(GetEventMixin, TemplateView):
     template_name = 'includes/_material_event_block.html'
 
     def get_context_data(self, **kwargs):
-        if not self.request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         try:
             material = EventOnlyMaterial.objects.get(id=self.request.GET.get('id'))
@@ -2189,7 +2247,7 @@ class CSVResponseGeneratorMixin:
 
 class EventCsvData(GetEventMixin, CSVResponseGeneratorMixin, View):
     def get(self, request, *args, **kwargs):
-        if not request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         obj = EventMaterialsCSV(self.event)
         if request.GET.get('check_empty'):
@@ -2203,7 +2261,7 @@ class EventsCsvData(IndexPageEventsFilterMixin, CSVResponseGeneratorMixin, View)
     Выгрузка csv по нескольким мероприятиям сразу
     """
     def get(self, request):
-        if not request.user.is_assistant:
+        if not request.user.has_assistant_role():
             raise PermissionDenied
         events = self.get_events()
         meta_data = {
@@ -2243,7 +2301,7 @@ def switch_context(request):
     """
     Установка нового контекста для пользователя. Возвращает урл редиректа
     """
-    if not request.user.is_assistant:
+    if not request.user.has_assistant_role():
         raise PermissionDenied
     try:
         if 'context_id' in request.POST and request.POST['context_id'] == '':
@@ -2261,7 +2319,14 @@ def switch_context(request):
                 redirect_url = reverse('index')
         except Resolver404:
             redirect_url = reverse('index')
-        return JsonResponse({'redirect': redirect_url})
+        resp = JsonResponse({'redirect': redirect_url})
+        if context:
+            # если пользователь ассистент в выбранном контексте, по дефолту показывать мероприятия в режиме ассистента
+            resp.set_cookie(
+                VIEW_MODE_COOKIE_NAME,
+                'as_assistant' if request.user.is_assistant_for_context(context) else 'as_user'
+            )
+        return resp
     except (Context.DoesNotExist, ValueError, TypeError):
         raise Http404
 
@@ -2269,7 +2334,7 @@ def switch_context(request):
 @method_decorator(login_required, name='dispatch')
 class LoadCsvDump(View):
     def get(self, request, **kwargs):
-        if not request.user.is_assistant:
+        if not request.user.has_assistant_role():
             raise PermissionDenied
         obj = get_object_or_404(CSVDump, id=kwargs['dump_id'], status=CSVDump.STATUS_COMPLETE)
         resp = FileResponse(default_storage.open(obj.csv_file.name))
@@ -2287,7 +2352,7 @@ class CSVDumpsList(ListView):
         return self.model.objects.filter(owner=self.request.user).order_by('-datetime_ordered').select_related('owner')
 
     def get_context_data(self, *, object_list=None, **kwargs):
-        if not self.request.user.is_assistant:
+        if not self.request.user.has_assistant_role():
             raise PermissionDenied
         data = super().get_context_data(object_list=object_list, **kwargs)
         context_ids = {}

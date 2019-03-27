@@ -4,7 +4,7 @@
 {% block title %}Страница мероприятия "{{ event.title }}"{% endblock %}
 
 {% block content %}
-    {% if request.user.is_assistant %}
+    {% if is_assistant %}
         <div>
             <a href="{% url 'activities' %}">Активности</a>
             &nbsp;/&nbsp;
@@ -28,14 +28,14 @@
                     {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }} - {{ event.get_dt_end|date:'H:i' }}{% endlocaltime %};
                 </h6>
             </div>
-            {% if request.user.is_assistant %}
+            {% if is_assistant %}
                 <div>
                     <a href="{{ event.activity.get_labs_link }}">Открыть в LABS</a>
                 </div>
             {% endif %}
         </div>
         <div>
-            {% if request.user.is_assistant %}
+            {% if is_assistant %}
                 <a class="pull-right export_event_csv" href="{% url 'get_event_csv' uid=event.uid %}">
                     <span class="glyphicon glyphicon-download-alt"></span>&nbsp;Экспортировать все
                 </a>
@@ -70,7 +70,7 @@
     {% endif %}
 
     <nav class="nav nav-pills nav-justified">
-        {% if not request.user.is_assistant and not event_entry.approved %}
+        {% if not is_assistant and not event_entry.approved %}
             <a class="nav-item btn btn-primary text-white item-margin" id="i-was-here">
                 {% if event_entry.approve_text %}Изменить подтверждение присутствия{% else %}Я тут точно был!{% endif %}
             </a>      
@@ -81,7 +81,7 @@
         <div class="col">
             <div class="inline-divs-wrapper mt-40">
                 <div><h3>Участники</h3></div>
-                {% if request.user.is_assistant %}
+                {% if is_assistant %}
                 <div>
                     <a class="nav-item btn btn-warning" href="{% url 'add-user' uid=event.uid %}">
                         <span class="glyphicon glyphicon-plus mr-10"></span>
@@ -89,7 +89,7 @@
                 </div>
                 {% endif %}
             </div>
-            {% if request.user.is_assistant %}
+            {% if is_assistant %}
                 <p>
                     <b>Важно: обязательно проверьте список участников.</b>
                     <br>
@@ -106,7 +106,7 @@
                             <th class="text-center align-middle table-item" scope="col">Чекин</th>
                             <th class="text-center align-middle table-item" scope="col">Присутствие</th>
                             <th class="text-center align-middle table-item" scope="col">Результаты</th>
-                            {% if request.user.is_assistant %}
+                            {% if is_assistant %}
                                 <th scope="col"></th>
                             {% endif %}
                         </tr>
@@ -123,16 +123,16 @@
                             </td>
                             <td class="text-center align-middle table-item"><input type="checkbox" data-user="{{ student.id }}" class="attendance"
                                     {% if student.attend %}checked {% endif %}
-                                    {% if not request.user.is_assistant %} disabled{% endif %}>
+                                    {% if not is_assistant %} disabled{% endif %}>
                             </td>
                             <td>
                                 {% if event.is_active %}
-                                {% if student.unti_id == request.user.unti_id or request.user.is_assistant %}
+                                {% if student.unti_id == request.user.unti_id or is_assistant %}
                                 <a class="btn btn-primary btn-sm btn-block" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
                                 {% endif %}
                                 {% endif %}
                             </td>
-                            {% if request.user.is_assistant %}
+                            {% if is_assistant %}
                                 <td>
                                     {% if student.can_delete %}
                                         <button class="btn btn-danger btn-sm btn-delete-attendance" data-user-id="{{ student.id }}">
@@ -170,13 +170,13 @@
                   <th scope="col">Количество участников</th>
                   <th scope="col">Элементов следа</th>
                   <th scope="col">Результаты</th>
-                  {% if request.user.is_assistant %}
+                  {% if is_assistant %}
                       <th scope="col">Подтверждение</th>
                   {% endif %}
                 </tr>
             </thead>
             {% for team in teams %}
-                <tr class="{% if team.confirmed and team.creator and not team.creator.is_assistant %}confirmed-team-link{% elif team.confirmed %}assistant-team-link{% endif %}">
+                <tr class="{% if team.confirmed and team.creator and not team.creator.id in event_assistants %}confirmed-team-link{% elif team.confirmed %}assistant-team-link{% endif %}">
                     <td>
                         <a href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{{ team.name }}</a>
                     </td>
@@ -184,14 +184,14 @@
                     <td>{{ team.traces_number }}</td>
                     <td>
                         {% if event.is_active %}
-                            {% if request.user.is_assistant or team.id in user_teams %}
+                            {% if is_assistant or team.id in user_teams %}
                                 <a class="btn btn-primary btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
                             {% endif %}
                         {% endif %}
                     </td>
-                    {% if request.user.is_assistant %}
+                    {% if is_assistant %}
                         <td>
-                        {% if team.creator and not team.creator.is_assistant and not team.confirmed %}
+                        {% if team.creator and not team.creator.id in event_assistants and not team.confirmed %}
                             <button class="btn btn-success btn-sm btn-confirm-team" value="{{ team.id }}">{% trans "Подтвердить" %}</button>
                         {% endif %}
                         </td>
@@ -212,7 +212,7 @@
 {% block js %}
     {{ block.super }}  
     <script type="text/javascript">
-        const isAssistant = eval("{{ request.user.is_assistant|lower }}");
+        const isAssistant = eval("{{ is_assistant|lower }}");
         const updateAttendanceViewUrl = "{% url 'update-attendance-view' uid=event.uid %}";
         const confirmTeamUrl = "{% url 'confirm-team' uid=event.uid %}";
         const removeUserUrl = "{% url 'remove-user' uid=event.uid %}";
