@@ -119,11 +119,11 @@ class IndexPageEventsFilterMixin:
 
 
 @method_decorator(login_required, name='dispatch')
-class Index(IndexPageEventsFilterMixin, TemplateView):
+class Events(IndexPageEventsFilterMixin, TemplateView):
     """
     все эвенты (доступные пользователю)
     """
-    template_name = 'index.html'
+    template_name = 'events.html'
 
     def get_context_data(self, **kwargs):
         date = self.get_date()
@@ -1723,7 +1723,14 @@ class ActivitiesView(TemplateView):
 
     def get_activities(self):
         if not self.only_my_activities():
-            return self.filter_context(Activity.objects.filter(is_deleted=False))
+            qs = Activity.objects.filter(is_deleted=False)
+            if self.request.user.is_assistant:
+                qs = self.filter_context(qs)
+            else:
+                qs = qs.filter(id__in=EventEntry.objects.filter(
+                    user=self.request.user).values_list('event__activity_id', flat=True)
+                )
+            return qs
         return self.filter_context(Activity.objects.filter(
             is_deleted=False,
             id__in=ActivityEnrollment.objects.filter(user=self.request.user).values_list('activity_id', flat=True))
@@ -1731,7 +1738,9 @@ class ActivitiesView(TemplateView):
 
     def filter_context(self, qs):
         if self.request.user.is_assistant and self.request.user.chosen_context_id:
-            return qs.filter(event__context_id=self.request.user.chosen_context_id).distinct()
+            return qs.filter(id__in=Event.objects.filter(
+                context_id=self.request.user.chosen_context_id).values_list('activity_id', flat=True)
+            )
         return qs
 
     def only_my_activities(self):
@@ -2339,10 +2348,10 @@ def switch_context(request):
         current_url = request.POST.get('url')
         try:
             url = resolve(current_url)
-            if url.url_name == 'activities':
+            if url.url_name == 'index':
                 redirect_url = current_url
             else:
-                redirect_url = reverse('index')
+                redirect_url = reverse('events')
         except Resolver404:
             redirect_url = reverse('index')
         return JsonResponse({'redirect': redirect_url})

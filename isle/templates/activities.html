@@ -34,7 +34,7 @@
             </thead>
             {% for activity in objects %}
                 <tr>
-                    <td><a href="{% url 'index' %}?activity={{ activity.id }}">{{ activity.title }}</a></td>
+                    <td><a href="{% url 'events' %}?activity={{ activity.id }}">{{ activity.title }}</a></td>
                     <td>{{ activity.main_author }}</td>
                     <td>{{ activity.activity_type }}</td>
                     <td>{{ activity.event_count }}</td>

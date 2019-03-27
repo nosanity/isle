@@ -6,9 +6,9 @@
 {% block content %}
     {% if request.user.is_assistant %}
         <div>
-            <a href="{% url 'activities' %}">Активности</a>
+            <a href="{% url 'index' %}">Активности</a>
             &nbsp;/&nbsp;
-            <a href="{% url 'index' %}?activity={{ event.activity_id }}">{{ event.activity.title|truncatechars:30 }}</a>
+            <a href="{% url 'events' %}?activity={{ event.activity_id }}">{{ event.activity.title|truncatechars:30 }}</a>
             &nbsp;/&nbsp;
             {% localtime off %}{{ event.get_dt_start|date:'d E H:i' }}{% endlocaltime %}
         </div>

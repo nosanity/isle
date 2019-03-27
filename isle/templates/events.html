@@ -3,7 +3,7 @@
 {% block content %}
     {% if request.user.is_assistant %}
         <div>
-            <a href="{% url 'activities' %}">Активности</a>
+            <a href="{% url 'index' %}">Активности</a>
             &nbsp;/&nbsp;
             {% if activity_filter %}
                 {{ activity_filter.title|truncatechars:30 }}
@@ -44,7 +44,7 @@
                     <input type="date" id="choose-date" class="form-control">
                     <button class="btn btn-primary" id="btn-date-refresh">Фильтровать</button>
                     {% if not request.user.is_assistant %}
-                        <a href='/'><button class="btn btn-info">Сбросить фильтр</button></a>
+                        <a href="{% url 'events' %}"><button class="btn btn-info">Сбросить фильтр</button></a>
                     {% endif %}
                 </form>
             </div>

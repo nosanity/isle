@@ -3,7 +3,8 @@ from django.urls import path
 from isle import views
 
 urlpatterns = [
-    path('', views.Index.as_view(), name='index'),
+    path('', views.ActivitiesView.as_view(), name='index'),
+    path('events/', views.Events.as_view(), name='events'),
     path('login/', views.login, name='login'),
     path('logout/', views.logout, name='logout'),
     path('update-attendance/<str:uid>', views.UpdateAttendanceView.as_view(), name='update-attendance-view'),
@@ -29,7 +30,6 @@ urlpatterns = [
     path('transfer-material/<str:uid>/', views.TransferView.as_view(), name='transfer'),
     path('statistics/', views.Statistics.as_view()),
     path('approve-text-edit/<str:event_entry_id>/', views.ApproveTextEdit.as_view(), name='approve-text-edit'),
-    path('activities/', views.ActivitiesView.as_view(), name='activities'),
     path('add-event-block/<str:uid>/', views.AddEventBlockToMaterial.as_view(), name='add-event-block'),
     path('event-block-edit/<str:uid>/', views.EventBlockEditRenderer.as_view(), name='event-block-edit-renderer'),
     path('role-formset-render/<str:uid>/<int:team_id>/', views.RolesFormsetRender.as_view(), name='roles-formset-render'),
