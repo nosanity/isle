@@ -1211,20 +1211,24 @@ class AddUserToEvent(GetEventMixin, TemplateView):
     def post(self, request, uid=None):
         form = AddUserForm(data=request.POST, event=self.event)
         if form.is_valid():
-            user = form.cleaned_data['user']
-            EventEntry.all_objects.update_or_create(
-                user=user, event=self.event,
-                defaults={'added_by_assistant': True, 'check_in_pushed': False, 'deleted': False}
-            )
-            Attendance.objects.update_or_create(
-                event=self.event, user=user,
-                defaults={
-                    'confirmed_by_user': request.user,
-                    'is_confirmed': True,
-                    'confirmed_by_system': Attendance.SYSTEM_UPLOADS,
-                }
-            )
-            logging.info('User %s added user %s to event %s' % (request.user.username, user.username, self.event.id))
+            users = form.cleaned_data['users']
+            for user in users:
+                EventEntry.all_objects.update_or_create(
+                    user=user, event=self.event,
+                    defaults={'added_by_assistant': True, 'check_in_pushed': False, 'deleted': False}
+                )
+                Attendance.objects.update_or_create(
+                    event=self.event, user=user,
+                    defaults={
+                        'confirmed_by_user': request.user,
+                        'is_confirmed': True,
+                        'confirmed_by_system': Attendance.SYSTEM_UPLOADS,
+                    }
+                )
+            logging.info('User %s added users %s to event %s' % (
+                request.user.username,
+                ', '.join(map(str, users.values_list('unti_id', flat=True))),
+                self.event.id))
             return redirect('event-view', uid=self.event.uid)
         else:
             return render(request, self.template_name, {'event': self.event, 'form': form})
@@ -1249,36 +1253,32 @@ class RemoveUserFromEvent(GetEventMixin, View):
 class UserAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
         event_id = self.forwarded.get('event_id')
+        chosen = self.forwarded.get('users') or []
         if not self.request.user.is_authenticated or not self.request.user.is_assistant or not event_id:
             return User.objects.none()
-        qs = User.objects.filter(is_assistant=False).exclude(
+        qs = User.objects.exclude(
             id__in=EventEntry.objects.filter(event_id=event_id).values_list('user_id', flat=True)
-        ).filter(id__in=UserSocialAuth.objects.all().values_list('user__id', flat=True))
+        ).filter(id__in=UserSocialAuth.objects.all().values_list('user__id', flat=True)).exclude(id__in=chosen)
         if self.q:
             qs = self.search_user(qs, self.q)
         return qs
 
     @staticmethod
     def search_user(qs, query):
-        if query:
-            if len(query.split()) == 1:
-                qs = qs.filter(
-                    Q(email__icontains=query) | Q(username__icontains=query) |
-                    Q(last_name__icontains=query) | Q(first_name__icontains=query) |
-                    Q(second_name__icontains=query)
-                )
-            else:
-                filters = []
-                q_parts = query.split()
-                fields = ['last_name', 'first_name', 'second_name']
-                for p_len in range(1, min(len(fields), len(q_parts)) + 1):
-                    indexes = filter(lambda c: c[0] == 0, combinations(range(len(q_parts)), p_len))
-                    ranges = (zip(idxs, idxs[1:] + (None,)) for idxs in indexes)
-                    parts_combs = [[" ".join(q_parts[i:j]) for i, j in r] for r in ranges]
-                    for p in permutations(fields, p_len):
-                        filters.append(functools.reduce(lambda x, y: x | y,
-                                              (Q(**{k: v for k, v in zip(p, parts)}) for parts in parts_combs)))
-                qs = qs.filter(functools.reduce(lambda x, y: x | y, filters))
+        def make_q(val):
+            str_args = ['email__icontains', 'username__icontains', 'first_name__icontains', 'last_name__icontains',
+                        'leader_id']
+            int_args = ['unti_id']
+            q = [Q(**{i: val}) for i in str_args]
+            if val.isdigit():
+                q.extend([Q(**{i: val}) for i in int_args])
+            return functools.reduce(lambda x, y: x | y, q)
+
+        if query.strip():
+            q_parts = list(filter(None, query.split()))
+            if len(q_parts) > 1:
+                return qs.filter(functools.reduce(lambda x, y: x & y, map(make_q, q_parts)))
+            return qs.filter(make_q(q_parts[0]))
         return qs
 
     def get_result_label(self, result):

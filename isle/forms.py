@@ -1,4 +1,5 @@
 from django import forms
+from django.conf import settings
 from dal import autocomplete, forward
 from social_django.models import UserSocialAuth
 from isle.models import Team, User, EventBlock, EventOnlyMaterial, UserResult, TeamResult, UserRole, EventEntry
@@ -41,23 +42,28 @@ class EditTeamForm(BaseTeamForm):
 
 
 class AddUserForm(forms.Form):
-    user = forms.ModelChoiceField(queryset=User.objects.all(),
-                                  widget=autocomplete.ModelSelect2(url='user-autocomplete'),
-                                  label='Пользователь')
+    users = forms.ModelMultipleChoiceField(
+        queryset=User.objects.all(),
+        widget=autocomplete.ModelSelect2Multiple(url='user-autocomplete'),
+        label='Пользователи'
+    )
 
     def __init__(self, **kwargs):
         event = kwargs.pop('event')
         self.event = event
         super().__init__(**kwargs)
-        self.fields['user'].widget.forward = [forward.Const(event.id, 'event_id')]
+        self.fields['users'].widget.forward = [forward.Const(event.id, 'event_id'), forward.Field('users')]
 
-    def clean_user(self):
-        val = self.cleaned_data.get('user')
+    def clean_users(self):
+        val = self.cleaned_data.get('users')
+        if val.count() > settings.MAXIMUM_EVENT_MEMBERS_TO_ADD:
+            raise forms.ValidationError('Нельзя добавить более %s пользователей за раз' %
+                                        settings.MAXIMUM_EVENT_MEMBERS_TO_ADD)
         if val:
-            if val.is_assistant or not UserSocialAuth.objects.filter(user=val).exists():
-                raise forms.ValidationError('Этого пользователя нельзя добавить')
-            if EventEntry.objects.filter(user=val, event=self.event).exists():
-                raise forms.ValidationError('Пользователь уже записан на мероприятие')
+            no_auth = val.filter(social_auth__isnull=True)
+            if no_auth:
+                raise forms.ValidationError('Следующих пользователей нельзя добавить: %s' %
+                                            ', '.join(map(str, no_auth)))
         return val
 
 
