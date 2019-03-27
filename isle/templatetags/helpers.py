@@ -1,3 +1,4 @@
+from urllib import parse
 from django import template
 from isle.forms import EventMaterialForm
 
@@ -32,3 +33,13 @@ def render_event_block_form(prefix, event):
 @register.filter
 def user_can_edit_team(team, user):
     return team.user_can_edit_team(user)
+
+
+@register.filter
+def add_page_num(url, page_num):
+    parts = parse.urlparse(url)
+    query = dict(parse.parse_qsl(parts.query))
+    query['page'] = str(page_num)
+    parts = list(parts)
+    parts[4] = parse.urlencode(query)
+    return parse.urlunparse(parts)

@@ -28,8 +28,7 @@ $('.export_event_csv').on('click', (e) => {
     let obj = $(e.target);
     if (obj[0].tagName == 'SPAN')
         obj = obj.parent('a');
-    let url = obj.attr('href');
-    url = queryStringUrlReplacement(url, 'date', $('#choose-date').val());
+    let url = obj.attr('href') + window.location.search;
     let url_check = queryStringUrlReplacement(url, 'check_empty', '1');
     $.ajax({
         method: 'GET',

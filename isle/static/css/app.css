@@ -473,3 +473,25 @@ img.user-img {
 .width-70 {
     width: 70px;
 }
+
+.paginator-page {
+    padding: 5px;
+}
+
+.paginator-page:hover {
+    background-color: #ddd;
+}
+
+.events-date-choser {
+    width: 190px !important;
+    height: 38px;
+}
+
+.events-filter-btn {
+    height: 38px;
+}
+
+.events-filter-cancel-btn {
+    background: rgba(0, 0, 0, 0);
+    border: 1px solid #ccc;
+}

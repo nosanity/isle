@@ -703,7 +703,13 @@ class EventGroupMaterialsCSV(EventMaterialsCSV):
         guid = str(self.meta_data['context'] and self.meta_data['context'].guid)
         if self.meta_data['activity']:
             return f('{}_{}'.format(guid, self.meta_data['activity'].title))
-        return f('{}_{}'.format(guid, self.meta_data['date'].strftime('%d-%m-%Y')))
+        date_min = self.meta_data['date_min']
+        date_max = self.meta_data['date_max']
+        return f('{}_{}-{}'.format(
+            guid,
+            date_min.strftime('%d-%m-%Y') if date_min else 'null',
+            date_max.strftime('%d-%m-%Y') if date_max else 'null'
+        ))
 
     def count_materials(self):
         ids = list([i.id for i in self.events_qs])

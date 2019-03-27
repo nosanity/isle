@@ -7,8 +7,12 @@
             &nbsp;/&nbsp;
             {% if activity_filter %}
                 {{ activity_filter.title|truncatechars:30 }}
-            {% elif date_obj %}
-                Мероприятия {{ date_obj|date:'d/m/Y' }}
+            {% elif date_min_obj and date_max_obj %}
+                Мероприятия {{ date_min_obj|date:'d.m.Y' }} - {{ date_max_obj|date:'d.m.Y' }}
+            {% elif date_min_obj %}
+                Мероприятия после {{ date_min_obj|date:'d.m.Y' }}
+            {% elif date_max_obj %}
+                Мероприятия до {{ date_max_obj|date:'d.m.Y' }}
             {% else %}
                 Мероприятия
             {% endif %}
@@ -31,7 +35,7 @@
         </div>
     {% endif %}
     {% if request.user.is_assistant %}
-        <a class="pull-right export_event_csv" href="{% url 'get_filtered_events_csv' %}{% if activity_filter %}?activity={{ activity_filter.id }}{% endif %}">
+        <a class="pull-right export_event_csv" href="{% url 'get_filtered_events_csv' %}">
             <span class="glyphicon glyphicon-download-alt"></span>&nbsp;Экспортировать все
         </a>
         <div class="clearfix"></div>
@@ -41,12 +45,14 @@
             <div>
                 <form class="form-inline">
                     <input type="search" id="search-events" placeholder="Найти" class="form-control" {% if search %}value="{{ search }}{% endif %}">
-                    <label>Дата</label>
-                    <input type="date" id="choose-date" class="form-control">
-                    <button class="btn btn-primary" id="btn-filter-events">Фильтровать</button>
-                    {% if not request.user.is_assistant %}
-                        <a href="{% url 'events' %}"><button class="btn btn-info">Сбросить фильтр</button></a>
-                    {% endif %}
+                    <input type="{% if date_min %}date{% else %}text{% endif %}" id="choose-date-min" class="form-control events-date-choser" placeholder="Дата">
+                    <input type="{% if date_max %}date{% else %}text{% endif %}" id="choose-date-max" class="form-control events-date-choser">
+                    <button class="btn btn-primary events-filter-btn" id="btn-filter-events">
+                        <i class="glyphicon glyphicon-ok"></i>
+                    </button>
+                    <a href="{% url 'events' %}"><button class="btn events-filter-btn events-filter-cancel-btn">
+                        <i class="glyphicon glyphicon-ban-circle"></i>
+                    </button></a>
                 </form>
             </div>
         </div>
@@ -91,7 +97,7 @@
                             {% endlocaltime %}
                             {% if request.user.is_assistant %}
                                 <td class="text-center">{{ event.prop_enrollments }} / {{ event.prop_checkins }}</td>
-                                <td class="text-center">{{ event.trace_count }}</td>
+                                <td class="text-center">{{ event.trace_cnt }}</td>
                             {% else %}
                                 <td class="text-center">{{ event.user_materials_num }}</td>
                                 <td class="text-center">{{ event.team_materials_num }}</td>
@@ -102,6 +108,18 @@
             </div>
         </div>
     </div>
+    {% if is_paginated %}
+        <div class="paginator mt-20">
+            <span>Страница</span>
+            {% for page_num in paginator.page_range %}
+                {% if page_num == page_obj.number %}
+                    <span class="paginator-page">{{ page_num }}</span>
+                {% else %}
+                    <a class="paginator-page" href="{{ request.get_full_path|add_page_num:page_num }}">{{ page_num }}</a>
+                {% endif %}
+            {% endfor %}
+        </div>
+    {% endif %}
     {% if not objects %}
         <div class="alert alert-danger" role="alert">
             {% if request.user.is_assistant %}
@@ -116,7 +134,8 @@
 {% block js %}
     {{ block.super }}
     <script type="text/javascript">
-        const date = "{{ date }}";
+        const date_min = "{{ date_min|default:'' }}";
+        const date_max = "{{ date_max|default:'' }}";
         const sortAsc = eval("{% if sort_asc %}true{% else %}false{% endif %}");
     </script>
     <!-- event handlers of buttons are binded in js file below -->

@@ -79,9 +79,9 @@ def context_setter(f):
 class IndexPageEventsFilterMixin:
     DATE_FORMAT = '%Y-%m-%d'
 
-    def get_date(self):
+    def get_date(self, attr):
         try:
-            return timezone.datetime.strptime(self.request.GET.get('date'), self.DATE_FORMAT).date()
+            return timezone.datetime.strptime(self.request.GET.get(attr), self.DATE_FORMAT).date()
         except:
             return
 
@@ -105,11 +105,15 @@ class IndexPageEventsFilterMixin:
             events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user).
                                           values_list('event_id', flat=True))
         events = events.filter(event_type_id__in=get_allowed_event_type_ids())
-        date = self.get_date()
-        if date:
-            min_dt = timezone.make_aware(timezone.datetime.combine(date, timezone.datetime.min.time()))
-            max_dt = min_dt + timezone.timedelta(days=1)
-            events = events.filter(dt_start__gte=min_dt, dt_start__lt=max_dt)
+        date_min = self.get_date('date_min')
+        if date_min:
+            min_dt = timezone.make_aware(timezone.datetime.combine(date_min, timezone.datetime.min.time()))
+            events = events.filter(dt_start__gte=min_dt)
+        date_max = self.get_date('date_max')
+        if date_max:
+            max_dt = timezone.make_aware(timezone.datetime.combine(date_max, timezone.datetime.min.time())) + \
+                     timezone.timedelta(days=1)
+            events = events.filter(dt_start__lt=max_dt)
         if self.activity_filter:
             events = events.filter(activity=self.activity_filter)
         events = self.filter_search(events)
@@ -123,46 +127,61 @@ class IndexPageEventsFilterMixin:
 
 
 @method_decorator(login_required, name='dispatch')
-class Events(IndexPageEventsFilterMixin, TemplateView):
+class Events(IndexPageEventsFilterMixin, ListView):
     """
     все эвенты (доступные пользователю)
     """
     template_name = 'events.html'
+    paginate_by = settings.PAGINATE_EVENTS_BY
+
+    def get_queryset(self):
+        return self.get_events()
 
     def get_context_data(self, **kwargs):
-        date = self.get_date()
-        objects = self.get_events()
-        ctx = {
+        date_min = self.get_date('date_min')
+        date_max = self.get_date('date_max')
+        ctx = super().get_context_data(**kwargs)
+        objects = ctx['object_list']
+        ctx.update({
             'objects': objects,
-            'date': date.strftime(self.DATE_FORMAT) if date else None,
-            'date_obj': date,
+            'date_min': date_min.strftime(self.DATE_FORMAT) if date_min else None,
+            'date_min_obj': date_min,
+            'date_max': date_max.strftime(self.DATE_FORMAT) if date_max else None,
+            'date_max_obj': date_max,
             'sort_asc': self.is_asc_sort(),
             'activity_filter': self.activity_filter,
-            'search': self.request.GET.get('search'),
-        }
+            'search': self.request.GET.get('search') or '',
+        })
+        event_ids = [i.id for i in objects]
         if self.request.user.is_assistant:
             fdict = {
                 'initiator__in': User.objects.filter(is_assistant=True).values_list('unti_id', flat=True)
             }
             ctx.update({
-                'elements_cnt': EventMaterial.objects.filter(event__in=objects).count() +
-                                EventTeamMaterial.objects.filter(event__in=objects).count() +
-                                EventOnlyMaterial.objects.filter(event__in=objects).count(),
-                'elements_user_cnt': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count() +
-                                     EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count(),
+                'elements_cnt': EventMaterial.objects.filter(event_id__in=event_ids).count() +
+                                EventTeamMaterial.objects.filter(event_id__in=event_ids).count() +
+                                EventOnlyMaterial.objects.filter(event_id__in=event_ids).count(),
+                'elements_user_cnt': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event_id__in=event_ids).count() +
+                                     EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event_id__in=event_ids).count(),
             })
-            if self.request.user.is_assistant:
-                enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
-                check_ins = dict(EventEntry.objects.filter(is_active=True).values_list('event_id')
-                                 .annotate(cnt=Count('user_id')))
-                for obj in objects:
-                    obj.prop_enrollments = enrollments.get(obj.id, 0)
-                    obj.prop_checkins = check_ins.get(obj.id, 0)
+            enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
+            check_ins = dict(EventEntry.objects.filter(is_active=True).values_list('event_id')
+                             .annotate(cnt=Count('user_id')))
+            event_files_cnt = defaultdict(int)
+            for model in (EventMaterial, EventTeamMaterial, EventOnlyMaterial):
+                qs = model.objects.filter(event_id__in=event_ids, event__is_active=True). \
+                    values_list('event_id').annotate(cnt=Count('id'))
+                for eid, num in qs.iterator():
+                    event_files_cnt[eid] += num
+            for obj in objects:
+                obj.prop_enrollments = enrollments.get(obj.id, 0)
+                obj.prop_checkins = check_ins.get(obj.id, 0)
+                obj.trace_cnt = event_files_cnt.get(obj.id, 0)
         else:
-            user_materials_num = dict(EventMaterial.objects.filter(event__in=objects, user=self.request.user)
+            user_materials_num = dict(EventMaterial.objects.filter(event_id__in=event_ids, user=self.request.user)
                                       .values_list('event_id').annotate(cnt=Count('user_id')))
-            teams = Team.objects.filter(event__in=objects, users=self.request.user).values_list('id', flat=True)
-            team_materials_num = dict(EventTeamMaterial.objects.filter(event__in=objects, team_id__in=teams)
+            teams = Team.objects.filter(event_id__in=event_ids, users=self.request.user).values_list('id', flat=True)
+            team_materials_num = dict(EventTeamMaterial.objects.filter(event_id__in=event_ids, team_id__in=teams)
                                       .values_list('event_id').annotate(cnt=Count('team_id')))
             event_num, trace_num = 0, 0
             for obj in objects:
@@ -2306,7 +2325,8 @@ class EventsCsvData(IndexPageEventsFilterMixin, CSVResponseGeneratorMixin, View)
         events = self.get_events()
         meta_data = {
             'activity': self.activity_filter,
-            'date': self.get_date(),
+            'date_min': self.get_date('date_min'),
+            'date_max': self.get_date('date_max'),
             'context': request.user.chosen_context,
         }
         obj = EventGroupMaterialsCSV(events, meta_data)
