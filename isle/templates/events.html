@@ -40,9 +40,10 @@
         <div class="col">
             <div>
                 <form class="form-inline">
+                    <input type="search" id="search-events" placeholder="Найти" class="form-control" {% if search %}value="{{ search }}{% endif %}">
                     <label>Дата</label>
                     <input type="date" id="choose-date" class="form-control">
-                    <button class="btn btn-primary" id="btn-date-refresh">Фильтровать</button>
+                    <button class="btn btn-primary" id="btn-filter-events">Фильтровать</button>
                     {% if not request.user.is_assistant %}
                         <a href="{% url 'events' %}"><button class="btn btn-info">Сбросить фильтр</button></a>
                     {% endif %}

@@ -20,7 +20,7 @@ import requests
 from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
-                         Team)
+                         Team, Author)
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -74,6 +74,7 @@ def refresh_events_data():
                             'is_deleted': bool(activity.get('is_deleted')),
                         }
                     )[0]
+                    update_authors(current_activity, authors)
                 else:
                     continue
                 if activity_type and activity_type.get('uuid'):
@@ -122,6 +123,19 @@ def refresh_events_data():
         return
     except Exception:
         logging.exception('Failed to handle events data')
+
+
+def update_authors(activity, data):
+    authors = []
+    for item in data:
+        uid = item.get('uuid')
+        if not uid:
+            continue
+        authors.append(Author.objects.update_or_create(uuid=uid, defaults={
+            'title': item.get('title') or '',
+            'is_main': item.get('is_main'),
+        })[0])
+    activity.authors.set(authors)
 
 
 def update_event_structure(data, event, event_blocks_uuid, metamodels):

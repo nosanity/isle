@@ -2,11 +2,12 @@ setSort(sortAsc);
 
 $('#choose-date').val(date);
 
-$('#btn-date-refresh').click((e) => {
+$('#btn-filter-events').click((e) => {
     e.preventDefault();
-    window.location.replace(
-        queryStringUrlReplacement(window.location.href, 'date', $('#choose-date').val())
-    );
+    let url = window.location.href;
+    url = queryStringUrlReplacement(url, 'date', $('#choose-date').val() || '');
+    url = queryStringUrlReplacement(url, 'search', $('#search-events').val() || '');
+    window.location.replace(url)
 });
 
 $('span.cancel-activity').on('click', () => {

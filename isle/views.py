@@ -81,12 +81,9 @@ class IndexPageEventsFilterMixin:
 
     def get_date(self):
         try:
-            date = timezone.datetime.strptime(self.request.GET.get('date'), self.DATE_FORMAT).date()
+            return timezone.datetime.strptime(self.request.GET.get('date'), self.DATE_FORMAT).date()
         except:
-            if not self.request.user.is_assistant or self.activity_filter:
-                return
-            date = timezone.localtime(timezone.now()).date()
-        return date
+            return
 
     @cached_property
     def activity_filter(self):
@@ -94,6 +91,12 @@ class IndexPageEventsFilterMixin:
             return Activity.objects.get(id=self.request.GET.get('activity'))
         except (ValueError, TypeError, Activity.DoesNotExist):
             return
+
+    def filter_search(self, qs):
+        text = self.request.GET.get('search')
+        if text:
+            return qs.filter(Q(title__icontains=text) | Q(activity__authors__title__icontains=text)).distinct()
+        return qs
 
     def get_events(self):
         if self.request.user.is_assistant:
@@ -109,6 +112,7 @@ class IndexPageEventsFilterMixin:
             events = events.filter(dt_start__gte=min_dt, dt_start__lt=max_dt)
         if self.activity_filter:
             events = events.filter(activity=self.activity_filter)
+        events = self.filter_search(events)
         events = events.order_by('{}dt_start'.format('' if self.is_asc_sort() else '-'))
         if self.request.user.is_assistant and self.request.user.chosen_context_id:
             events = events.filter(context_id=self.request.user.chosen_context_id)
@@ -134,6 +138,7 @@ class Events(IndexPageEventsFilterMixin, TemplateView):
             'date_obj': date,
             'sort_asc': self.is_asc_sort(),
             'activity_filter': self.activity_filter,
+            'search': self.request.GET.get('search'),
         }
         if self.request.user.is_assistant:
             fdict = {

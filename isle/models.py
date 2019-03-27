@@ -59,12 +59,19 @@ class EventType(models.Model):
         return self.title
 
 
+class Author(models.Model):
+    title = models.CharField(max_length=1000)
+    uuid = models.CharField(max_length=50, unique=True)
+    is_main = models.NullBooleanField()
+
+
 class Activity(models.Model):
     uid = models.CharField(max_length=255, unique=True)
     ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS', db_index=True, null=True)
     title = models.CharField(max_length=1000)
     main_author = models.CharField(max_length=500, default='')
     is_deleted = models.BooleanField(default=False, verbose_name=_(u'Удалено'))
+    authors = models.ManyToManyField(Author)
 
     def get_labs_link(self):
         return '{}/admin/activity/view/{}'.format(settings.LABS_URL.rstrip('/'), self.uid)
