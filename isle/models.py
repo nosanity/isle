@@ -708,6 +708,12 @@ class LabsEventBlock(models.Model):
     class Meta:
         ordering = ['order']
 
+    def block_has_only_personal_results(self):
+        return all(r.result_format == 'personal' for r in self.results.all() if not self.deleted and not r.deleted)
+
+    def block_has_only_group_results(self):
+        return all(r.result_format == 'group' for r in self.results.all() if not self.deleted and not r.deleted)
+
 
 class LabsEventResult(models.Model):
     """
@@ -726,6 +732,18 @@ class LabsEventResult(models.Model):
 
     class Meta:
         ordering = ['order']
+
+    def is_personal(self):
+        """
+        является ли результат персональным
+        """
+        return not self.result_format or self.result_format == 'personal'
+
+    def is_group(self):
+        """
+        является ли результат групповым
+        """
+        return not self.result_format or self.result_format == 'group'
 
 
 class AbstractResult(models.Model):

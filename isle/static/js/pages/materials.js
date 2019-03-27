@@ -75,7 +75,6 @@ if (isAssistant) {
                         let wrapper = $('div.event-trace-materials-wrapper[data-trace-id=' + data.original_trace_id + ']').find('ul.list-group li[data-material-id=' + data.material_id + ']');
                         wrapper.find('div.info-string-edit').html('');
                         wrapper.data('comment', data.comment);
-                        console.log(wrapper.find('.assistant-info-string'))
                         wrapper.find('.assistant-info-string').html(data.info_str);
                         if (data.trace_id != data.original_trace_id) {
                             let destination = $('div.event-trace-materials-wrapper[data-trace-id=' + data.trace_id + ']').find('ul.list-group');

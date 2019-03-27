@@ -391,9 +391,9 @@ class BaseLoadMaterialsLabsResults:
                         'id': result.id,
                         'deleted': result.deleted,
                         'title': 'Результат {}.{}'.format(i, j)
-                    } for j, result in enumerate(block.results.all(), 1)
+                    } for j, result in enumerate(block.results.all(), 1) if self.is_according_result_type(result)
                 ]
-            } for i, block in enumerate(blocks, 1)
+            } for i, block in enumerate(blocks, 1) if self.block_has_available_results(block)
         ]
         qs_results = self.results_model.objects.filter(**self._update_query_dict({
             'result__block__event_id': self.event.id
@@ -420,6 +420,7 @@ class BaseLoadMaterialsLabsResults:
             'old_results': self.get_old_results(),
             'links': links,
             'blocks_structure_json': json.dumps(structure, ensure_ascii=False),
+            'event_members': list(EventEntry.objects.filter(event=self.event).values_list('user_id', flat=True)),
         }))
         return data
 
@@ -464,10 +465,10 @@ class BaseLoadMaterialsLabsResults:
         resp = self.check_post_allowed(request)
         if resp is not None:
             return resp
-        result_id_error, result_deleted = self._check_labs_result_id(request)
+        result_id_error, result_deleted, type_ok = self._check_labs_result_id(request)
         allowed_actions = ['delete_all', 'init_result', 'move', 'move_unattached']
         if 'add_btn' in request.POST:
-            if result_id_error is not None or result_deleted:
+            if result_id_error is not None or result_deleted or not type_ok:
                 return result_id_error
             return self.add_item(request)
         elif 'action' in request.POST and request.POST['action'] in allowed_actions:
@@ -476,7 +477,7 @@ class BaseLoadMaterialsLabsResults:
             if request.POST['action'] == 'delete_all':
                 return self.action_delete_all(request)
             elif request.POST['action'] == 'init_result':
-                if result_deleted:
+                if result_deleted or not type_ok:
                     return JsonResponse({}, status=400)
                 return self.action_init_result(request)
             elif request.POST['action'] == 'move':
@@ -519,6 +520,7 @@ class BaseLoadMaterialsLabsResults:
             assert item_result.result.block.event_id == self.event.id
             move_to = LabsEventResult.objects.select_related('block').get(id=request.POST.get('move_to'))
             assert move_to.block.event_id == self.event.id and not move_to.deleted and not move_to.block.deleted
+            assert self.is_according_result_type(move_to)
         except (AssertionError, LabsEventResult.DoesNotExist, TypeError, ValueError):
             return JsonResponse({}, status=400)
         item_result.result = move_to
@@ -551,6 +553,7 @@ class BaseLoadMaterialsLabsResults:
                 id=request.POST.get('move_to')
             )
             assert not result.deleted and not result.block.deleted
+            assert self.is_according_result_type(result)
         except (AssertionError, self.material_model.DoesNotExist, ValueError, TypeError):
             return JsonResponse({}, status=400)
         item_result = self.results_model.objects.create(**self._update_query_dict({
@@ -644,12 +647,24 @@ class BaseLoadMaterialsLabsResults:
         try:
             result_id = int(request.POST.get('labs_result_id'))
         except (ValueError, TypeError):
-            return JsonResponse({}, status=400), None
+            return JsonResponse({}, status=400), None, None
         result = LabsEventResult.objects.filter(id=result_id, block__event_id=self.event.id).\
             select_related('block').first()
         if not result_id or not result:
-            return JsonResponse({}, status=400), None
-        return None, result.deleted or result.block.deleted
+            return JsonResponse({}, status=400), None, None
+        return None, result.deleted or result.block.deleted, self.is_according_result_type(result)
+
+    def is_according_result_type(self, result):
+        """
+        проверка того, что формат результата соответствует типу загрузки
+        """
+        return True
+
+    def block_has_available_results(self, block):
+        """
+        проверка того, что в блоке есть результаты нужного формата
+        """
+        return True
 
     def _get_result_key(self):
         return 'result_v2'
@@ -821,6 +836,12 @@ class LoadUserMaterialsResult(BaseLoadMaterialsLabsResults, LoadMaterials):
         logging.warning('User %s has deleted file %s for user %s' %
                         (self.request.user.username, material.get_url(), self.user.username))
 
+    def is_according_result_type(self, result):
+        return result.is_personal()
+
+    def block_has_available_results(self, block):
+        return not block.block_has_only_group_results()
+
 
 class LoadMaterialsAssistant(BaseLoadMaterialsResults, LoadMaterials):
     template_name = 'load_user_materials.html'
@@ -965,6 +986,12 @@ class LoadTeamMaterialsResult(BaseLoadMaterialsLabsResults, LoadTeamMaterials):
     def _log_material_delete(self, material):
         logging.warning('User %s has deleted file %s for team %s' %
                         (self.request.user.username, material.get_url(), self.team.id))
+
+    def is_according_result_type(self, result):
+        return result.is_group()
+
+    def block_has_available_results(self, block):
+        return not block.block_has_only_personal_results()
 
 
 class LoadTeamMaterialsAssistant(BaseLoadMaterialsResults, LoadTeamMaterials):
