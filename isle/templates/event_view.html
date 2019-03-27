@@ -108,7 +108,7 @@
                     </thead>
                     {% for student in students %}
                         <tr class="{% if student.can_delete %}tr-added-user{% elif student.added_by_chat_bot %}tr-added-chatbot-user{% endif %} {% if forloop.counter == 1 and student == request.user %}event-participants-self{% endif %}">
-                            <td class="text-center align-middle table-item"><img class="user-img" src="{% if student.icon %}{{ student.icon.Small }}{% else %}{% static 'img/default.jpeg' %}{% endif %}"/></td>
+                            <td class="text-center align-middle table-item">{% include 'includes/user_image.html' with u=student %}</td>
                             <td class="align-middle table-item">
                                 <a href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{{ student.get_full_name }}</a>
                             </td>
@@ -176,7 +176,7 @@
                     <td class="td-user-images">
                         {% for u in team.users.all %}
                             <div class="user-images-cell">
-                                <img class="user-img" src="{% if u.icon %}{{ u.icon.Small }}{% else %}{% static 'img/default.jpeg' %}{% endif %}" />
+                                {% include 'includes/user_image.html' %}
                             </div>
                         {% endfor %}
                     </td>
@@ -204,11 +204,6 @@
     {% else %}
         <div class="alert alert-default">Ни одной команды еще не создано</div>
     {% endif %}
-{% endblock %}
-
-{% block css %}
-    {{ block.super }}
-    <link href="{% static 'css/bootstrap-glyphicons.min.css' %}" rel="stylesheet">
 {% endblock %}
 
 {% block js %}

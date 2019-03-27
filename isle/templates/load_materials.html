@@ -2,16 +2,10 @@
 {% load i18n static tz %}
 
 {% block content %}
-    <a href="{% url 'event-view' uid=event.uid %}">
-        <button class="btn btn-light font-red"><i class="glyphicon glyphicon-arrow-left"></i>&nbsp;К странице мероприятия</button>
-    </a>
+    {% include 'includes/to_event_page.html' %}
     <h2>{% blocktrans %}Материалы мероприятия{% endblocktrans %}</h2>
     <div class="inline-divs-wrapper">
-        <div>
-            <p><b>{% trans "Мероприятие:" %}</b> {{ event.title }}
-            <br>
-            {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }}{% endlocaltime %}</p>
-        </div>
+        {% include 'includes/event_info.html' %}
         {% if can_upload %}
             <div class="pull-right"><button class="btn btn-warning add-event-material-assistant">{% trans "Добавить" %}</button></div>
         {% endif %}
@@ -184,9 +178,4 @@
     <!-- event handlers of buttons are binded in js file below -->
     <script type="text/javascript" src="{% static 'js/pages/materials.js' %}"></script>
     {% include "includes/_link_preview.html" %}
-{% endblock %}
-
-{% block css %}
-    {{ block.super }}
-    <link href="{% static 'css/bootstrap-glyphicons.min.css' %}" rel="stylesheet">
 {% endblock %}

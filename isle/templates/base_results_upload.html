@@ -2,15 +2,9 @@
 {% load i18n static tz %}
 
 {% block content %}
-    <a href="{% url 'event-view' uid=event.uid %}">
-        <button class="btn btn-light font-red"><i class="glyphicon glyphicon-arrow-left"></i>&nbsp;К странице мероприятия</button>
-    </a>
+    {% include 'includes/to_event_page.html' %}
     <h2>{% block page_title %}{% endblock %}</h2>
-    <div>
-        <p><b>{% trans "Мероприятие:" %}</b> {{ event.title }}
-        <br>
-        {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }}{% endlocaltime %}</p>
-    </div>
+    {% include 'includes/event_info.html' %}
     <div>
         {% block info %}{% endblock %}
     </div>
