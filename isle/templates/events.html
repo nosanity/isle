@@ -40,23 +40,8 @@
         </a>
         <div class="clearfix"></div>
     {% endif %}
-    <div class="row {% if activity_filter %}mt-10{% endif %}">
-        <div class="col">
-            <div>
-                <form class="form-inline">
-                    <input type="search" id="search-events" placeholder="Найти" class="form-control" {% if search %}value="{{ search }}{% endif %}">
-                    <input type="{% if date_min %}date{% else %}text{% endif %}" id="choose-date-min" class="form-control events-date-choser" placeholder="Дата">
-                    <input type="{% if date_max %}date{% else %}text{% endif %}" id="choose-date-max" class="form-control events-date-choser">
-                    <button class="btn btn-primary events-filter-btn" id="btn-filter-events">
-                        <i class="glyphicon glyphicon-ok"></i>
-                    </button>
-                    <a href="{% url 'events' %}"><button class="btn events-filter-btn events-filter-cancel-btn">
-                        <i class="glyphicon glyphicon-ban-circle"></i>
-                    </button></a>
-                </form>
-            </div>
-        </div>
-    </div>
+    {% url 'events' as reset_filter_url %}
+    {% include 'includes/events_filter.html' %}
     <div class="text-muted index-statistics-block">
         {% if request.user.is_assistant %}
             Мероприятий: {{ objects|length }}. Загружено элементов: {{ elements_cnt }}. Загружено пользователями: {{ elements_user_cnt }}.
@@ -108,18 +93,7 @@
             </div>
         </div>
     </div>
-    {% if is_paginated %}
-        <div class="paginator mt-20">
-            <span>Страница</span>
-            {% for page_num in paginator.page_range %}
-                {% if page_num == page_obj.number %}
-                    <span class="paginator-page">{{ page_num }}</span>
-                {% else %}
-                    <a class="paginator-page" href="{{ request.get_full_path|add_page_num:page_num }}">{{ page_num }}</a>
-                {% endif %}
-            {% endfor %}
-        </div>
-    {% endif %}
+    {% include 'includes/paginator.html' %}
     {% if not objects %}
         <div class="alert alert-danger" role="alert">
             {% if request.user.is_assistant %}

@@ -76,7 +76,7 @@ def context_setter(f):
     return decorator(f)
 
 
-class IndexPageEventsFilterMixin:
+class SearchHelperMixin:
     DATE_FORMAT = '%Y-%m-%d'
 
     def get_date(self, attr):
@@ -85,6 +85,31 @@ class IndexPageEventsFilterMixin:
         except:
             return
 
+    def get_dates(self):
+        return self.get_date('date_min'), self.get_date('date_max')
+
+    def get_datetimes(self):
+        date_min, date_max = self.get_dates()
+        min_dt, max_dt = None, None
+        if date_min:
+            min_dt = timezone.make_aware(timezone.datetime.combine(date_min, timezone.datetime.min.time()))
+        if date_max:
+            max_dt = timezone.make_aware(timezone.datetime.combine(date_max, timezone.datetime.min.time())) + \
+                     timezone.timedelta(days=1)
+        return min_dt, max_dt
+
+    def update_context_with_search_parameters(self, ctx):
+        min_dt, max_dt = self.get_dates()
+        ctx.update({
+            'date_min': min_dt.strftime(self.DATE_FORMAT) if min_dt else None,
+            'date_min_obj': min_dt,
+            'date_max': max_dt.strftime(self.DATE_FORMAT) if max_dt else None,
+            'date_max_obj': max_dt,
+            'search': self.request.GET.get('search') or '',
+        })
+
+
+class IndexPageEventsFilterMixin(SearchHelperMixin):
     @cached_property
     def activity_filter(self):
         try:
@@ -105,14 +130,10 @@ class IndexPageEventsFilterMixin:
             events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user).
                                           values_list('event_id', flat=True))
         events = events.filter(event_type_id__in=get_allowed_event_type_ids())
-        date_min = self.get_date('date_min')
-        if date_min:
-            min_dt = timezone.make_aware(timezone.datetime.combine(date_min, timezone.datetime.min.time()))
+        min_dt, max_dt = self.get_datetimes()
+        if min_dt:
             events = events.filter(dt_start__gte=min_dt)
-        date_max = self.get_date('date_max')
-        if date_max:
-            max_dt = timezone.make_aware(timezone.datetime.combine(date_max, timezone.datetime.min.time())) + \
-                     timezone.timedelta(days=1)
+        if max_dt:
             events = events.filter(dt_start__lt=max_dt)
         if self.activity_filter:
             events = events.filter(activity=self.activity_filter)
@@ -138,20 +159,14 @@ class Events(IndexPageEventsFilterMixin, ListView):
         return self.get_events()
 
     def get_context_data(self, **kwargs):
-        date_min = self.get_date('date_min')
-        date_max = self.get_date('date_max')
         ctx = super().get_context_data(**kwargs)
         objects = ctx['object_list']
         ctx.update({
             'objects': objects,
-            'date_min': date_min.strftime(self.DATE_FORMAT) if date_min else None,
-            'date_min_obj': date_min,
-            'date_max': date_max.strftime(self.DATE_FORMAT) if date_max else None,
-            'date_max_obj': date_max,
             'sort_asc': self.is_asc_sort(),
             'activity_filter': self.activity_filter,
-            'search': self.request.GET.get('search') or '',
         })
+        self.update_context_with_search_parameters(ctx)
         event_ids = [i.id for i in objects]
         if self.request.user.is_assistant:
             fdict = {
@@ -1721,29 +1736,12 @@ class TransferView(GetEventMixin, View):
         return JsonResponse({})
 
 
-@method_decorator(login_required, name='dispatch')
-class ActivitiesView(TemplateView):
-    template_name = 'activities.html'
-
-    def get_context_data(self, **kwargs):
-        data = super().get_context_data(**kwargs)
-        activities = self.get_activities().filter(event__event_type_id__in=get_allowed_event_type_ids()).distinct()
-        activities = activities.order_by('title', 'id').annotate(event_count=Count('event'))
-        user_materials = dict(EventMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
-        team_materials = dict(EventTeamMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
-        event_materials = dict(EventOnlyMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
-        participants = dict(EventEntry.objects.filter(deleted=False).values_list('event__activity_id').
-                            annotate(cnt=Count('user_id')))
-        check_ins = dict(EventEntry.objects.filter(deleted=False, is_active=True).values_list('event__activity_id').
-                         annotate(cnt=Count('user_id')))
-        activity_types = dict(Event.objects.values_list('activity_id', 'event_type__title'))
-        for a in activities:
-            a.participants_num = participants.get(a.id, 0)
-            a.check_ins_num = check_ins.get(a.id, 0)
-            a.materials_num = user_materials.get(a.id, 0) + team_materials.get(a.id, 0) + event_materials.get(a.id, 0)
-            a.activity_type = activity_types.get(a.id)
-        data.update({'objects': activities, 'only_my': self.only_my_activities()})
-        return data
+class ActivitiesFilter(SearchHelperMixin):
+    def filter_search(self, qs):
+        text = self.request.GET.get('search')
+        if text:
+            return qs.filter(Q(title__icontains=text) | Q(authors__title__icontains=text))
+        return qs
 
     def get_activities(self):
         if not self.only_my_activities():
@@ -1754,11 +1752,18 @@ class ActivitiesView(TemplateView):
                 qs = qs.filter(id__in=EventEntry.objects.filter(
                     user=self.request.user).values_list('event__activity_id', flat=True)
                 )
-            return qs
-        return self.filter_context(Activity.objects.filter(
-            is_deleted=False,
-            id__in=ActivityEnrollment.objects.filter(user=self.request.user).values_list('activity_id', flat=True))
-        )
+        else:
+            qs = self.filter_context(Activity.objects.filter(
+                is_deleted=False,
+                id__in=ActivityEnrollment.objects.filter(user=self.request.user).values_list('activity_id', flat=True))
+            )
+        min_dt, max_dt = self.get_datetimes()
+        if min_dt:
+            qs = qs.filter(event__dt_start__gte=min_dt)
+        if max_dt:
+            qs = qs.filter(event__dt_start__lt=max_dt)
+        qs = self.filter_search(qs)
+        return qs.distinct().order_by('title', 'id')
 
     def filter_context(self, qs):
         if self.request.user.is_assistant and self.request.user.chosen_context_id:
@@ -1769,6 +1774,38 @@ class ActivitiesView(TemplateView):
 
     def only_my_activities(self):
         return self.request.GET.get('activities') == 'my'
+
+
+@method_decorator(login_required, name='dispatch')
+class ActivitiesView(ActivitiesFilter, ListView):
+    template_name = 'activities.html'
+    paginate_by = settings.PAGINATE_EVENTS_BY
+
+    def get_queryset(self):
+        return self.get_activities()
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        self.update_context_with_search_parameters(data)
+        activities = data['object_list']
+        user_materials = dict(EventMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
+        team_materials = dict(EventTeamMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
+        event_materials = dict(EventOnlyMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
+        participants = dict(EventEntry.objects.filter(deleted=False).values_list('event__activity_id').
+                            annotate(cnt=Count('user_id')))
+        check_ins = dict(EventEntry.objects.filter(deleted=False, is_active=True).values_list('event__activity_id').
+                         annotate(cnt=Count('user_id')))
+        activity_types = dict(Event.objects.values_list('activity_id', 'event_type__title'))
+        q = Q(event__is_active=True, event__event_type_id__in=get_allowed_event_type_ids())
+        events_cnt = dict(Activity.objects.values_list('id').annotate(cnt=Count('event', filter=q)))
+        for a in activities:
+            a.participants_num = participants.get(a.id, 0)
+            a.check_ins_num = check_ins.get(a.id, 0)
+            a.materials_num = user_materials.get(a.id, 0) + team_materials.get(a.id, 0) + event_materials.get(a.id, 0)
+            a.activity_type = activity_types.get(a.id)
+            a.event_count = events_cnt.get(a.id, 0)
+        data.update({'objects': activities, 'only_my': self.only_my_activities()})
+        return data
 
 
 class CreateEventBlocks(GetEventMixin, TemplateView):
@@ -2315,18 +2352,17 @@ class EventCsvData(GetEventMixin, CSVResponseGeneratorMixin, View):
 
 
 @method_decorator(login_required, name='dispatch')
-class EventsCsvData(IndexPageEventsFilterMixin, CSVResponseGeneratorMixin, View):
-    """
-    Выгрузка csv по нескольким мероприятиям сразу
-    """
+class BaseCsvEventsDataView(CSVResponseGeneratorMixin, View):
     def get(self, request):
         if not request.user.is_assistant:
             raise PermissionDenied
-        events = self.get_events()
+        events = self.get_events_for_csv()
+        activity_filter = getattr(self, 'activity_filter', None)
+        date_min, date_max = self.get_dates()
         meta_data = {
-            'activity': self.activity_filter,
-            'date_min': self.get_date('date_min'),
-            'date_max': self.get_date('date_max'),
+            'activity': activity_filter,
+            'date_min': date_min,
+            'date_max': date_max,
             'context': request.user.chosen_context,
         }
         obj = EventGroupMaterialsCSV(events, meta_data)
@@ -2346,7 +2382,7 @@ class EventsCsvData(IndexPageEventsFilterMixin, CSVResponseGeneratorMixin, View)
         if CSVDump.current_generations_for_user(request.user) >= settings.MAX_PARALLEL_CSV_GENERATIONS:
             raise PermissionDenied
         task_meta = meta_data.copy()
-        task_meta['activity'] = self.activity_filter and self.activity_filter.id
+        task_meta['activity'] = activity_filter and activity_filter.id
         task_meta['context'] = request.user.chosen_context and request.user.chosen_context.id
         csv_dump = CSVDump.objects.create(
             owner=request.user, header=obj.get_csv_filename(do_quote=False), meta_data=task_meta
@@ -2354,6 +2390,28 @@ class EventsCsvData(IndexPageEventsFilterMixin, CSVResponseGeneratorMixin, View)
         generate_events_csv.delay(csv_dump.id, [i.id for i in events], get_csv_encoding_for_request(self.request),
                                   task_meta)
         return JsonResponse({'page_url': reverse('csv-dumps-list'), 'dump_id': csv_dump.id})
+
+    def get_events_for_csv(self):
+        return Event.objects.none()
+
+
+class EventsCsvData(IndexPageEventsFilterMixin, BaseCsvEventsDataView):
+    """
+    Выгрузка csv по нескольким мероприятиям сразу
+    """
+    def get_events_for_csv(self):
+        return self.get_events()
+
+
+class ActivitiesCsvData(ActivitiesFilter, BaseCsvEventsDataView):
+    """
+    Выгрузка csv по нескольким активностям сразу
+    """
+    def get_events_for_csv(self):
+        return Event.objects.filter(
+            activity_id__in=self.get_activities().order_by().values_list('id', flat=True)
+        ).order_by('title', 'dt_start')
+
 
 
 @login_required

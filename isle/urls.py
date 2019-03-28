@@ -35,6 +35,7 @@ urlpatterns = [
     path('role-formset-render/<str:uid>/<int:team_id>/', views.RolesFormsetRender.as_view(), name='roles-formset-render'),
     path('get_event_csv/<str:uid>/', views.EventCsvData.as_view(), name='get_event_csv'),
     path('get_events_csv', views.EventsCsvData.as_view(), name='get_filtered_events_csv'),
+    path('get_activities_csv', views.ActivitiesCsvData.as_view(), name='get_activities_csv'),
     path('load_dump/<int:dump_id>/', views.LoadCsvDump.as_view(), name='load_csv_dump'),
     path('csv-dumps/', views.CSVDumpsList.as_view(), name='csv-dumps-list'),
     path('switch-context/', views.switch_context, name='switch_context'),
