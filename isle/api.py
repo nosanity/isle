@@ -239,6 +239,9 @@ class XLEApi(BaseApi):
     def get_attendance(self):
         return self.make_request('/api/v1/checkin')
 
+    def get_checkin(self, checkin_uuid):
+        return self.make_request_no_pagination('/api/v1/checkin/{}/'.format(checkin_uuid))
+
 
 class DpApi(BaseApi):
     name = 'dp'
