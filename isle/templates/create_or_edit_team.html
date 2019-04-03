@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% load static i18n tz %}
+
+{% block title %}
+    {% if edit %}
+        Редактирование команды
+    {% else %}
+        Создание команды
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    {% include 'includes/to_event_page.html' %}
+    <div class="row">
+        <div class="col-lg-12">
+            <h2>
+                {% if edit %}
+                    Редактирование команды
+                {% else %}
+                    Создание команды
+                {% endif %}
+            </h2>
+        </div>
+    </div>
+    {% include 'includes/event_info.html' %}
+    <form method="post" id="team-form" class="form-inline">
+        {% csrf_token %}
+        <label>Название команды</label>
+        <input type="text" name="name" class="form-control" {% if edit %}value="{{ team.name }}"{% endif %}>
+        <table class="table table-hover table-bordered table-striped mt-20">
+            <thead class="thead-light">
+                <tr>
+                  <th scope="col" class="width-30"></th>
+                  <th scope="col">ФИО</th>
+                  <th scope="col" class="width-70">Фото</th>
+                </tr>
+            </thead>
+            {% for student in students %}
+            <tr>
+                <td class="width-30">
+                    <input type="checkbox" name="users" value="{{ student.id }}" {% if edit and student in team.users.all %}checked{% endif %}>
+                </td>
+                <td>{{ student.get_full_name }}</td>
+                <td class="width-70">{% include 'includes/user_image.html' with u=student %}</td>
+            </tr>
+        {% endfor %}
+        </table>
+        <button class="btn btn-primary" id="submit" type="submit" disabled>
+            Сохранить
+        </button>
+    </form>
+    <a href="{% url 'event-view' uid=event.uid %}">
+        <button class="btn btn-default mt-20">К странице мероприятия</button>
+    </a>
+{% endblock %}
+
+{% block js %}
+    {{ block.super }}
+    <!-- event handlers of buttons are binded in js file below -->
+    <script type="text/javascript" src="{% static 'js/pages/teams.js' %}"></script>
+{% endblock %}

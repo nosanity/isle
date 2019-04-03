@@ -20,7 +20,7 @@ import requests
 from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
-                         Team)
+                         Team, Author)
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -74,6 +74,7 @@ def refresh_events_data():
                             'is_deleted': bool(activity.get('is_deleted')),
                         }
                     )[0]
+                    update_authors(current_activity, authors)
                 else:
                     continue
                 if activity_type and activity_type.get('uuid'):
@@ -122,6 +123,19 @@ def refresh_events_data():
         return
     except Exception:
         logging.exception('Failed to handle events data')
+
+
+def update_authors(activity, data):
+    authors = []
+    for item in data:
+        uid = item.get('uuid')
+        if not uid:
+            continue
+        authors.append(Author.objects.update_or_create(uuid=uid, defaults={
+            'title': item.get('title') or '',
+            'is_main': item.get('is_main'),
+        })[0])
+    activity.authors.set(authors)
 
 
 def update_event_structure(data, event, event_blocks_uuid, metamodels):
@@ -689,7 +703,13 @@ class EventGroupMaterialsCSV(EventMaterialsCSV):
         guid = str(self.meta_data['context'] and self.meta_data['context'].guid)
         if self.meta_data['activity']:
             return f('{}_{}'.format(guid, self.meta_data['activity'].title))
-        return f('{}_{}'.format(guid, self.meta_data['date'].strftime('%d-%m-%Y')))
+        date_min = self.meta_data['date_min']
+        date_max = self.meta_data['date_max']
+        return f('{}_{}-{}'.format(
+            guid,
+            date_min.strftime('%d-%m-%Y') if date_min else 'null',
+            date_max.strftime('%d-%m-%Y') if date_max else 'null'
+        ))
 
     def count_materials(self):
         ids = list([i.id for i in self.events_qs])

@@ -1,12 +1,28 @@
 setSort(sortAsc);
 
-$('#choose-date').val(date);
+$('#choose-date-min').val(date_min);
+$('#choose-date-max').val(date_max);
 
-$('#btn-date-refresh').click((e) => {
+$('body').delegate('#choose-date-min', 'mouseenter', () => {
+    $('#choose-date-min').attr('type', 'date')
+}).delegate('#choose-date-min', 'mouseleave', () => {
+    if (!$('#choose-date-min').val())
+        $('#choose-date-min').attr('type', 'text')
+}).delegate('#choose-date-max', 'mouseenter', () => {
+    $('#choose-date-max').attr('type', 'date')
+}).delegate('#choose-date-max', 'mouseleave', () => {
+    if (!$('#choose-date-max').val())
+        $('#choose-date-max').attr('type', 'text')
+});
+
+$('#btn-filter-events').click((e) => {
     e.preventDefault();
-    window.location.replace(
-        queryStringUrlReplacement(window.location.href, 'date', $('#choose-date').val())
-    );
+    let url = window.location.href;
+    url = queryStringUrlReplacement(url, 'date_min', $('#choose-date-min').val() || '');
+    url = queryStringUrlReplacement(url, 'date_max', $('#choose-date-max').val() || '');
+    url = queryStringUrlReplacement(url, 'search', $('#search-events').val() || '');
+    url = queryStringUrlReplacement(url, 'page', 1);
+    window.location.replace(url)
 });
 
 $('span.cancel-activity').on('click', () => {

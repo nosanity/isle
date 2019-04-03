@@ -193,6 +193,10 @@ MAX_MATERIALS_FOR_SYNC_GENERATION = 500
 MAX_PARALLEL_CSV_GENERATIONS = 5
 # время в секундах, после которого генерация считается проваленой
 TIME_TO_FAIL_CSV_GENERATION = 2 * 3600
+# максимальное количество пользователей, которых можно добавить на мероприятие за один раз
+MAXIMUM_EVENT_MEMBERS_TO_ADD = 100
+# количество мероприятий/активностей на одной странице
+PAGINATE_EVENTS_BY = 100
 
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}

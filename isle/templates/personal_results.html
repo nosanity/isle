@@ -6,8 +6,6 @@
 {% block page_title %}{% trans "Персональные результаты" %}{% endblock %}
 
 {% block info %}
-    {% if user.icon %}
-        <div class="user-photo-div"><img src="{{ user.icon.Small }}"/></div>
-    {% endif %}
+    {% include 'includes/user_image.html' with u=user %}
     <b>{{ user.fio }}</b>
 {% endblock %}
