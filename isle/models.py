@@ -179,7 +179,7 @@ class Event(models.Model):
         return EventBlock.objects.filter(event=self).order_by('id')
 
     def get_xle_link(self):
-        return '{}/event/{}/'.format(settings.XLE_URL, self.uid)
+        return '{}/event/{}'.format(settings.XLE_URL.rstrip('/'), self.uid)
 
 
 class BlockType:
