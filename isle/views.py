@@ -252,12 +252,11 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
         attends = set(Attendance.objects.filter(event=self.event, is_confirmed=True).values_list('user_id', flat=True))
         chat_bot_added = set(Attendance.objects.filter(event=self.event, confirmed_by_system=Attendance.SYSTEM_CHAT_BOT)
                              .values_list('user_id', flat=True))
-        user_teams = []
+        user_teams = list(Team.objects.filter(event=self.event, users=self.request.user).values_list('id', flat=True))
         if not self.request.user.is_assistant:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users, is_public=True).
                        values_list('user_id').annotate(num=Count('event_id')))
             num[self.request.user.id] = EventMaterial.objects.filter(event=self.event, user=self.request.user).count()
-            user_teams = list(Team.objects.filter(event=self.event, users=self.request.user).values_list('id', flat=True))
         else:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
                        values_list('user_id').annotate(num=Count('event_id')))
