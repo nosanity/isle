@@ -442,7 +442,7 @@ $('body').delegate('input[name=file_field]', 'change', (e) => {
     
     if (pageType == 'loadMaterials' || pageType == 'eventStructure') {
         $button = $obj.parents('form.trace-form');
-        parentSelector = 'li';
+        parentSelector = 'div.tab-content';
     }
     else if (pageType == 'loadMaterials_v2') {
         $button = $obj.parents('div.material-result-div').find('form.user-materials-form');
