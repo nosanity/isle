@@ -31,8 +31,8 @@
             <thead class="thead-light">
                 <tr>
                   <th scope="col" class="width-30"></th>
-                  <th scope="col">ФИО</th>
                   <th scope="col" class="width-70">Фото</th>
+                  <th scope="col">ФИО</th>
                 </tr>
             </thead>
             {% for student in students %}
@@ -40,8 +40,8 @@
                 <td class="width-30">
                     <input type="checkbox" name="users" value="{{ student.id }}" {% if edit and student in team.users.all %}checked{% endif %}>
                 </td>
-                <td>{{ student.get_full_name }}</td>
                 <td class="width-70">{% include 'includes/user_image.html' with u=student %}</td>
+                <td>{{ student.get_full_name }}</td>
             </tr>
         {% endfor %}
         </table>
