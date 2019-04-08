@@ -3,6 +3,15 @@ const uploads = [];
 
 let maxSizeSelector = null;
 
+function get_error_msg(xhr) {
+    try {
+        return xhr.responseJSON.error || 'error';
+    }
+    catch (e) {
+        return 'error';
+    }
+}
+
 if (pageType == 'loadMaterials' || pageType == 'eventStructure') {
     maxSizeSelector = 'form.trace-form input[type=file]';
 
@@ -86,9 +95,9 @@ else if (pageType == 'loadMaterials_v2') {
                 success: (data) => {
                     $('div.user-roles-div').html(data);
                 },
-                error: () => {
+                error: (xhr, err) => {
                     // TODO show appropriate message
-                    alert('error');
+                    alert(get_error_msg(xhr));
                 }
             })
         }
@@ -237,7 +246,7 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
                 },
                 error: (xhr, err) => {
                     // TODO show appropriate message
-                    alert('error');
+                    alert(get_error_msg(xhr));
                 }
             })
         }
@@ -263,7 +272,7 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
             },
             error: (xhr, err) => {
                 // TODO show appropriate message
-                alert('error');
+                alert(get_error_msg(xhr));
             }
         })
     }
@@ -289,7 +298,7 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
             // TODO show appropriate message
             let t = $obj.parents('.result-item-li').find('.old_comment_value').val().trim();
             $obj.parents('.result-item-li').find('.result-comment-edit-input').val(t);
-            alert('error');
+            alert(get_error_msg(xhr));
         },
         complete: (xhr, err) => {
             result_edit_switcher($obj.parents('.result-item-li'), false);
@@ -355,7 +364,7 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
             }
         },
         error: (xhr, err) => {
-            alert('error');
+            alert(get_error_msg(xhr));
         },
         complete: () => { obj.prop('disabled', false).removeAttr('disabled'); }
     })
@@ -589,9 +598,9 @@ function resultFormHandler(e) {
                     clearForm($form);
                 }
             },
-            error: () => {
+            error: (xhr, err, a) => {
                 // TODO show appropriate message
-                alert('error');
+                alert(get_error_msg(xhr));
                 $('.save-result-btn').prop('disabled', false);
             }
         });
@@ -766,9 +775,9 @@ function completeProcessFile(num, $form = null) {
     }  
 }
 
-function errorProcessFile() {
+function errorProcessFile(xhr, err) {
     // TODO show appropriate message
-    alert('error');
+    alert(get_error_msg(xhr));
 }
 
 function processUrl(form, result_item_id) {
@@ -864,7 +873,7 @@ function formSubmitHadler(form, resultId = null) {
                 success: function(data) {
                     formSubmitHandler_inner($form, resultId, data.result_id);
                 },
-                error: function() { alert('error'); }
+                error: function(xhr, err) { alert(get_error_msg(xhr)); }
             })
         }
         else {
