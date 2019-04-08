@@ -8,6 +8,14 @@ $('body').delegate('#choose-date-min', 'mouseenter', () => {
 }).delegate('#choose-date-min', 'mouseleave', () => {
     if (!$('#choose-date-min').val())
         $('#choose-date-min').attr('type', 'text')
+}).delegate('#choose-date-min', 'change', () => {
+    let max_dt = $('#choose-date-max');
+    let min_val = $('#choose-date-min').val();
+    min_val ? max_dt.attr('min', min_val) : max_dt.removeAttr('min');
+}).delegate('#choose-date-max', 'change', () => {
+    let min_dt = $('#choose-date-min');
+    let max_val = $('#choose-date-max').val();
+    max_val ? min_dt.attr('max', max_val) : min_dt.removeAttr('max');
 }).delegate('#choose-date-max', 'mouseenter', () => {
     $('#choose-date-max').attr('type', 'date')
 }).delegate('#choose-date-max', 'mouseleave', () => {

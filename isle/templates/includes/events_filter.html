@@ -3,8 +3,8 @@
         <div>
             <form class="form-inline">
                 <input type="search" id="search-events" placeholder="Найти" class="form-control" {% if search %}value="{{ search }}{% endif %}">
-                <input type="{% if date_min %}date{% else %}text{% endif %}" id="choose-date-min" class="form-control events-date-choser" placeholder="Дата">
-                <input type="{% if date_max %}date{% else %}text{% endif %}" id="choose-date-max" class="form-control events-date-choser">
+                <input type="{% if date_min %}date{% else %}text{% endif %}" id="choose-date-min" class="form-control events-date-choser" placeholder="Дата: от">
+                <input type="{% if date_max %}date{% else %}text{% endif %}" id="choose-date-max" class="form-control events-date-choser" placeholder="Дата: до">
                 <button class="btn btn-primary events-filter-btn" id="btn-filter-events">
                     <i class="glyphicon glyphicon-ok"></i>
                 </button>
