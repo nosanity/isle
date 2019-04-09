@@ -13,7 +13,7 @@ $(document).ready(function() {
     })
 
     $('.context-switching-select option').each(function () {
-        let max_length = 100
+        let max_length = 30
         var text = $(this).text();
         if (text.length > max_length) {
             text = text.substring(0, max_length - 1) + '...';
