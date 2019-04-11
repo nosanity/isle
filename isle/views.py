@@ -334,7 +334,9 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
         return self.delete_item(request)
 
     def check_post_allowed(self, request):
-        if not self.event.is_active or not self.can_upload():
+        if not self.event.is_active:
+            return JsonResponse({'error': 'Мероприятие недоступно для оцифровки'}, status=403)
+        if not self.can_upload():
             return JsonResponse({}, status=403)
 
     def delete_item(self, request):
