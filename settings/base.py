@@ -197,6 +197,10 @@ TIME_TO_FAIL_CSV_GENERATION = 2 * 3600
 MAXIMUM_EVENT_MEMBERS_TO_ADD = 100
 # количество мероприятий/активностей на одной странице
 PAGINATE_EVENTS_BY = 100
+# дефолтная пагинация при использовании LimitOffsetPagination
+DRF_LIMIT_OFFSET_PAGINATION_DEFAULT = 20
+# максимальное количество записей на странице при использовании LimitOffsetPagination
+DRF_LIMIT_OFFSET_PAGINATION_MAX = 50
 
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}

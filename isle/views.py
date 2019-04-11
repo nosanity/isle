@@ -25,23 +25,25 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.generic import TemplateView, View, ListView
+import django_filters
 import requests
 from dal import autocomplete
 from rest_framework import status
 from rest_framework.generics import ListAPIView
-from rest_framework.pagination import PageNumberPagination
+from rest_framework.pagination import PageNumberPagination, LimitOffsetPagination
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
 from isle.api import LabsApi, XLEApi, DpApi, SSOApi
+from isle.filters import LabsUserResultFilter, LabsTeamResultFilter
 from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset, \
     EventMaterialForm, EditTeamForm
 from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
     LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump
-from isle.serializers import AttendanceSerializer
+from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer
 from isle.tasks import generate_events_csv, team_members_set_changed
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
@@ -2243,6 +2245,129 @@ class TeamResultInfoView(BaseResultInfoView):
             'name': result.team.name,
             'members': list(result.team.users.values_list('unti_id', flat=True))
         }
+
+
+class CustomLimitOffsetPagination(LimitOffsetPagination):
+    default_limit = settings.DRF_LIMIT_OFFSET_PAGINATION_DEFAULT
+    max_limit = settings.DRF_LIMIT_OFFSET_PAGINATION_MAX
+
+
+class AllUserResultsView(ListAPIView):
+    """
+    **Описание**
+
+        Запрос информации о всех пользовательских результатах
+
+    **Пример запроса**
+
+        GET /api/all-user-results/?unti_id=123&created_at_after=2019-01-31T00:00:00&limit=10&offset=10
+
+    **Параметры запроса**
+
+        * unti_id - unti id пользователя
+        * created_at_after - минимальная дата и время создания в iso формате, необязательный параметр
+        * created_at_before - максимальная дата и время создания в iso формате, необязательный параметр
+        * limit - максимальное количество результатов на странице, но не более 50
+        * offset
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "count": 1,
+                "next": null,
+                "previous": null,
+                "results": [
+                    {
+                        "event_uuid": "63284c8e-4f4a-4b54-9ef9-92f1cfb13d98",
+                        "comment": "",
+                        "approved": false,
+                        "levels": null,
+                        "url": "http://example.com/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/2/user/1",
+                        "files": [
+                            {
+                                "file_url": "http://example.com/media/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/22/file.pdf",
+                                "file_name": "file.pdf"
+                            }
+                        ],
+                        "user": {
+                            "unti_id": 2
+                        }
+                    }
+                ]
+            }
+        * 400 некорректный запрос
+        * 403 неправильный api key
+    """
+    pagination_class = CustomLimitOffsetPagination
+    serializer_class = LabsUserResultSerializer
+    filter_backends = (django_filters.rest_framework.DjangoFilterBackend,)
+    filterset_class = LabsUserResultFilter
+    permission_classes = (ApiPermission,)
+
+    def get_queryset(self):
+        return LabsUserResult.objects.select_related('user', 'result__block__event')\
+            .prefetch_related('eventmaterial_set').distinct()
+
+
+class AllTeamResultsView(ListAPIView):
+    """
+    **Описание**
+
+        Запрос информации о всех командных результатах
+
+    **Пример запроса**
+
+        GET /api/all-team-results/?team_id=123&created_at_after=2019-01-31T00:00:00&limit=10&offset=10
+
+    **Параметры запроса**
+
+        * team_id - id команды
+        * created_at_after - минимальная дата и время создания в iso формате, необязательный параметр
+        * created_at_before - максимальная дата и время создания в iso формате, необязательный параметр
+        * limit - максимальное количество результатов на странице, но не более 50
+        * offset
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "count": 1,
+                "next": null,
+                "previous": null,
+                "results": [
+                    {
+                        "event_uuid": "63284c8e-4f4a-4b54-9ef9-92f1cfb13d98",
+                        "comment": "",
+                        "approved": false,
+                        "levels": null,
+                        "url": "http://example.com/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/2/team/1",
+                        "files": [
+                            {
+                                "file_url": "http://example.com/media/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/22/file.pdf",
+                                "file_name": "file.pdf"
+                            }
+                        ],
+                        "team": {
+                            "id": 123,
+                            "name": "name",
+                            "members": [1, 2, 3]
+                        }
+                    }
+                ]
+            }
+        * 400 некорректный запрос
+        * 403 неправильный api key
+    """
+    pagination_class = CustomLimitOffsetPagination
+    serializer_class = LabsTeamResultSerializer
+    filter_backends = (django_filters.rest_framework.DjangoFilterBackend,)
+    filterset_class = LabsTeamResultFilter
+    permission_classes = (ApiPermission,)
+
+    def get_queryset(self):
+        return LabsTeamResult.objects.select_related('team', 'result__block__event')\
+            .prefetch_related('eventteammaterial_set', 'team__users').distinct()
 
 
 @method_decorator(staff_member_required, name='dispatch')
