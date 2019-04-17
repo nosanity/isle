@@ -44,7 +44,7 @@ class LabsBaseResultSerializer(serializers.Serializer):
     event_uuid = serializers.CharField(source='result.block.event.uid')
     comment = serializers.CharField()
     approved = serializers.BooleanField()
-    levels = serializers.JSONField(allow_null=True, source='meta')
+    levels = serializers.JSONField(allow_null=True, source='result.meta')
     url = serializers.CharField(source='get_page_url')
 
 
