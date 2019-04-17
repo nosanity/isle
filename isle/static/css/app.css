@@ -56,6 +56,10 @@ nav.navbar {
     background-color: rgba(186, 214, 141, 0.7);
 }
 
+#event-users-table .event-participants-self td {
+    border-bottom: solid #fff 5px;
+}
+
 .materials-form-comment-div {
     margin-top: 10px;
 }
@@ -307,11 +311,6 @@ nav.navbar {
     margin-right: 20px;
 }
 
-.member-image {
-    width: 50px;
-    height: 50px;
-}
-
 .width-80 {
     width: 80%;
 }
@@ -360,6 +359,8 @@ nav.navbar {
 .context-switching-select {
     margin-bottom: -5px;
     margin-left: 20px;
+    max-width: 300px;
+    text-overflow: ellipsis;
 }
 
 .export-results a, .export-results span {
@@ -372,4 +373,125 @@ nav.navbar {
 
 .ml--15 {
     margin-left: -15px;
+}
+
+.event-upload-form .material-type-select {
+    width: auto;
+    min-width: 50%;
+}
+
+.navbar-red {
+    color: #e52127 !important;
+}
+
+.navbar-user {
+    padding: 0.25rem 0 0 0 !important;
+}
+
+@media (max-width: 768px) {
+    .navbar-user {
+        display: none;
+    }
+    .context-switching-select {
+        margin-bottom: -5px;
+        margin-left: 0;
+        max-width: 300px;
+        text-overflow: ellipsis;
+    }
+    .context-switcher-wrapper {
+        width: 100%;
+        order: 3;
+        margin-top: 10px;
+    }
+}
+
+.navbar-leader-id {
+    padding: 0 !important;
+    background-color: #e52127;
+    color: white !important;
+    font-weight: bold;
+    width: auto !important;
+}
+
+.badge-leader-id {
+    color: #fff !important;
+    background-color: #e52127;
+    margin-top: 5px;
+}
+
+.padding-0 {
+    padding: 0 !important;
+}
+
+.logout-link {
+    margin-left: 10px;
+}
+
+.nav-user-image {
+    margin-right: 20px;
+    padding-top: 0.5rem;
+    display: inline-block;
+}
+
+.nav-user-image img {
+    border-radius: 50%;
+    max-height: 40px;
+    vertical-align: middle;
+}
+
+.navbar-expand-lg {
+    display: flex;
+    width: 100%;
+}
+
+.nav-row {
+    flex-direction: row;
+}
+
+.btn-grey {
+    background-color: #ccc;
+    color: #000;
+}
+
+img.user-img {
+    width: 50px;
+    height: 50px;
+}
+
+.user-images-cell {
+    display: inline-block;
+}
+
+.td-user-images {
+    max-width: 180px;
+}
+
+.width-30 {
+    width: 30px;
+}
+
+.width-70 {
+    width: 70px;
+}
+
+.paginator-page {
+    padding: 5px;
+}
+
+.paginator-page:hover {
+    background-color: #ddd;
+}
+
+.events-date-choser {
+    width: 190px !important;
+    height: 38px;
+}
+
+.events-filter-btn {
+    height: 38px;
+}
+
+.events-filter-cancel-btn {
+    background: rgba(0, 0, 0, 0);
+    border: 1px solid #ccc;
 }

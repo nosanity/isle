@@ -18,6 +18,14 @@
         </div>
 	{% endcomment %}
     </div>
+    {% if request.user.is_assistant %}
+        <a class="pull-right export_event_csv" href="{% url 'get_activities_csv' %}">
+            <span class="glyphicon glyphicon-download-alt"></span>&nbsp;Экспортировать все
+        </a>
+        <div class="clearfix"></div>
+    {% endif %}
+    {% url 'index' as reset_filter_url %}
+    {% include 'includes/events_filter.html' %}
     <div class="row">
     <div class="col">
         <div class="overflow-scroll">
@@ -34,7 +42,7 @@
             </thead>
             {% for activity in objects %}
                 <tr>
-                    <td><a href="{% url 'index' %}?activity={{ activity.id }}">{{ activity.title }}</a></td>
+                    <td><a href="{% url 'events' %}?activity={{ activity.id }}">{{ activity.title }}</a></td>
                     <td>{{ activity.main_author }}</td>
                     <td>{{ activity.activity_type }}</td>
                     <td>{{ activity.event_count }}</td>
@@ -48,12 +56,22 @@
             {% endfor %}
         </table>
     </div>
+    {% include 'includes/paginator.html' %}
     </div>
     </div>
 {% endblock %}
 
 {% block js %}
     {{ block.super }}
+    <script type="text/javascript">
+        const date_min = "{{ date_min|default:'' }}";
+        const date_max = "{{ date_max|default:'' }}";
+        const sortAsc = eval("{% if sort_asc %}true{% else %}false{% endif %}");
+    </script>
     <!-- event handlers of buttons are binded in js file below -->
     <script type="text/javascript" src="{% static 'js/pages/activities.js' %}"></script>
+    <script type="text/javascript" src="{% static 'js/pages/index.js' %}"></script>
+    {% if request.user.is_assistant %}
+        <script type="text/javascript" src="{% static 'js/pages/index_assistant.js' %}"></script>
+    {% endif %}
 {% endblock %}

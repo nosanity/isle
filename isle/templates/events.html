@@ -3,12 +3,16 @@
 {% block content %}
     {% if request.user.is_assistant %}
         <div>
-            <a href="{% url 'activities' %}">Активности</a>
+            <a href="{% url 'index' %}">Активности</a>
             &nbsp;/&nbsp;
             {% if activity_filter %}
                 {{ activity_filter.title|truncatechars:30 }}
-            {% elif date_obj %}
-                Мероприятия {{ date_obj|date:'d/m/Y' }}
+            {% elif date_min_obj and date_max_obj %}
+                Мероприятия {{ date_min_obj|date:'d.m.Y' }} - {{ date_max_obj|date:'d.m.Y' }}
+            {% elif date_min_obj %}
+                Мероприятия после {{ date_min_obj|date:'d.m.Y' }}
+            {% elif date_max_obj %}
+                Мероприятия до {{ date_max_obj|date:'d.m.Y' }}
             {% else %}
                 Мероприятия
             {% endif %}
@@ -31,25 +35,13 @@
         </div>
     {% endif %}
     {% if request.user.is_assistant %}
-        <a class="pull-right export_event_csv" href="{% url 'get_filtered_events_csv' %}{% if activity_filter %}?activity={{ activity_filter.id }}{% endif %}">
+        <a class="pull-right export_event_csv" href="{% url 'get_filtered_events_csv' %}">
             <span class="glyphicon glyphicon-download-alt"></span>&nbsp;Экспортировать все
         </a>
         <div class="clearfix"></div>
     {% endif %}
-    <div class="row {% if activity_filter %}mt-10{% endif %}">
-        <div class="col">
-            <div>
-                <form class="form-inline">
-                    <label>Дата</label>
-                    <input type="date" id="choose-date" class="form-control">
-                    <button class="btn btn-primary" id="btn-date-refresh">Фильтровать</button>
-                    {% if not request.user.is_assistant %}
-                        <a href='/'><button class="btn btn-info">Сбросить фильтр</button></a>
-                    {% endif %}
-                </form>
-            </div>
-        </div>
-    </div>
+    {% url 'events' as reset_filter_url %}
+    {% include 'includes/events_filter.html' %}
     <div class="text-muted index-statistics-block">
         {% if request.user.is_assistant %}
             Мероприятий: {{ objects|length }}. Загружено элементов: {{ elements_cnt }}. Загружено пользователями: {{ elements_user_cnt }}.
@@ -90,7 +82,7 @@
                             {% endlocaltime %}
                             {% if request.user.is_assistant %}
                                 <td class="text-center">{{ event.prop_enrollments }} / {{ event.prop_checkins }}</td>
-                                <td class="text-center">{{ event.trace_count }}</td>
+                                <td class="text-center">{{ event.trace_cnt }}</td>
                             {% else %}
                                 <td class="text-center">{{ event.user_materials_num }}</td>
                                 <td class="text-center">{{ event.team_materials_num }}</td>
@@ -101,6 +93,7 @@
             </div>
         </div>
     </div>
+    {% include 'includes/paginator.html' %}
     {% if not objects %}
         <div class="alert alert-danger" role="alert">
             {% if request.user.is_assistant %}
@@ -115,7 +108,8 @@
 {% block js %}
     {{ block.super }}
     <script type="text/javascript">
-        const date = "{{ date }}";
+        const date_min = "{{ date_min|default:'' }}";
+        const date_max = "{{ date_max|default:'' }}";
         const sortAsc = eval("{% if sort_asc %}true{% else %}false{% endif %}");
     </script>
     <!-- event handlers of buttons are binded in js file below -->
@@ -123,9 +117,4 @@
     {% if request.user.is_assistant %}
         <script type="text/javascript" src="{% static 'js/pages/index_assistant.js' %}"></script>
     {% endif %}
-{% endblock %}
-
-{% block css %}
-    {{ block.super }}
-    <link href="{% static 'css/bootstrap-glyphicons.min.css' %}" rel="stylesheet">
 {% endblock %}

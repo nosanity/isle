@@ -25,24 +25,26 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.generic import TemplateView, View, ListView
+import django_filters
 import requests
 from dal import autocomplete
 from rest_framework import status
 from rest_framework.generics import ListAPIView
-from rest_framework.pagination import PageNumberPagination
+from rest_framework.pagination import PageNumberPagination, LimitOffsetPagination
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
 from isle.api import LabsApi, XLEApi, DpApi, SSOApi
+from isle.filters import LabsUserResultFilter, LabsTeamResultFilter
 from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset, \
-    EventMaterialForm
+    EventMaterialForm, EditTeamForm
 from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
     LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump
-from isle.serializers import AttendanceSerializer
-from isle.tasks import generate_events_csv
+from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer
+from isle.tasks import generate_events_csv, team_members_set_changed
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
     EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request
@@ -76,24 +78,52 @@ def context_setter(f):
     return decorator(f)
 
 
-class IndexPageEventsFilterMixin:
+class SearchHelperMixin:
     DATE_FORMAT = '%Y-%m-%d'
 
-    def get_date(self):
+    def get_date(self, attr):
         try:
-            date = timezone.datetime.strptime(self.request.GET.get('date'), self.DATE_FORMAT).date()
+            return timezone.datetime.strptime(self.request.GET.get(attr), self.DATE_FORMAT).date()
         except:
-            if not self.request.user.is_assistant or self.activity_filter:
-                return
-            date = timezone.localtime(timezone.now()).date()
-        return date
+            return
 
+    def get_dates(self):
+        return self.get_date('date_min'), self.get_date('date_max')
+
+    def get_datetimes(self):
+        date_min, date_max = self.get_dates()
+        min_dt, max_dt = None, None
+        if date_min:
+            min_dt = timezone.make_aware(timezone.datetime.combine(date_min, timezone.datetime.min.time()))
+        if date_max:
+            max_dt = timezone.make_aware(timezone.datetime.combine(date_max, timezone.datetime.min.time())) + \
+                     timezone.timedelta(days=1)
+        return min_dt, max_dt
+
+    def update_context_with_search_parameters(self, ctx):
+        min_dt, max_dt = self.get_dates()
+        ctx.update({
+            'date_min': min_dt.strftime(self.DATE_FORMAT) if min_dt else None,
+            'date_min_obj': min_dt,
+            'date_max': max_dt.strftime(self.DATE_FORMAT) if max_dt else None,
+            'date_max_obj': max_dt,
+            'search': self.request.GET.get('search') or '',
+        })
+
+
+class IndexPageEventsFilterMixin(SearchHelperMixin):
     @cached_property
     def activity_filter(self):
         try:
             return Activity.objects.get(id=self.request.GET.get('activity'))
         except (ValueError, TypeError, Activity.DoesNotExist):
             return
+
+    def filter_search(self, qs):
+        text = self.request.GET.get('search')
+        if text:
+            return qs.filter(Q(title__icontains=text) | Q(activity__authors__title__icontains=text)).distinct()
+        return qs
 
     def get_events(self):
         if self.request.user.is_assistant:
@@ -102,13 +132,14 @@ class IndexPageEventsFilterMixin:
             events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user).
                                           values_list('event_id', flat=True))
         events = events.filter(event_type_id__in=get_allowed_event_type_ids())
-        date = self.get_date()
-        if date:
-            min_dt = timezone.make_aware(timezone.datetime.combine(date, timezone.datetime.min.time()))
-            max_dt = min_dt + timezone.timedelta(days=1)
-            events = events.filter(dt_start__gte=min_dt, dt_start__lt=max_dt)
+        min_dt, max_dt = self.get_datetimes()
+        if min_dt:
+            events = events.filter(dt_start__gte=min_dt)
+        if max_dt:
+            events = events.filter(dt_start__lt=max_dt)
         if self.activity_filter:
             events = events.filter(activity=self.activity_filter)
+        events = self.filter_search(events)
         events = events.order_by('{}dt_start'.format('' if self.is_asc_sort() else '-'))
         if self.request.user.is_assistant and self.request.user.chosen_context_id:
             events = events.filter(context_id=self.request.user.chosen_context_id)
@@ -119,45 +150,55 @@ class IndexPageEventsFilterMixin:
 
 
 @method_decorator(login_required, name='dispatch')
-class Index(IndexPageEventsFilterMixin, TemplateView):
+class Events(IndexPageEventsFilterMixin, ListView):
     """
     все эвенты (доступные пользователю)
     """
-    template_name = 'index.html'
+    template_name = 'events.html'
+    paginate_by = settings.PAGINATE_EVENTS_BY
+
+    def get_queryset(self):
+        return self.get_events()
 
     def get_context_data(self, **kwargs):
-        date = self.get_date()
-        objects = self.get_events()
-        ctx = {
+        ctx = super().get_context_data(**kwargs)
+        objects = ctx['object_list']
+        ctx.update({
             'objects': objects,
-            'date': date.strftime(self.DATE_FORMAT) if date else None,
-            'date_obj': date,
             'sort_asc': self.is_asc_sort(),
             'activity_filter': self.activity_filter,
-        }
+        })
+        self.update_context_with_search_parameters(ctx)
+        event_ids = [i.id for i in objects]
         if self.request.user.is_assistant:
             fdict = {
                 'initiator__in': User.objects.filter(is_assistant=True).values_list('unti_id', flat=True)
             }
             ctx.update({
-                'elements_cnt': EventMaterial.objects.filter(event__in=objects).count() +
-                                EventTeamMaterial.objects.filter(event__in=objects).count() +
-                                EventOnlyMaterial.objects.filter(event__in=objects).count(),
-                'elements_user_cnt': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count() +
-                                     EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event__in=objects).count(),
+                'elements_cnt': EventMaterial.objects.filter(event_id__in=event_ids).count() +
+                                EventTeamMaterial.objects.filter(event_id__in=event_ids).count() +
+                                EventOnlyMaterial.objects.filter(event_id__in=event_ids).count(),
+                'elements_user_cnt': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event_id__in=event_ids).count() +
+                                     EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event_id__in=event_ids).count(),
             })
-            if self.request.user.is_assistant:
-                enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
-                check_ins = dict(EventEntry.objects.filter(is_active=True).values_list('event_id')
-                                 .annotate(cnt=Count('user_id')))
-                for obj in objects:
-                    obj.prop_enrollments = enrollments.get(obj.id, 0)
-                    obj.prop_checkins = check_ins.get(obj.id, 0)
+            enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
+            check_ins = dict(EventEntry.objects.filter(is_active=True).values_list('event_id')
+                             .annotate(cnt=Count('user_id')))
+            event_files_cnt = defaultdict(int)
+            for model in (EventMaterial, EventTeamMaterial, EventOnlyMaterial):
+                qs = model.objects.filter(event_id__in=event_ids, event__is_active=True). \
+                    values_list('event_id').annotate(cnt=Count('id'))
+                for eid, num in qs.iterator():
+                    event_files_cnt[eid] += num
+            for obj in objects:
+                obj.prop_enrollments = enrollments.get(obj.id, 0)
+                obj.prop_checkins = check_ins.get(obj.id, 0)
+                obj.trace_cnt = event_files_cnt.get(obj.id, 0)
         else:
-            user_materials_num = dict(EventMaterial.objects.filter(event__in=objects, user=self.request.user)
+            user_materials_num = dict(EventMaterial.objects.filter(event_id__in=event_ids, user=self.request.user)
                                       .values_list('event_id').annotate(cnt=Count('user_id')))
-            teams = Team.objects.filter(event__in=objects, users=self.request.user).values_list('id', flat=True)
-            team_materials_num = dict(EventTeamMaterial.objects.filter(event__in=objects, team_id__in=teams)
+            teams = Team.objects.filter(event_id__in=event_ids, users=self.request.user).values_list('id', flat=True)
+            team_materials_num = dict(EventTeamMaterial.objects.filter(event_id__in=event_ids, team_id__in=teams)
                                       .values_list('event_id').annotate(cnt=Count('team_id')))
             event_num, trace_num = 0, 0
             for obj in objects:
@@ -213,12 +254,11 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
         attends = set(Attendance.objects.filter(event=self.event, is_confirmed=True).values_list('user_id', flat=True))
         chat_bot_added = set(Attendance.objects.filter(event=self.event, confirmed_by_system=Attendance.SYSTEM_CHAT_BOT)
                              .values_list('user_id', flat=True))
-        user_teams = []
+        user_teams = list(Team.objects.filter(event=self.event, users=self.request.user).values_list('id', flat=True))
         if not self.request.user.is_assistant:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users, is_public=True).
                        values_list('user_id').annotate(num=Count('event_id')))
             num[self.request.user.id] = EventMaterial.objects.filter(event=self.event, user=self.request.user).count()
-            user_teams = list(Team.objects.filter(event=self.event, users=self.request.user).values_list('id', flat=True))
         else:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
                        values_list('user_id').annotate(num=Count('event_id')))
@@ -231,10 +271,12 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             u.can_delete = u.id in can_delete
             u.added_by_chat_bot = u.id in chat_bot_added
         event_entry = EventEntry.objects.filter(event=self.event, user=self.request.user).first()
+        teams = Team.objects.filter(event=self.event).select_related('creator').prefetch_related('users')
+        teams = sorted(list(teams), key=lambda x: (int(x.id not in user_teams), x.name.lower()))
         return {
             'students': users,
             'event': self.event,
-            'teams': Team.objects.filter(event=self.event).select_related('creator').order_by('name'),
+            'teams': teams,
             'user_teams': user_teams,
             'event_entry': event_entry,
             'event_entry_id': getattr(event_entry, 'id', 0),
@@ -294,7 +336,9 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
         return self.delete_item(request)
 
     def check_post_allowed(self, request):
-        if not self.event.is_active or not self.can_upload():
+        if not self.event.is_active:
+            return JsonResponse({'error': 'Мероприятие недоступно для оцифровки'}, status=403)
+        if not self.can_upload():
             return JsonResponse({}, status=403)
 
     def delete_item(self, request):
@@ -389,9 +433,9 @@ class BaseLoadMaterialsLabsResults:
                         'id': result.id,
                         'deleted': result.deleted,
                         'title': 'Результат {}.{}'.format(i, j)
-                    } for j, result in enumerate(block.results.all(), 1)
+                    } for j, result in enumerate(block.results.all(), 1) if self.is_according_result_type(result)
                 ]
-            } for i, block in enumerate(blocks, 1)
+            } for i, block in enumerate(blocks, 1) if self.block_has_available_results(block)
         ]
         qs_results = self.results_model.objects.filter(**self._update_query_dict({
             'result__block__event_id': self.event.id
@@ -418,6 +462,7 @@ class BaseLoadMaterialsLabsResults:
             'old_results': self.get_old_results(),
             'links': links,
             'blocks_structure_json': json.dumps(structure, ensure_ascii=False),
+            'event_members': list(EventEntry.objects.filter(event=self.event).values_list('user_id', flat=True)),
         }))
         return data
 
@@ -462,10 +507,10 @@ class BaseLoadMaterialsLabsResults:
         resp = self.check_post_allowed(request)
         if resp is not None:
             return resp
-        result_id_error, result_deleted = self._check_labs_result_id(request)
+        result_id_error, result_deleted, type_ok = self._check_labs_result_id(request)
         allowed_actions = ['delete_all', 'init_result', 'move', 'move_unattached']
         if 'add_btn' in request.POST:
-            if result_id_error is not None or result_deleted:
+            if result_id_error is not None or result_deleted or not type_ok:
                 return result_id_error
             return self.add_item(request)
         elif 'action' in request.POST and request.POST['action'] in allowed_actions:
@@ -474,7 +519,7 @@ class BaseLoadMaterialsLabsResults:
             if request.POST['action'] == 'delete_all':
                 return self.action_delete_all(request)
             elif request.POST['action'] == 'init_result':
-                if result_deleted:
+                if result_deleted or not type_ok:
                     return JsonResponse({}, status=400)
                 return self.action_init_result(request)
             elif request.POST['action'] == 'move':
@@ -517,6 +562,7 @@ class BaseLoadMaterialsLabsResults:
             assert item_result.result.block.event_id == self.event.id
             move_to = LabsEventResult.objects.select_related('block').get(id=request.POST.get('move_to'))
             assert move_to.block.event_id == self.event.id and not move_to.deleted and not move_to.block.deleted
+            assert self.is_according_result_type(move_to)
         except (AssertionError, LabsEventResult.DoesNotExist, TypeError, ValueError):
             return JsonResponse({}, status=400)
         item_result.result = move_to
@@ -549,6 +595,7 @@ class BaseLoadMaterialsLabsResults:
                 id=request.POST.get('move_to')
             )
             assert not result.deleted and not result.block.deleted
+            assert self.is_according_result_type(result)
         except (AssertionError, self.material_model.DoesNotExist, ValueError, TypeError):
             return JsonResponse({}, status=400)
         item_result = self.results_model.objects.create(**self._update_query_dict({
@@ -642,12 +689,24 @@ class BaseLoadMaterialsLabsResults:
         try:
             result_id = int(request.POST.get('labs_result_id'))
         except (ValueError, TypeError):
-            return JsonResponse({}, status=400), None
+            return JsonResponse({}, status=400), None, None
         result = LabsEventResult.objects.filter(id=result_id, block__event_id=self.event.id).\
             select_related('block').first()
         if not result_id or not result:
-            return JsonResponse({}, status=400), None
-        return None, result.deleted or result.block.deleted
+            return JsonResponse({}, status=400), None, None
+        return None, result.deleted or result.block.deleted, self.is_according_result_type(result)
+
+    def is_according_result_type(self, result):
+        """
+        проверка того, что формат результата соответствует типу загрузки
+        """
+        return True
+
+    def block_has_available_results(self, block):
+        """
+        проверка того, что в блоке есть результаты нужного формата
+        """
+        return True
 
     def _get_result_key(self):
         return 'result_v2'
@@ -819,6 +878,12 @@ class LoadUserMaterialsResult(BaseLoadMaterialsLabsResults, LoadMaterials):
         logging.warning('User %s has deleted file %s for user %s' %
                         (self.request.user.username, material.get_url(), self.user.username))
 
+    def is_according_result_type(self, result):
+        return result.is_personal()
+
+    def block_has_available_results(self, block):
+        return not block.block_has_only_group_results()
+
 
 class LoadMaterialsAssistant(BaseLoadMaterialsResults, LoadMaterials):
     template_name = 'load_user_materials.html'
@@ -964,6 +1029,12 @@ class LoadTeamMaterialsResult(BaseLoadMaterialsLabsResults, LoadTeamMaterials):
         logging.warning('User %s has deleted file %s for team %s' %
                         (self.request.user.username, material.get_url(), self.team.id))
 
+    def is_according_result_type(self, result):
+        return result.is_group()
+
+    def block_has_available_results(self, block):
+        return not block.block_has_only_personal_results()
+
 
 class LoadTeamMaterialsAssistant(BaseLoadMaterialsResults, LoadTeamMaterials):
     template_name = 'load_team_materials.html'
@@ -1018,6 +1089,34 @@ class LoadEventMaterials(BaseLoadMaterials):
     material_model = EventOnlyMaterial
     extra_context = {'with_comment_input': True, 'show_owners': True, 'event_upload': True}
 
+    def post(self, request, *args, **kwargs):
+        if request.user.is_authenticated and request.user.is_assistant and 'change_material_info' in request.POST:
+            return self.change_material_info(request)
+        return super().post(request, *args, **kwargs)
+
+    def change_material_info(self, request):
+        result_key, result_value = self.get_result_key_and_value(request)
+        if not result_value:
+            return JsonResponse({}, status=400)
+        try:
+            material = self.material_model.objects.get(id=request.POST.get('material_id'), event=self.event)
+            original_trace_id = material.trace_id
+        except (self.material_model.DoesNotExist, ValueError, TypeError):
+            return JsonResponse({}, status=400)
+        comment = request.POST.get('comment') or ''
+        material.trace = result_value
+        material.comment = comment
+        material.save(update_fields=['comment', 'trace'])
+        logging.info('User %s updated material %s. Trace_id: %s, comment: %s' %
+                     (request.user.username, material.id, result_value.id, comment))
+        return JsonResponse({
+            'comment': comment,
+            'trace_id': result_value.id,
+            'info_str': material.get_info_string(),
+            'original_trace_id': original_trace_id,
+            'material_id': material.id,
+        })
+
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
         data.update({
@@ -1031,15 +1130,14 @@ class LoadEventMaterials(BaseLoadMaterials):
         return self.material_model.objects.filter(event=self.event, trace__isnull=True)
 
     def get_materials(self):
-        qs = EventOnlyMaterial.objects.filter(event=self.event).prefetch_related('owners')
+        qs = EventOnlyMaterial.objects.filter(event=self.event)
         for item in qs:
             if not self.request.user.is_assistant:
                 item.is_owner = self.request.user in item.owners.all()
                 item.ownership_url = reverse('event-material-owner', kwargs={
                     'uid': self.event.uid, 'material_id': item.id})
         self.set_initiator_users_to_qs(qs)
-        return qs.prefetch_related('related_users', 'related_teams', 'related_teams__users').\
-            select_related('event_block')
+        return qs
 
     def _delete_item(self, trace, material_id):
         material = EventOnlyMaterial.objects.filter(
@@ -1066,34 +1164,74 @@ class LoadEventMaterials(BaseLoadMaterials):
         form = EventMaterialForm(instance=material, data=self.request.POST, prefix=str(trace.id), event=self.event)
         if form.is_valid():
             material = form.save()
+        resp['trace_id'] = trace.id
         resp['info_string'] = material.get_info_string()
         logging.info('User %s created block info for material %s: %s' %
                      (self.request.user.username, material.id, resp['info_string']))
 
 
-class CreateTeamView(GetEventMixin, TemplateView):
-    template_name = 'create_team.html'
+class BaseTeamView(GetEventMixin):
+    template_name = 'create_or_edit_team.html'
+    form_class = CreateTeamForm
 
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated or not (request.user.is_assistant or
-                EventEntry.objects.filter(event=self.event, user=request.user).exists()):
+                self.has_permission(request)):
             return HttpResponseForbidden()
         return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
-        users = self.get_available_users()
-        return {'students': users, 'event': self.event}
+        data = super().get_context_data(**kwargs)
+        data.update({'students': self.get_available_users(), 'event': self.event})
+        return data
 
     def get_available_users(self):
         return get_event_participants(self.event)
 
-    def post(self, request, uid=None):
-        form = CreateTeamForm(data=request.POST, event=self.event, users_qs=self.get_available_users(),
-                              creator=request.user)
+    def post(self, request, **kwargs):
+        form = self.form_class(data=request.POST, event=self.event, users_qs=self.get_available_users(),
+                               creator=request.user, instance=self.team)
         if not form.is_valid():
             return JsonResponse({}, status=400)
-        form.save()
+        team, members_changed = form.save()
+        self.team_saved(team, members_changed)
         return JsonResponse({'redirect': reverse('event-view', kwargs={'uid': self.event.uid})})
+
+    def team_saved(self, team, members_changed):
+        pass
+
+    @cached_property
+    def team(self):
+        return None
+
+
+class CreateTeamView(BaseTeamView, TemplateView):
+    extra_context = {'edit': False}
+
+    def has_permission(self, request):
+        return EventEntry.objects.filter(event=self.event, user=request.user).exists()
+
+
+class EditTeamView(BaseTeamView, TemplateView):
+    form_class = EditTeamForm
+    extra_context = {'edit': True}
+
+    def has_permission(self, request):
+        return self.team is not None and self.team.user_can_edit_team(request.user)
+
+    @cached_property
+    def team(self):
+        return Team.objects.filter(id=self.kwargs['team_id']).prefetch_related('users').first()
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        data['team'] = self.team
+        data['students'] = sorted(list(data['students']), key=lambda x: x not in self.team.users.all())
+        return data
+
+    def team_saved(self, team, members_changed):
+        if members_changed and LabsTeamResult.objects.filter(team=team).exists():
+            team_members_set_changed.delay(team.id)
 
 
 class AddUserToEvent(GetEventMixin, TemplateView):
@@ -1115,20 +1253,24 @@ class AddUserToEvent(GetEventMixin, TemplateView):
     def post(self, request, uid=None):
         form = AddUserForm(data=request.POST, event=self.event)
         if form.is_valid():
-            user = form.cleaned_data['user']
-            EventEntry.all_objects.update_or_create(
-                user=user, event=self.event,
-                defaults={'added_by_assistant': True, 'check_in_pushed': False, 'deleted': False}
-            )
-            Attendance.objects.update_or_create(
-                event=self.event, user=user,
-                defaults={
-                    'confirmed_by_user': request.user,
-                    'is_confirmed': True,
-                    'confirmed_by_system': Attendance.SYSTEM_UPLOADS,
-                }
-            )
-            logging.info('User %s added user %s to event %s' % (request.user.username, user.username, self.event.id))
+            users = form.cleaned_data['users']
+            for user in users:
+                EventEntry.all_objects.update_or_create(
+                    user=user, event=self.event,
+                    defaults={'added_by_assistant': True, 'check_in_pushed': False, 'deleted': False}
+                )
+                Attendance.objects.update_or_create(
+                    event=self.event, user=user,
+                    defaults={
+                        'confirmed_by_user': request.user,
+                        'is_confirmed': True,
+                        'confirmed_by_system': Attendance.SYSTEM_UPLOADS,
+                    }
+                )
+            logging.info('User %s added users %s to event %s' % (
+                request.user.username,
+                ', '.join(map(str, users.values_list('unti_id', flat=True))),
+                self.event.id))
             return redirect('event-view', uid=self.event.uid)
         else:
             return render(request, self.template_name, {'event': self.event, 'form': form})
@@ -1153,36 +1295,32 @@ class RemoveUserFromEvent(GetEventMixin, View):
 class UserAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
         event_id = self.forwarded.get('event_id')
+        chosen = self.forwarded.get('users') or []
         if not self.request.user.is_authenticated or not self.request.user.is_assistant or not event_id:
             return User.objects.none()
-        qs = User.objects.filter(is_assistant=False).exclude(
+        qs = User.objects.exclude(
             id__in=EventEntry.objects.filter(event_id=event_id).values_list('user_id', flat=True)
-        ).filter(id__in=UserSocialAuth.objects.all().values_list('user__id', flat=True))
+        ).filter(id__in=UserSocialAuth.objects.all().values_list('user__id', flat=True)).exclude(id__in=chosen)
         if self.q:
             qs = self.search_user(qs, self.q)
         return qs
 
     @staticmethod
     def search_user(qs, query):
-        if query:
-            if len(query.split()) == 1:
-                qs = qs.filter(
-                    Q(email__icontains=query) | Q(username__icontains=query) |
-                    Q(last_name__icontains=query) | Q(first_name__icontains=query) |
-                    Q(second_name__icontains=query)
-                )
-            else:
-                filters = []
-                q_parts = query.split()
-                fields = ['last_name', 'first_name', 'second_name']
-                for p_len in range(1, min(len(fields), len(q_parts)) + 1):
-                    indexes = filter(lambda c: c[0] == 0, combinations(range(len(q_parts)), p_len))
-                    ranges = (zip(idxs, idxs[1:] + (None,)) for idxs in indexes)
-                    parts_combs = [[" ".join(q_parts[i:j]) for i, j in r] for r in ranges]
-                    for p in permutations(fields, p_len):
-                        filters.append(functools.reduce(lambda x, y: x | y,
-                                              (Q(**{k: v for k, v in zip(p, parts)}) for parts in parts_combs)))
-                qs = qs.filter(functools.reduce(lambda x, y: x | y, filters))
+        def make_q(val):
+            str_args = ['email__icontains', 'username__icontains', 'first_name__icontains', 'last_name__icontains',
+                        'leader_id']
+            int_args = ['unti_id']
+            q = [Q(**{i: val}) for i in str_args]
+            if val.isdigit():
+                q.extend([Q(**{i: val}) for i in int_args])
+            return functools.reduce(lambda x, y: x | y, q)
+
+        if query.strip():
+            q_parts = list(filter(None, query.split()))
+            if len(q_parts) > 1:
+                return qs.filter(functools.reduce(lambda x, y: x & y, map(make_q, q_parts)))
+            return qs.filter(make_q(q_parts[0]))
         return qs
 
     def get_result_label(self, result):
@@ -1419,18 +1557,6 @@ class ConfirmTeamMaterial(GetEventMixin, View):
         return JsonResponse({})
 
 
-class ConfirmTeamView(GetEventMixin, View):
-    def post(self, request, uid=None):
-        if not request.user.is_authenticated or not request.user.is_assistant:
-            return JsonResponse({}, status=403)
-        try:
-            assert Team.objects.filter(event=self.event, id=request.POST.get('team_id')).update(confirmed=True)
-            logging.info('User %s confirmed team %s' % (request.user.username, request.POST.get('team_id')))
-        except (Team.DoesNotExist, TypeError, ValueError, AssertionError):
-            return JsonResponse({}, status=404)
-        return JsonResponse({})
-
-
 class BaseOwnershipChecker(GetEventMixin, View):
     def post(self, request, **kwargs):
         if request.user.is_assistant or not EventEntry.objects.filter(event=self.event, user=request.user):
@@ -1613,14 +1739,58 @@ class TransferView(GetEventMixin, View):
         return JsonResponse({})
 
 
+class ActivitiesFilter(SearchHelperMixin):
+    def filter_search(self, qs):
+        text = self.request.GET.get('search')
+        if text:
+            return qs.filter(Q(title__icontains=text) | Q(authors__title__icontains=text))
+        return qs
+
+    def get_activities(self):
+        if not self.only_my_activities():
+            qs = Activity.objects.filter(is_deleted=False)
+            if self.request.user.is_assistant:
+                qs = self.filter_context(qs)
+            else:
+                qs = qs.filter(id__in=EventEntry.objects.filter(
+                    user=self.request.user).values_list('event__activity_id', flat=True)
+                )
+        else:
+            qs = self.filter_context(Activity.objects.filter(
+                is_deleted=False,
+                id__in=ActivityEnrollment.objects.filter(user=self.request.user).values_list('activity_id', flat=True))
+            )
+        min_dt, max_dt = self.get_datetimes()
+        if min_dt:
+            qs = qs.filter(event__dt_start__gte=min_dt)
+        if max_dt:
+            qs = qs.filter(event__dt_start__lt=max_dt)
+        qs = self.filter_search(qs)
+        return qs.distinct().order_by('title', 'id')
+
+    def filter_context(self, qs):
+        if self.request.user.is_assistant and self.request.user.chosen_context_id:
+            return qs.filter(id__in=Event.objects.filter(
+                context_id=self.request.user.chosen_context_id).values_list('activity_id', flat=True)
+            )
+        return qs
+
+    def only_my_activities(self):
+        return self.request.GET.get('activities') == 'my'
+
+
 @method_decorator(login_required, name='dispatch')
-class ActivitiesView(TemplateView):
+class ActivitiesView(ActivitiesFilter, ListView):
     template_name = 'activities.html'
+    paginate_by = settings.PAGINATE_EVENTS_BY
+
+    def get_queryset(self):
+        return self.get_activities()
 
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
-        activities = self.get_activities().filter(event__event_type_id__in=get_allowed_event_type_ids()).distinct()
-        activities = activities.order_by('title', 'id').annotate(event_count=Count('event'))
+        self.update_context_with_search_parameters(data)
+        activities = data['object_list']
         user_materials = dict(EventMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
         team_materials = dict(EventTeamMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
         event_materials = dict(EventOnlyMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
@@ -1629,29 +1799,16 @@ class ActivitiesView(TemplateView):
         check_ins = dict(EventEntry.objects.filter(deleted=False, is_active=True).values_list('event__activity_id').
                          annotate(cnt=Count('user_id')))
         activity_types = dict(Event.objects.values_list('activity_id', 'event_type__title'))
+        q = Q(event__is_active=True, event__event_type_id__in=get_allowed_event_type_ids())
+        events_cnt = dict(Activity.objects.values_list('id').annotate(cnt=Count('event', filter=q)))
         for a in activities:
             a.participants_num = participants.get(a.id, 0)
             a.check_ins_num = check_ins.get(a.id, 0)
             a.materials_num = user_materials.get(a.id, 0) + team_materials.get(a.id, 0) + event_materials.get(a.id, 0)
             a.activity_type = activity_types.get(a.id)
+            a.event_count = events_cnt.get(a.id, 0)
         data.update({'objects': activities, 'only_my': self.only_my_activities()})
         return data
-
-    def get_activities(self):
-        if not self.only_my_activities():
-            return self.filter_context(Activity.objects.filter(is_deleted=False))
-        return self.filter_context(Activity.objects.filter(
-            is_deleted=False,
-            id__in=ActivityEnrollment.objects.filter(user=self.request.user).values_list('activity_id', flat=True))
-        )
-
-    def filter_context(self, qs):
-        if self.request.user.is_assistant and self.request.user.chosen_context_id:
-            return qs.filter(event__context_id=self.request.user.chosen_context_id).distinct()
-        return qs
-
-    def only_my_activities(self):
-        return self.request.GET.get('activities') == 'my'
 
 
 class CreateEventBlocks(GetEventMixin, TemplateView):
@@ -2090,6 +2247,129 @@ class TeamResultInfoView(BaseResultInfoView):
         }
 
 
+class CustomLimitOffsetPagination(LimitOffsetPagination):
+    default_limit = settings.DRF_LIMIT_OFFSET_PAGINATION_DEFAULT
+    max_limit = settings.DRF_LIMIT_OFFSET_PAGINATION_MAX
+
+
+class AllUserResultsView(ListAPIView):
+    """
+    **Описание**
+
+        Запрос информации о всех пользовательских результатах
+
+    **Пример запроса**
+
+        GET /api/all-user-results/?unti_id=123&created_at_after=2019-01-31T00:00:00&limit=10&offset=10
+
+    **Параметры запроса**
+
+        * unti_id - unti id пользователя, необязательный параметр
+        * created_at_after - минимальная дата и время создания в iso формате, необязательный параметр
+        * created_at_before - максимальная дата и время создания в iso формате, необязательный параметр
+        * limit - максимальное количество результатов на странице, но не более 50
+        * offset
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "count": 1,
+                "next": null,
+                "previous": null,
+                "results": [
+                    {
+                        "event_uuid": "63284c8e-4f4a-4b54-9ef9-92f1cfb13d98",
+                        "comment": "",
+                        "approved": false,
+                        "levels": null,
+                        "url": "http://example.com/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/2/user/1",
+                        "files": [
+                            {
+                                "file_url": "http://example.com/media/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/22/file.pdf",
+                                "file_name": "file.pdf"
+                            }
+                        ],
+                        "user": {
+                            "unti_id": 2
+                        }
+                    }
+                ]
+            }
+        * 400 некорректный запрос
+        * 403 неправильный api key
+    """
+    pagination_class = CustomLimitOffsetPagination
+    serializer_class = LabsUserResultSerializer
+    filter_backends = (django_filters.rest_framework.DjangoFilterBackend,)
+    filterset_class = LabsUserResultFilter
+    permission_classes = (ApiPermission,)
+
+    def get_queryset(self):
+        return LabsUserResult.objects.select_related('user', 'result__block__event')\
+            .prefetch_related('eventmaterial_set').distinct()
+
+
+class AllTeamResultsView(ListAPIView):
+    """
+    **Описание**
+
+        Запрос информации о всех командных результатах
+
+    **Пример запроса**
+
+        GET /api/all-team-results/?team_id=123&created_at_after=2019-01-31T00:00:00&limit=10&offset=10
+
+    **Параметры запроса**
+
+        * team_id - id команды, необязательный параметр
+        * created_at_after - минимальная дата и время создания в iso формате, необязательный параметр
+        * created_at_before - максимальная дата и время создания в iso формате, необязательный параметр
+        * limit - максимальное количество результатов на странице, но не более 50
+        * offset
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "count": 1,
+                "next": null,
+                "previous": null,
+                "results": [
+                    {
+                        "event_uuid": "63284c8e-4f4a-4b54-9ef9-92f1cfb13d98",
+                        "comment": "",
+                        "approved": false,
+                        "levels": null,
+                        "url": "http://example.com/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/2/team/1",
+                        "files": [
+                            {
+                                "file_url": "http://example.com/media/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/22/file.pdf",
+                                "file_name": "file.pdf"
+                            }
+                        ],
+                        "team": {
+                            "id": 123,
+                            "name": "name",
+                            "members": [1, 2, 3]
+                        }
+                    }
+                ]
+            }
+        * 400 некорректный запрос
+        * 403 неправильный api key
+    """
+    pagination_class = CustomLimitOffsetPagination
+    serializer_class = LabsTeamResultSerializer
+    filter_backends = (django_filters.rest_framework.DjangoFilterBackend,)
+    filterset_class = LabsTeamResultFilter
+    permission_classes = (ApiPermission,)
+
+    def get_queryset(self):
+        return LabsTeamResult.objects.select_related('team', 'result__block__event')\
+            .prefetch_related('eventteammaterial_set', 'team__users').distinct()
+
+
 @method_decorator(staff_member_required, name='dispatch')
 class GetDpData(View):
     def get(self, request):
@@ -2198,17 +2478,17 @@ class EventCsvData(GetEventMixin, CSVResponseGeneratorMixin, View):
 
 
 @method_decorator(login_required, name='dispatch')
-class EventsCsvData(IndexPageEventsFilterMixin, CSVResponseGeneratorMixin, View):
-    """
-    Выгрузка csv по нескольким мероприятиям сразу
-    """
+class BaseCsvEventsDataView(CSVResponseGeneratorMixin, View):
     def get(self, request):
         if not request.user.is_assistant:
             raise PermissionDenied
-        events = self.get_events()
+        events = self.get_events_for_csv()
+        activity_filter = getattr(self, 'activity_filter', None)
+        date_min, date_max = self.get_dates()
         meta_data = {
-            'activity': self.activity_filter,
-            'date': self.get_date(),
+            'activity': activity_filter,
+            'date_min': date_min,
+            'date_max': date_max,
             'context': request.user.chosen_context,
         }
         obj = EventGroupMaterialsCSV(events, meta_data)
@@ -2228,7 +2508,7 @@ class EventsCsvData(IndexPageEventsFilterMixin, CSVResponseGeneratorMixin, View)
         if CSVDump.current_generations_for_user(request.user) >= settings.MAX_PARALLEL_CSV_GENERATIONS:
             raise PermissionDenied
         task_meta = meta_data.copy()
-        task_meta['activity'] = self.activity_filter and self.activity_filter.id
+        task_meta['activity'] = activity_filter and activity_filter.id
         task_meta['context'] = request.user.chosen_context and request.user.chosen_context.id
         csv_dump = CSVDump.objects.create(
             owner=request.user, header=obj.get_csv_filename(do_quote=False), meta_data=task_meta
@@ -2236,6 +2516,28 @@ class EventsCsvData(IndexPageEventsFilterMixin, CSVResponseGeneratorMixin, View)
         generate_events_csv.delay(csv_dump.id, [i.id for i in events], get_csv_encoding_for_request(self.request),
                                   task_meta)
         return JsonResponse({'page_url': reverse('csv-dumps-list'), 'dump_id': csv_dump.id})
+
+    def get_events_for_csv(self):
+        return Event.objects.none()
+
+
+class EventsCsvData(IndexPageEventsFilterMixin, BaseCsvEventsDataView):
+    """
+    Выгрузка csv по нескольким мероприятиям сразу
+    """
+    def get_events_for_csv(self):
+        return self.get_events()
+
+
+class ActivitiesCsvData(ActivitiesFilter, BaseCsvEventsDataView):
+    """
+    Выгрузка csv по нескольким активностям сразу
+    """
+    def get_events_for_csv(self):
+        return Event.objects.filter(
+            activity_id__in=self.get_activities().order_by().values_list('id', flat=True)
+        ).order_by('title', 'dt_start')
+
 
 
 @login_required
@@ -2255,10 +2557,10 @@ def switch_context(request):
         current_url = request.POST.get('url')
         try:
             url = resolve(current_url)
-            if url.url_name == 'activities':
+            if url.url_name == 'index':
                 redirect_url = current_url
             else:
-                redirect_url = reverse('index')
+                redirect_url = reverse('events')
         except Resolver404:
             redirect_url = reverse('index')
         return JsonResponse({'redirect': redirect_url})
