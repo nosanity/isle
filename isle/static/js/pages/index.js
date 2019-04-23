@@ -65,6 +65,13 @@ function setCookie(name,value,days) {
     document.cookie = name + "=" + (value || "")  + expires + "; path=/";
 }
 
+$('.events-filter-cancel-btn').on('click', (e) => {
+    e.preventDefault();
+    let btn = $(e.target);
+    btn = btn.first().tagName == 'A' ? btn : btn.parents('a');
+    window.location = btn.attr('href');
+});
+
 function queryStringUrlReplacement(url, param, value) {
     const re = new RegExp(`[\\?&]${param}=([^&#]*)`, "i");
     const match = re.exec(url);
