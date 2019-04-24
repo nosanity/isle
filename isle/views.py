@@ -131,7 +131,7 @@ class IndexPageEventsFilterMixin(SearchHelperMixin):
         else:
             events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user).
                                           values_list('event_id', flat=True))
-        events = events.filter(event_type_id__in=get_allowed_event_type_ids())
+        events = events.filter(Q(event_type_id__in=get_allowed_event_type_ids()) | Q(event_type__isnull=True))
         min_dt, max_dt = self.get_datetimes()
         if min_dt:
             events = events.filter(dt_start__gte=min_dt)
@@ -1799,7 +1799,8 @@ class ActivitiesView(ActivitiesFilter, ListView):
         check_ins = dict(EventEntry.objects.filter(deleted=False, is_active=True).values_list('event__activity_id').
                          annotate(cnt=Count('user_id')))
         activity_types = dict(Event.objects.values_list('activity_id', 'event_type__title'))
-        q = Q(event__is_active=True, event__event_type_id__in=get_allowed_event_type_ids())
+        q = Q(event__is_active=True) & \
+            (Q(event__event_type_id__in=get_allowed_event_type_ids()) | Q(event__event_type__isnull=True))
         events_cnt = dict(Activity.objects.values_list('id').annotate(cnt=Count('event', filter=q)))
         for a in activities:
             a.participants_num = participants.get(a.id, 0)
