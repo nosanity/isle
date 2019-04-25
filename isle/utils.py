@@ -194,7 +194,7 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
                     for model in meta:
                         # подтягивание информации о метамодели, указанной в метаданных, если такая метамодель
                         # еще не подтягивалась в рамках данного запуска обновления данных активностей и эвентов
-                        if isinstance(model, dict) and 'model' in model and model['model'] not in metamodels:
+                        if isinstance(model, dict) and model.get('model') and model['model'] not in metamodels:
                             try:
                                 meta_data = DpApi().get_metamodel(model['model'])
                                 if isinstance(meta_data, dict) and all(i in meta_data for i in ['title', 'guid']):
