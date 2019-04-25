@@ -40,6 +40,39 @@ class User(AbstractUser):
     def get_full_name(self):
         return ' '.join(filter(None, [self.last_name, self.first_name]))
 
+    def is_assistant_for_context(self, context):
+        """
+        Проверка является ли пользователь ассистентом в контексте
+        """
+        if self.is_assistant:
+            return True
+        if not context:
+            return False
+        return UserContextRole.active_objects.filter(
+            user=self,
+            role__tag__slug=settings.CONTEXT_MANAGER_TAG,
+            role__context_uuid=context.uuid,
+        ).exists()
+
+    def has_assistant_role(self):
+        return self.is_assistant or UserContextRole.active_objects.filter(
+            user=self, role__tag__slug=settings.CONTEXT_MANAGER_TAG
+        ).exists()
+
+    def is_global_assistant(self):
+        return self.is_assistant
+
+    def get_available_context_uuids(self):
+        """
+        uuid контекстов, для которых пользователь является ассистентом
+        """
+        if self.is_assistant:
+            return list(Context.objects.values_list('uuid', flat=True))
+        return list(UserContextRole.active_objects.filter(
+            user=self,
+            role__tag__slug=settings.CONTEXT_MANAGER_TAG
+        ).values_list('role__context_uuid', flat=True))
+
 
 class EventType(models.Model):
     ext_id = models.PositiveIntegerField(verbose_name='Внешний id', null=True)
@@ -90,6 +123,47 @@ class Context(models.Model):
     uuid = models.CharField(max_length=255, unique=True)
     title = models.CharField(max_length=500, default='')
     guid = models.CharField(max_length=500, default='')
+
+    def get_assistant_ids(self):
+        global_assistants = list(User.objects.filter(is_assistant=True).values_list('id', flat=True))
+        assistants = list(UserContextRole.active_objects.filter(
+            role__tag__slug=settings.CONTEXT_MANAGER_TAG,
+            role__context_uuid=self.uuid
+        ).values_list('user_id', flat=True))
+        return list(set(global_assistants + assistants))
+
+    def is_assistant(self, user):
+        return user.is_assistant_for_context(self)
+
+
+class Tag(models.Model):
+    slug = models.SlugField(unique=True)
+    is_active = models.BooleanField(default=True)
+
+
+class ContextRole(models.Model):
+    context_uuid = models.CharField(max_length=50)
+    tag = models.ForeignKey(Tag, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ('context_uuid', 'tag')
+
+
+class UserContextRoleManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(is_active=True, role__tag__is_active=True)
+
+
+class UserContextRole(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    role = models.ForeignKey(ContextRole, on_delete=models.CASCADE)
+    is_active = models.BooleanField(default=True)
+
+    active_objects = UserContextRoleManager()
+    objects = models.Manager()
+
+    class Meta:
+        unique_together = ('user', 'role')
 
 
 class Event(models.Model):
@@ -580,7 +654,8 @@ class Team(models.Model):
         return self.name
 
     def user_can_edit_team(self, user):
-        return user.is_assistant or user.id == self.creator_id or user in self.users.all()
+        return user.is_assistant_for_context(self.event.context) or user.id == self.creator_id or \
+               user in self.users.all()
 
 
 class EventTeamMaterial(AbstractMaterial):

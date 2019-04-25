@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 from isle.models import (
     Event, User, EventMaterial, EventEntry, LabsEventBlock, LabsEventResult, LabsUserResult, Team,
-    LabsTeamResult, EventTeamMaterial
+    LabsTeamResult, EventTeamMaterial, Context, UserContextRole, Tag, ContextRole
 )
 
 
@@ -33,13 +33,31 @@ class BaseUpload:
         shutil.rmtree(cls.media_temp_dir, ignore_errors=True)
 
     def setUp(self):
+        context1 = Context.objects.create(
+            timezone='Europe/Moscow', uuid=str(uuid4()), title='context1', guid='context1',
+        )
+        context2 = Context.objects.create(
+            timezone='Europe/Moscow', uuid=str(uuid4()), title='context2', guid='context2',
+        )
         self.event = Event.objects.create(uid='11111111-1111-1111-11111111', title='title', is_active=True,
-                                          dt_start=timezone.now(), dt_end=timezone.now())
+                                          dt_start=timezone.now(), dt_end=timezone.now(), context=context1)
         self.event_block = LabsEventBlock.objects.create(
             event=self.event, uuid=str(uuid4()), title='title', order=1
         )
         self.event_block_result = LabsEventResult.objects.create(
             block=self.event_block, uuid=str(uuid4()), title='title', order=1
+        )
+        self.assistant_tag = Tag.objects.create(slug=settings.CONTEXT_MANAGER_TAG)
+        self.context1_assistant_role = ContextRole.objects.create(context_uuid=context1.uuid, tag=self.assistant_tag)
+        self.context2_assistant_role = ContextRole.objects.create(context_uuid=context2.uuid, tag=self.assistant_tag)
+
+        self.assistant_user = User.objects.create_user('assistant', 'assistant@exmaple.com', 'password', unti_id=3)
+        UserContextRole.objects.create(user=self.assistant_user, role=self.context1_assistant_role, is_active=True)
+        self.wrong_assistant_user = User.objects.create_user(
+            'assistant2', 'assistant2@exmaple.com', 'password', unti_id=4
+        )
+        UserContextRole.objects.create(
+            user=self.wrong_assistant_user, role=self.context2_assistant_role, is_active=True
         )
 
     def login(self, user):
@@ -87,6 +105,12 @@ class BaseUpload:
             self.assertEqual(self.material_model.objects.first().initiator, self.assistant_user.unti_id)
             self.assertEqual(self.result_model.objects.count(), 1)
             self.assertTrue(default_storage.exists(self.material_model.objects.first().file.name))
+
+    def test_another_context_assistant_can_not_see_upload_page(self):
+        self.login(self.wrong_assistant_user)
+        with self.assertTemplateUsed(self.xle_template_name):
+            resp = self.client.get(self.page_url)
+            self.assertEqual(resp.status_code, 200)
 
     def test_user_can_upload_file(self):
         self.login(self.user)
@@ -236,8 +260,6 @@ class BaseUpload:
 class TestPersonalUpload(BaseUpload, TestCase):
     def setUp(self):
         super().setUp()
-        self.assistant_user = User.objects.create_user('assistant', 'assistant@exmaple.com', 'password', unti_id=3,
-                                                       is_assistant=True)
         self.user = User.objects.create_user('user', 'user@exmaple.com', 'password', unti_id=1)
         self.random_user = User.objects.create_user('random', 'random@exmaple.com', 'password', unti_id=2)
         self.page_url = reverse('load-materials', kwargs={'uid': self.event.uid, 'unti_id': self.user.unti_id})
@@ -261,8 +283,6 @@ class TestTeamUpload(BaseUpload, TestCase):
 
     def setUp(self):
         super().setUp()
-        self.assistant_user = User.objects.create_user('assistant', 'assistant@exmaple.com', 'password', unti_id=3,
-                                                       is_assistant=True)
         self.user = User.objects.create_user('user', 'user@exmaple.com', 'password', unti_id=1)
         self.random_user = User.objects.create_user('random', 'random@exmaple.com', 'password', unti_id=2)
         self.page_url = reverse('load-materials', kwargs={'uid': self.event.uid, 'unti_id': self.user.unti_id})

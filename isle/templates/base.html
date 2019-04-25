@@ -72,7 +72,7 @@
         {% block js %}
             <script type="text/javascript" src="{% static 'js/libs/jquery.min.js' %}"></script>
             <script type="text/javascript" src="{% static 'js/libs/bootstrap.min.js' %}"></script>
-            {% if request.user.is_assistant %}
+            {% if request.user.has_assistant_role %}
                 <script type="text/javascript" src="{% static 'js/pages/base.js' %}"></script>
             {% endif %}
         {% endblock %}

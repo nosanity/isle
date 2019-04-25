@@ -7,6 +7,7 @@ from carrier_client.message import OutgoingMessage
 from django_carrier_client.helpers import MessageManagerHelper
 from isle.api import SSOApi, ApiError
 from isle.models import LabsUserResult, LabsTeamResult
+from isle.utils import update_context_manager
 
 
 message_manager = MessageManager(
@@ -70,7 +71,7 @@ def check_kafka():
 
 class KafkaBaseListener:
     topic = ''
-    actions = []
+    actions = (KafkaActions.CREATE, KafkaActions.UPDATE, KafkaActions.DELETE)
     msg_type = ''
 
     def handle_message(self, msg):
@@ -103,4 +104,20 @@ class SSOUserChangeListener(KafkaBaseListener):
             logging.error('Got wrong object id from kafka: %s' % obj_id)
 
 
+class PLEContextUserChanged(KafkaBaseListener):
+    topic = settings.KAFKA_TOPIC_PLE
+    msg_type = 'context_user'
+
+    def _handle_for_id(self, obj_id, action):
+        try:
+            assert isinstance(obj_id, dict)
+            unti_id = obj_id.get('user')
+            context_uuid = obj_id.get('context')
+            assert unti_id and context_uuid
+            update_context_manager(context_uuid, unti_id)
+        except (AssertionError, AttributeError):
+            logging.error('Got wrong object id from kafka: %s' % obj_id)
+
+
 MessageManagerHelper.set_manager_to_listen(SSOUserChangeListener())
+MessageManagerHelper.set_manager_to_listen(PLEContextUserChanged())

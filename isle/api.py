@@ -172,8 +172,8 @@ class BaseApi:
             try:
                 kwargs['params']['page'] = page
                 resp = requests.request(method, url, **kwargs)
-                total_pages = int(resp.headers['X-Pagination-Page-Count'])
                 assert resp.ok, 'status_code %s' % resp.status_code
+                total_pages = int(resp.headers['X-Pagination-Page-Count'])
                 yield resp.json()
                 page += 1
             except (ValueError, TypeError, AssertionError):
@@ -256,3 +256,12 @@ class SSOApi(BaseApi):
 
     def push_user_to_uploads(self, user_id):
         return self.make_request_no_pagination('/api/push-user-to-uploads/', method='POST', json={'unti_id': user_id})
+
+
+class PLEApi(BaseApi):
+    name = 'ple'
+    base_url = settings.PLE_URL.rstrip('/')
+    authorization = {'params': {'app_token': getattr(settings, 'PLE_TOKEN', '')}}
+
+    def get_context_managers(self, context_uuid):
+        return self.make_request_no_pagination('/api/v1/context/{}/users'.format(context_uuid))

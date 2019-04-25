@@ -1,7 +1,6 @@
 from django import forms
 from django.conf import settings
 from dal import autocomplete, forward
-from social_django.models import UserSocialAuth
 from isle.models import Team, User, EventBlock, EventOnlyMaterial, UserResult, TeamResult, UserRole, EventEntry
 
 
@@ -33,7 +32,7 @@ class CreateTeamForm(BaseTeamForm):
         instance = super().get_instance()
         instance.event = self.event
         instance.creator = self.creator
-        instance.confirmed = self.creator.is_assistant
+        instance.confirmed = self.creator.is_assistant_for_context(self.event.context)
         return instance
 
 

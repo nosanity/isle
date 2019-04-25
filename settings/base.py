@@ -176,6 +176,9 @@ XLE_TOKEN = ''
 DP_URL = ''
 DP_TOKEN = ''
 
+PLE_URL = ''
+PLE_TOKEN = ''
+
 # базовый урл uploads
 BASE_URL = ''
 
@@ -189,6 +192,7 @@ KAFKA_PORT = 80
 KAFKA_TOKEN = ''
 KAFKA_PROTOCOL = 'http'
 KAFKA_TOPIC_SSO = 'sso'
+KAFKA_TOPIC_PLE = 'ple'
 
 # количество всех материалов в выбранных материалов, более которого генерация выгрузки должна идти асинхронно
 MAX_MATERIALS_FOR_SYNC_GENERATION = 500
@@ -204,6 +208,7 @@ PAGINATE_EVENTS_BY = 100
 DRF_LIMIT_OFFSET_PAGINATION_DEFAULT = 20
 # максимальное количество записей на странице при использовании LimitOffsetPagination
 DRF_LIMIT_OFFSET_PAGINATION_MAX = 50
+CONTEXT_MANAGER_TAG = 'managerByContext'
 
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}
@@ -219,7 +224,7 @@ except IOError as e:
 
 define = [
     'SSO_UNTI_URL', 'SSO_API_KEY', 'SSO_API_KEY', 'SOCIAL_AUTH_UNTI_SECRET', 'LABS_URL', 'LABS_TOKEN',
-    'XLE_URL', 'XLE_TOKEN', 'DP_URL', 'DP_TOKEN', 'BASE_URL'
+    'XLE_URL', 'XLE_TOKEN', 'DP_URL', 'DP_TOKEN', 'BASE_URL', 'PLE_URL', 'PLE_TOKEN'
 ]
 
 for name in define:

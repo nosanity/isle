@@ -61,7 +61,7 @@
         </form>
     </div>
     <div class="clearfix"></div>
-    {% if request.user.is_assistant and event_upload %}
+    {% if is_assistant and event_upload %}
         <div class="modal fade text-left" tabindex="-1" role="dialog" id="transfer-modal">
           <div class="modal-dialog">
             <div class="modal-content">
@@ -111,7 +111,7 @@
                             <span value="{{ link.id }}" class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
                             </span>
                         {% endif %}
-                        {% if request.user.is_assistant %}
+                        {% if is_assistant %}
                             <div>
                                 <span class="text-muted assistant-info-string">
                                     {{ link.get_info_string }}
@@ -146,7 +146,7 @@
     {{ block.super }}
     <script type="text/javascript">
         const pageType = "loadMaterials";
-        const isAssistant = eval("{{ request.user.is_assistant|lower }}");
+        const isAssistant = eval("{{ is_assistant|lower }}");
         const eventUpload = eval("{{ event_upload|lower }}");
         const teamUpload = eval("{{ team_upload|lower }}");
         const fromUser = eval("{{ user_upload|lower }}");

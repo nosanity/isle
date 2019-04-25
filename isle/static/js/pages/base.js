@@ -7,7 +7,7 @@ $(document).ready(function() {
             method: 'POST',
             data: {context_id: context_id, csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val(), url: window.location.pathname},
             success: function(data) {
-                window.location = data.redirect;
+                window.location = data.redirect + window.location.search;
             }
         })
     })

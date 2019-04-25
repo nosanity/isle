@@ -17,10 +17,10 @@ from django.utils.dateparse import parse_datetime
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext as _
 import requests
-from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi
+from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi, SSOApi, PLEApi
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
-                         Team, Author)
+                         Team, Author, Tag, ContextRole, UserContextRole)
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -742,3 +742,26 @@ def get_csv_encoding_for_request(request):
         os_family = ''
     overridden_encoding = settings.CSV_ENCODING_FOR_OS.get(os_family.lower())
     return overridden_encoding or settings.DEFAULT_CSV_ENCODING
+
+
+def update_context_manager(context_uuid, unti_id):
+    """
+    создание/обновление роли менеджера контекста для пользователя
+    """
+    try:
+        current_user = User.objects.get(unti_id=unti_id)
+        unti_id = str(unti_id)
+        resp = PLEApi().get_context_managers(context_uuid)
+        user = list(filter(lambda x: x['untiID'] == unti_id, resp['users']))
+        if not user:
+            logging.error('User %s not found in managers for context %s' % (unti_id, context_uuid))
+            return
+        is_manager = user[0]['isManager'] == '1'
+        tag = Tag.objects.update_or_create(slug=settings.CONTEXT_MANAGER_TAG, defaults={'is_active': True})[0]
+        role = ContextRole.objects.get_or_create(tag=tag, context_uuid=context_uuid)[0]
+        UserContextRole.objects.update_or_create(user=current_user, role=role, defaults={'is_active': is_manager})
+        return True
+    except ApiError:
+        pass
+    except Exception:
+        logging.exception('Failed to update user %s manager status for context %s' % (unti_id, context_uuid))
