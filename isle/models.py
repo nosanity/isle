@@ -330,6 +330,7 @@ class EventEntry(models.Model):
     check_in_pushed = models.BooleanField(default=False, verbose_name='Чекин проставлен в ILE')
     deleted = models.BooleanField(default=False)
     approve_text = models.TextField(verbose_name='Подтверждающий текст', blank=True, default='')
+    self_enrolled = models.BooleanField(default=False)
 
     objects = NotDeletedEntries()
     all_objects = models.Manager()

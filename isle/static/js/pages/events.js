@@ -75,6 +75,38 @@ $('.delete-team-btn').on('click', (e) => {
     }
 });
 
+$('.self-enroll-btn').on('click', (e) => {
+    e.preventDefault();
+    $.ajax({
+        method: 'POST',
+        url: enrollUrl,
+        data: {csrfmiddlewaretoken: csrfmiddlewaretoken},
+        success: (data) => { window.location.reload(); },
+        error: () => { alert('Произошла ошибка'); }
+    })
+});
+
+$('body').delegate('.btn-confirm-delete-entry', 'click', (e) => {
+    e.preventDefault();
+    const data = {
+        csrfmiddlewaretoken: csrfmiddlewaretoken,
+        user_id: $(e.target).data('user-id'),
+        confirm: 1
+    };
+    $.ajax({
+        url: removeUserUrl,
+        method: 'POST',
+        data: data,
+        success: () => {
+            window.location.reload();
+        },
+        error: () => {
+            // TODO show appropriate message
+            alert('error');
+        }
+    });
+});
+
 function inputAttendanceChange(obj) {
     const $obj = $(obj);
     const isChecked = $obj.prop('checked');
@@ -110,14 +142,39 @@ function deleteAttendance(obj) {
         url: removeUserUrl,
         method: 'POST',
         data: data,
-        success: () => {
-            window.location.reload();
+        success: (data) => {
+            show_delete_entry_modal(data);
         },
         error: () => {
             // TODO show appropriate message
             alert('error');
         }
     });
+}
+
+function show_delete_entry_modal(data) {
+    if ($('#delete-entry-modal').length) {
+        $('#delete-entry-modal').remove();
+    }
+    let user_id = data.user_id;
+    let msg = 'Вы точно хотите удалить из мероприятия этого пользователя?'
+    if (data.has_results)
+        msg += ' Он загружал цифровой след для этого мероприятия.'
+    html = `
+        <div class="modal fade text-left" tabindex="-1" role="dialog" id="delete-entry-modal">
+          <div class="modal-dialog">
+            <div class="modal-content">
+              <div class="modal-body">
+                <p>${msg}</p>
+                <button data-user-id="${user_id}" class="btn btn-success btn-confirm-delete-entry pull-right">Подтверждаю</button>
+                <button data-dismiss="modal" class="btn btn-danger pull-left">Отменить</button>
+              </div>
+            </div>
+          </div>
+        </div>
+    `;
+    $('body').append($(html));
+    $('#delete-entry-modal').modal('show');
 }
 
 function approveTextButton() {

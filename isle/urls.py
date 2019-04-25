@@ -45,6 +45,7 @@ urlpatterns = [
     path('<str:uid>/delete-team/<int:team_id>/', views.DeleteTeamView.as_view(), name='delete-team'),
     path('<str:uid>/', views.EventView.as_view(), name='event-view'),
     path('<str:uid>/<int:unti_id>/', views.LoadUserMaterialsResult.as_view(), name='load-materials'),
+    path('<str:uid>/enroll/', views.EventSelfEnroll.as_view(), name='event-self-enroll'),
     path('api/user-materials/', views.UserMaterialsListView.as_view()),
     path('api/user-result-info/', views.UserResultInfoView.as_view()),
     path('api/team-result-info/', views.TeamResultInfoView.as_view()),

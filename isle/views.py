@@ -308,7 +308,7 @@ def get_event_participants(event):
 
 
 @method_decorator(context_setter, name='get')
-class EventView(GetEventMixinWithAccessCheck, TemplateView):
+class EventView(GetEventMixin, TemplateView):
     """
     Просмотр статистики загрузок материалов по эвентам
     """
@@ -332,8 +332,8 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
         else:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users).
                        values_list('user_id').annotate(num=Count('event_id')))
-        can_delete = set(EventEntry.objects.filter(event=self.event, added_by_assistant=True).
-                         values_list('user_id', flat=True))
+        can_delete = set(EventEntry.objects.filter(
+            Q(added_by_assistant=True) | Q(self_enrolled=True), event=self.event).values_list('user_id', flat=True))
         for u in users:
             u.materials_num = num.get(u.id, 0)
             u.checked_in = u.id in check_ins
@@ -1350,11 +1350,16 @@ class RemoveUserFromEvent(GetEventMixin, View):
     def post(self, request, uid=None):
         if not request.user.is_authenticated or not self.current_user_is_assistant:
             return JsonResponse({}, status=403)
+        user_id = request.POST.get('user_id')
         try:
-            entry = EventEntry.objects.get(event=self.event, user_id=request.POST.get('user_id'),
-                                           added_by_assistant=True)
-        except (TypeError, ValueError, EventEntry.DoesNotExist):
+            entry = EventEntry.objects.get(event=self.event, user_id=user_id)
+            assert entry.added_by_assistant or entry.self_enrolled
+        except (AssertionError, TypeError, ValueError, EventEntry.DoesNotExist):
             return JsonResponse({}, status=404)
+        if not request.POST.get('confirm'):
+            has_results = EventMaterial.objects.filter(user_id=user_id, event=self.event).exists() or \
+                          EventTeamMaterial.objects.filter(event=self.event, team__users__id=user_id).exists()
+            return JsonResponse({'can_delete': True, 'has_results': has_results, 'user_id': user_id})
         EventEntry.objects.filter(event=self.event, user_id=request.POST.get('user_id')).update(deleted=True)
         Attendance.objects.filter(event=self.event, user_id=request.POST.get('user_id')).delete()
         logging.warning('User %s removed user %s from event %s' %
@@ -2879,4 +2884,12 @@ class DeleteTeamView(GetEventMixinWithAccessCheck, View):
             raise PermissionDenied
         logging.warning('User #%s deleted team %s from event %s', request.user.id, team.name, team.event.uid)
         team.delete()
+        return JsonResponse({'status': 0})
+
+
+class EventSelfEnroll(GetEventMixin, View):
+    def post(self, request, **kwargs):
+        EventEntry.all_objects.update_or_create(
+            user=request.user, event=self.event, defaults={'self_enrolled': True, 'deleted': False}
+        )
         return JsonResponse({'status': 0})
