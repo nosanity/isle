@@ -1,15 +1,19 @@
+from django.utils.translation import ugettext_lazy as _
 from rest_framework import serializers
 from isle.models import User, Team
 
 
 class AttendanceSerializer(serializers.Serializer):
-    unti_id = serializers.IntegerField(source='user.unti_id')
-    event_uuid = serializers.CharField(source='event.uid')
-    created_on = serializers.DateTimeField()
-    updated_on = serializers.DateTimeField()
-    is_confirmed = serializers.BooleanField()
-    confirmed_by_user = serializers.SerializerMethodField(source='get_confirmed_by_user', allow_null=True)
-    confirmed_by_system = serializers.CharField()
+    unti_id = serializers.IntegerField(source='user.unti_id', help_text=_('unti_id пользователя'))
+    event_uuid = serializers.CharField(source='event.uid', help_text=_('uuid мероприятия'))
+    created_on = serializers.DateTimeField(required=False, help_text=_('auto created'))
+    updated_on = serializers.DateTimeField(required=False, help_text=_('auto created'))
+    is_confirmed = serializers.BooleanField(help_text=_('подтверджено ли присутстие пользователя'))
+    confirmed_by_user = serializers.SerializerMethodField(
+        source='get_confirmed_by_user', allow_null=True, required=False,
+        help_text=_('unti_id пользователя, подтвердивщего присутствие')
+    )
+    confirmed_by_system = serializers.CharField(required=False, help_text=_('auto created'))
 
     def get_confirmed_by_user(self, obj):
         if obj.confirmed_by_user:

@@ -29,9 +29,10 @@ import django_filters
 import requests
 from dal import autocomplete
 from rest_framework import status
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView
 from rest_framework.pagination import PageNumberPagination, LimitOffsetPagination
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import BasePermission, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
@@ -1436,7 +1437,7 @@ class AttendanceApi(ListAPIView):
     POST /api/attendance/{
             "is_confirmed": true,
             "user_id": 1,
-            "event_id": 1,
+            "event_uuid": "11111111-1111-1111-11111111",
             "confirmed_by_user": 1,
         }
 
@@ -2047,6 +2048,7 @@ class UserChartApiView(APIView):
 
         * 200 успешно
         * 400 неполный запрос
+        * 403 api key отсутствует или неправильный
         * 404 пользователь не найден
     """
 
@@ -2079,7 +2081,7 @@ class UserMaterialsListView(FileInfoMixin, APIView):
     """
     **Описание**
 
-        Запрос файлов пользователя по его unti_id
+        Запрос файлов пользователя по его unti_id, выводятся только файлы, привязанные к результату
 
     **Пример запроса**
 
@@ -2113,6 +2115,7 @@ class UserMaterialsListView(FileInfoMixin, APIView):
                 ...
             ]
         * 400 неполный запрос
+        * 403 api key отсутствует или неправильный
         * 404 пользователь не найден
     """
 
@@ -2199,6 +2202,7 @@ class UserResultInfoView(BaseResultInfoView):
                 ]
             }
         * 400 неполный запрос
+        * 403 api key отсутствует или неправильный
         * 404 результат не найден
     """
 
@@ -2235,6 +2239,7 @@ class TeamResultInfoView(BaseResultInfoView):
                 ]
             }
         * 400 неполный запрос
+        * 403 api key отсутствует или неправильный
         * 404 результат не найден
     """
     result_model = LabsTeamResult
@@ -2371,8 +2376,13 @@ class AllTeamResultsView(ListAPIView):
             .prefetch_related('eventteammaterial_set', 'team__users').distinct()
 
 
-@method_decorator(staff_member_required, name='dispatch')
-class GetDpData(View):
+class GetDpData(APIView):
+    """
+    TODO: описание
+    """
+    authentication_classes = (SessionAuthentication, )
+    permission_classes = (IsAdminUser, )
+
     def get(self, request):
         event_uid = request.GET.get('event')
         if not event_uid:
