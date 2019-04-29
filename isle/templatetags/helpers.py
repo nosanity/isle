@@ -43,3 +43,13 @@ def add_page_num(url, page_num):
     parts = list(parts)
     parts[4] = parse.urlencode(query)
     return parse.urlunparse(parts)
+
+
+@register.filter
+def show_block(block):
+    return any(len(result.results) for result in block.results.all()) if block.deleted else True
+
+
+@register.filter
+def show_result(result):
+    return len(result.results) if result.deleted or result.block.deleted else True
