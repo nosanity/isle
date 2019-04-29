@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load i18n static tz %}
+{% load i18n static tz helpers %}
 
 {% block content %}
     {% include 'includes/to_event_page.html' %}
@@ -11,6 +11,7 @@
 
     <div>
         {% for block in blocks %}
+            {% if block|show_block %}
             <div class="block-div mt-40">
 		    <h4>{% blocktrans with n=block.order %}{{ n }}. {% endblocktrans %}{{block.title }}
                     {% if block.deleted %} ({% blocktrans %}Удалено{% endblocktrans %}){% endif %}</h4>
@@ -39,6 +40,7 @@
                     </div>
                 {% endif %}
                 {% for result in block.results.all %}
+                {% if result|show_result %}
                 {% if user_upload and result.is_personal or team_upload and result.is_group or result.results %}
                     <div class="material-result-div" data-result="{{ result.id }}">
 			    <h4>{% blocktrans with n1=block.order n2=result.order %}{{ n1 }}.{{ n2 }}. {% endblocktrans %} {{ result.title }}
@@ -144,8 +146,10 @@
 
                     </div>
                 {% endif %}
+                {% endif %}
                 {% endfor %}
             </div>
+            {% endif %}
         {% endfor %}
     </div>
 
