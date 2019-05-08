@@ -256,3 +256,6 @@ class SSOApi(BaseApi):
 
     def push_user_to_uploads(self, user_id):
         return self.make_request_no_pagination('/api/push-user-to-uploads/', method='POST', json={'unti_id': user_id})
+
+    def get_casbin_data(self):
+        return self.make_request_no_pagination('/api/casbin/')

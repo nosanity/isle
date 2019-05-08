@@ -18,6 +18,13 @@ from django.utils.translation import ugettext_lazy as _
 from jsonfield import JSONField
 
 
+def check_permission(user, context, obj_type='file', action='upload'):
+    from .casbin import enforce
+    if not user.unti_id or not context:
+        return False
+    return enforce(str(user.unti_id), context, obj_type, action)
+
+
 class User(AbstractUser):
     second_name = models.CharField(max_length=50)
     icon = JSONField()
@@ -39,6 +46,16 @@ class User(AbstractUser):
 
     def get_full_name(self):
         return ' '.join(filter(None, [self.last_name, self.first_name]))
+
+    def is_assistant_for_context(self, context):
+        return check_permission(self, context and context.uuid)
+
+    def has_assistant_role(self):
+        return any(check_permission(self, c) for c in Context.objects.values_list('uuid', flat=True))
+
+    @cached_property
+    def available_context_uuids(self):
+        return [c for c in Context.objects.values_list('uuid', flat=True) if check_permission(self, c)]
 
 
 class EventType(models.Model):
@@ -136,9 +153,6 @@ class Event(models.Model):
         except pytz.UnknownTimeZoneError:
             tz = default
         return val.astimezone(tz)
-
-    def is_author(self, user):
-        return user.is_assistant
 
     def get_traces(self):
         traces = self.trace_set.order_by('name')
@@ -523,6 +537,7 @@ class EventMaterial(AbstractMaterial):
     comment = models.CharField(default='', max_length=255)
     result = models.ForeignKey(UserResult, on_delete=models.CASCADE, null=True, default=None)
     result_v2 = models.ForeignKey('LabsUserResult', on_delete=models.SET_NULL, null=True, default=None)
+    loaded_by_assistant = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = _(u'Материал')
@@ -563,6 +578,7 @@ class Team(models.Model):
     name = models.CharField(max_length=500, verbose_name='Название команды')
     creator = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None, related_name='team_creator')
     confirmed = models.BooleanField(default=True)
+    created_by_assistant = models.BooleanField(default=False)
 
     @property
     def team_name(self):
@@ -580,7 +596,8 @@ class Team(models.Model):
         return self.name
 
     def user_can_edit_team(self, user):
-        return user.is_assistant or user.id == self.creator_id or user in self.users.all()
+        return user.is_assistant_for_context(self.event.context) or user.id == self.creator_id or \
+               user in self.users.all()
 
 
 class EventTeamMaterial(AbstractMaterial):
@@ -590,6 +607,7 @@ class EventTeamMaterial(AbstractMaterial):
     owners = models.ManyToManyField(User)
     result = models.ForeignKey(TeamResult, on_delete=models.CASCADE, null=True, default=None)
     result_v2 = models.ForeignKey('LabsTeamResult', on_delete=models.CASCADE, null=True, default=None)
+    loaded_by_assistant = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = _(u'Материал команды')
@@ -886,3 +904,8 @@ class CSVDump(models.Model):
 
     def get_download_link(self):
         return reverse('load_csv_dump', kwargs={'dump_id': self.id})
+
+
+class CasbinData(models.Model):
+    model = models.TextField()
+    policy = models.TextField()
