@@ -82,14 +82,31 @@ def context_setter(f):
 class SearchHelperMixin:
     DATE_FORMAT = '%Y-%m-%d'
 
-    def get_date(self, attr):
+    def get_dt(self, attr):
         try:
-            return timezone.datetime.strptime(self.request.GET.get(attr), self.DATE_FORMAT).date()
+            return timezone.datetime.strptime(self.request.GET.get(attr), self.DATE_FORMAT)
         except:
             return
 
     def get_dates(self):
-        return self.get_date('date_min'), self.get_date('date_max')
+        min_dt, max_dt = self.get_dt('date_min'), self.get_dt('date_max')
+        min_dt_ok, max_dt_ok = self.is_date_correct(min_dt), self.is_date_correct(max_dt)
+        now = timezone.datetime.now()
+        if not min_dt_ok and not max_dt_ok:
+            min_dt, max_dt = now, now
+        elif not min_dt_ok:
+            min_dt = min(max_dt, now) if max_dt else now
+        elif not max_dt_ok:
+            max_dt = max(min_dt, now) if min_dt else now
+        return min_dt, max_dt
+
+    def is_date_correct(self, dt):
+        try:
+            if dt:
+                timezone.make_aware(dt)
+        except OverflowError:
+            return False
+        return True
 
     def get_datetimes(self):
         date_min, date_max = self.get_dates()

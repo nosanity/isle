@@ -2,26 +2,34 @@ setSort(sortAsc);
 
 $('#choose-date-min').val(date_min);
 $('#choose-date-max').val(date_max);
+limit_min_dt();
+limit_max_dt();
 
 $('body').delegate('#choose-date-min', 'mouseenter', () => {
     $('#choose-date-min').attr('type', 'date')
 }).delegate('#choose-date-min', 'mouseleave', () => {
     if (!$('#choose-date-min').val())
         $('#choose-date-min').attr('type', 'text')
-}).delegate('#choose-date-min', 'change', () => {
-    let max_dt = $('#choose-date-max');
-    let min_val = $('#choose-date-min').val();
-    min_val ? max_dt.attr('min', min_val) : max_dt.removeAttr('min');
-}).delegate('#choose-date-max', 'change', () => {
-    let min_dt = $('#choose-date-min');
-    let max_val = $('#choose-date-max').val();
-    max_val ? min_dt.attr('max', max_val) : min_dt.removeAttr('max');
-}).delegate('#choose-date-max', 'mouseenter', () => {
+}).delegate('#choose-date-min', 'change', limit_max_dt
+).delegate('#choose-date-max', 'change', limit_min_dt
+).delegate('#choose-date-max', 'mouseenter', () => {
     $('#choose-date-max').attr('type', 'date')
 }).delegate('#choose-date-max', 'mouseleave', () => {
     if (!$('#choose-date-max').val())
         $('#choose-date-max').attr('type', 'text')
 });
+
+function limit_min_dt() {
+    let min_dt = $('#choose-date-min');
+    let max_val = $('#choose-date-max').val();
+    max_val ? min_dt.attr('max', max_val) : min_dt.removeAttr('max');
+}
+
+function limit_max_dt() {
+    let max_dt = $('#choose-date-max');
+    let min_val = $('#choose-date-min').val();
+    min_val ? max_dt.attr('min', min_val) : max_dt.removeAttr('min');
+}
 
 $('#btn-filter-events').click((e) => {
     e.preventDefault();
