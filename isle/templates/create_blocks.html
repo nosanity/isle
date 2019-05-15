@@ -93,7 +93,7 @@
                             <button name="material_id" value="{{ link.id }}" class="btn btn-warning btn-sm pull-right delete-material-btn">
                                 {% blocktrans %}Удалить{% endblocktrans %}
                             </button>
-                            {% if not request.user.is_assistant %}<div><span>{{ link.comment }}</span></div>{% endif %}
+                            {% if not is_assistant %}<div><span>{{ link.comment }}</span></div>{% endif %}
                         </li>
                     {% endfor %}
                     <li class="list-group-item form-inline list-group-border">

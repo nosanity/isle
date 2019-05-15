@@ -33,7 +33,8 @@ class CreateTeamForm(BaseTeamForm):
         instance = super().get_instance()
         instance.event = self.event
         instance.creator = self.creator
-        instance.confirmed = self.creator.is_assistant
+        instance.confirmed = self.creator.is_assistant_for_context(self.event.context)
+        instance.created_by_assistant = instance.confirmed
         return instance
 
 

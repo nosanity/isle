@@ -61,7 +61,7 @@
         </form>
     </div>
     <div class="clearfix"></div>
-    {% if request.user.is_assistant and event_upload %}
+    {% if is_assistant and event_upload %}
         <div class="modal fade text-left" tabindex="-1" role="dialog" id="transfer-modal">
           <div class="modal-dialog">
             <div class="modal-content">
@@ -103,7 +103,7 @@
             <h5 class="event-trace-name" {% if not trace.links %}style="display:none"{% endif %}>{{ trace.trace.name }}</h5>
             <ul id="trace-ul" class="list-group list-group-flush">
                 {% for link in trace.links %}
-                    <li class="list-group-item {% if link.confirmed and team_upload and not link.initiator_user.is_assistant %}confirmed-team-link{% elif team_upload and link.initiator_user.is_assistant %}assistant-team-link{% endif %}" data-comment="{{ link.comment }}" data-material-id="{{ link.id }}">
+                    <li class="list-group-item" data-comment="{{ link.comment }}" data-material-id="{{ link.id }}">
                         <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
                         {% if can_upload %}
                             <span name="material_id" value="{{ link.id }}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
@@ -111,7 +111,7 @@
                             <span value="{{ link.id }}" class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
                             </span>
                         {% endif %}
-                        {% if request.user.is_assistant %}
+                        {% if is_assistant %}
                             <div>
                                 <span class="text-muted assistant-info-string">
                                     {{ link.get_info_string }}
@@ -133,7 +133,7 @@
 
         <ul class="list-group list-group-flush">
             {% for link in unattached_files %}
-                <li class="list-group-item {% if link.confirmed and team_upload and not link.initiator_user.is_assistant %}confirmed-team-link{% elif team_upload and link.initiator_user.is_assistant %}assistant-team-link{% endif %}">
+                <li class="list-group-item">
                     <a href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
                     <div><span>{{ link.comment }}</span></div>
                 </li>
@@ -146,7 +146,7 @@
     {{ block.super }}
     <script type="text/javascript">
         const pageType = "loadMaterials";
-        const isAssistant = eval("{{ request.user.is_assistant|lower }}");
+        const isAssistant = eval("{{ is_assistant|lower }}");
         const eventUpload = eval("{{ event_upload|lower }}");
         const teamUpload = eval("{{ team_upload|lower }}");
         const fromUser = eval("{{ user_upload|lower }}");

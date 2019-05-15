@@ -1,5 +1,5 @@
 <p class="mr-auto context-switcher-wrapper">
-    {% if request.user.is_authenticated and request.user.is_assistant %}
+    {% if AVAILABLE_CONTEXTS %}
         {% csrf_token %}
         <select class="context-switching-select form-control" data-url="{% url 'switch_context' %}">
             <option value="" {% if not request.user.chosen_context_id %}selected{% endif %}>Все контексты</option>
