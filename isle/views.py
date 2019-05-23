@@ -30,8 +30,9 @@ import requests
 from dal import autocomplete
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
-from rest_framework.generics import ListAPIView
+from rest_framework.generics import ListAPIView, CreateAPIView
 from rest_framework.pagination import PageNumberPagination, LimitOffsetPagination
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import BasePermission, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -44,7 +45,8 @@ from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
     LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump
-from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer
+from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer, \
+    UserFileSerializer
 from isle.tasks import generate_events_csv, team_members_set_changed
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
@@ -2657,3 +2659,41 @@ class CSVDumpsList(ListView):
                 'context_guid': contexts.get(context_ids[obj.id]),
             }
         return data
+
+
+class UploadUserFile(CreateAPIView):
+    """
+    **Описание**
+
+        Загрузка пользовательского файла
+
+    **Пример запроса**
+
+        POST /api/upload-user-file/
+
+    **Параметры post-запроса**
+
+        * user: int - unti id пользователя
+        * source: str - система инициатор загрузки
+        * file: загружаемый файл
+        * activity_uuid: str - uuid активности (необязательный параметр)
+        * data: str - json с дополнительными данными (необязательный параметр)
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "id":8,
+                "user":1,
+                "data":"{\"qwerty\": 123}",
+                "source":"PLE",
+                "activity_uuid":"",
+                "file":"http://127.0.0.1:8092/media/course-image.jpg"
+            }
+        * 400 некорректный запрос
+        * 403 api key отсутствует или неправильный
+    """
+
+    permission_classes = (ApiPermission, )
+    serializer_class = UserFileSerializer
+    parser_classes = (MultiPartParser, )

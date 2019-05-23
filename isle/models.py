@@ -906,6 +906,15 @@ class CSVDump(models.Model):
         return reverse('load_csv_dump', kwargs={'dump_id': self.id})
 
 
+class UserFile(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    source = models.CharField(max_length=50)
+    activity_uuid = models.CharField(default='', max_length=255)
+    file = models.FileField(max_length=300)
+    data = JSONField(null=True)
+
+    
 class CasbinData(models.Model):
     model = models.TextField()
     policy = models.TextField()
+
