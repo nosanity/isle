@@ -17,10 +17,10 @@ from django.utils.dateparse import parse_datetime
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext as _
 import requests
-from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi
+from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi, SSOApi
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
-                         Team, Author)
+                         Team, Author, CasbinData)
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -742,3 +742,17 @@ def get_csv_encoding_for_request(request):
         os_family = ''
     overridden_encoding = settings.CSV_ENCODING_FOR_OS.get(os_family.lower())
     return overridden_encoding or settings.DEFAULT_CSV_ENCODING
+
+
+def update_casbin_data():
+    try:
+        data = SSOApi().get_casbin_data()
+        cdata = CasbinData.objects.first()
+        if cdata:
+            CasbinData.objects.filter(id=cdata.id).update(model=data['model'], policy=data['policy'])
+        else:
+            CasbinData.objects.create(model=data['model'], policy=data['policy'])
+    except ApiError:
+        pass
+    except (TypeError, KeyError):
+        logging.exception('Unexpected format for casbin data')

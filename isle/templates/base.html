@@ -62,7 +62,7 @@
             </main>
             <footer>
                 <div class="row">
-                    <div class="col-sm-2">&copy;&nbsp;2018</div>
+                    <div class="col-sm-2">&copy;&nbsp;2018-2019</div>
                     <div class="col-sm-10">
                         <a href="http://2035.university/">АНО «Университет 2035»</a>
                     </div>
@@ -72,7 +72,7 @@
         {% block js %}
             <script type="text/javascript" src="{% static 'js/libs/jquery.min.js' %}"></script>
             <script type="text/javascript" src="{% static 'js/libs/bootstrap.min.js' %}"></script>
-            {% if request.user.is_assistant %}
+            {% if request.user.has_assistant_role %}
                 <script type="text/javascript" src="{% static 'js/pages/base.js' %}"></script>
             {% endif %}
         {% endblock %}
