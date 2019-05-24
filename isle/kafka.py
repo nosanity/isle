@@ -106,7 +106,7 @@ class SSOUserChangeListener(KafkaBaseListener):
 
 class CasbinPolicyListener(KafkaBaseListener):
     topic = settings.KAFKA_TOPIC_SSO
-    actions = (KafkaActions.CREATE, KafkaActions.DELETE)
+    actions = (KafkaActions.CREATE, KafkaActions.DELETE, KafkaActions.UPDATE)
     msg_type = 'casbin_policy'
 
     def _handle_for_id(self, obj_id, action):
