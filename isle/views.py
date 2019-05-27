@@ -2164,7 +2164,11 @@ class BaseResultInfoView(APIView):
             'approved': result.approved,
             'levels': result.result.meta,
             'url': result.get_page_url(),
-            'files': [{'file_url': f.get_url(), 'file_name': f.get_file_name()} for f in materials]
+            'files': [{
+                'file_url': f.get_url(),
+                'file_name': f.get_file_name(),
+                'created_at': f.created_at and f.created_at.isoformat()
+            } for f in materials]
         }
         self.update_response(resp, result)
         return Response(resp)
@@ -2198,7 +2202,11 @@ class UserResultInfoView(BaseResultInfoView):
                 "user": {"unti_id": 1},
                 "url": "https://uploads.2035.university/11111111-1111-1111-11111111/123/",
                 "files": [
-                    {"file_url": "http://example.com/file.pdf", "file_name": "file.pdf"}
+                    {
+                        "file_url": "http://example.com/file.pdf",
+                        "file_name": "file.pdf",
+                        "created_at": "2019-04-26T10:33:09.223871+00:00"
+                    }
                 ]
             }
         * 400 неполный запрос
@@ -2235,7 +2243,11 @@ class TeamResultInfoView(BaseResultInfoView):
                 "team": {"id": 1, "name": "name", "members": [1, 2]},
                 "url": "https://uploads.2035.university/load-team/11111111-1111-1111-11111111/123/",
                 "files": [
-                    {"file_url": "http://example.com/file.pdf", "file_name": "file.pdf"}
+                    {
+                        "file_url": "http://example.com/file.pdf",
+                        "file_name": "file.pdf",
+                        "created_at": "2019-04-26T10:33:09.223871+00:00"
+                    }
                 ]
             }
         * 400 неполный запрос
@@ -2293,7 +2305,8 @@ class AllUserResultsView(ListAPIView):
                         "files": [
                             {
                                 "file_url": "http://example.com/media/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/22/file.pdf",
-                                "file_name": "file.pdf"
+                                "file_name": "file.pdf",
+                                "created_at": "2019-04-26T10:33:09.223871+00:00"
                             }
                         ],
                         "user": {
@@ -2351,7 +2364,8 @@ class AllTeamResultsView(ListAPIView):
                         "files": [
                             {
                                 "file_url": "http://example.com/media/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/22/file.pdf",
-                                "file_name": "file.pdf"
+                                "file_name": "file.pdf",
+                                "created_at": "2019-04-26T10:33:09.223871+00:00"
                             }
                         ],
                         "team": {

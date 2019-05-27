@@ -838,6 +838,11 @@ class MetaModel(models.Model):
     title = models.CharField(max_length=500)
 
 
+class DpCompetence(models.Model):
+    uuid = models.CharField(max_length=50, unique=True)
+    title = models.CharField(max_length=500)
+
+
 @deconstructible
 class PathAndRename(object):
     """
