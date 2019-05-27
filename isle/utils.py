@@ -20,7 +20,7 @@ import requests
 from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
-                         Team, Author)
+                         Team, Author, DpCompetence)
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -201,6 +201,7 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
                                     MetaModel.objects.update_or_create(uuid=model['model'], defaults={
                                         'guid': meta_data['guid'], 'title': meta_data['title']
                                     })
+                                    parse_competences(meta_data)
                                     metamodels.add(model['model'])
                             except ApiError:
                                 pass
@@ -211,6 +212,17 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
             event.blocks.exclude(uuid__in=created_blocks).update(deleted=True)
     except Exception:
         logging.exception('Failed to parse event structure')
+
+
+def parse_competences(data):
+    if not isinstance(data.get('competences'), list):
+        logging.error('Failed to parse competences for meta model %s' % data.get('uuid'))
+        return
+    for item in data['competences']:
+        try:
+            DpCompetence.objects.update_or_create(uuid=item['uuid'], defaults={'title': item['title']})
+        except KeyError:
+            logging.exception('Wrong competence structure')
 
 
 def update_event_entries():
@@ -494,6 +506,8 @@ class EventMaterialsCSV:
     def __init__(self, event):
         self.event = event
         self.teams_data_cache = {}
+        self.model_names = dict(MetaModel.objects.values_list('uuid', 'title'))
+        self.competence_names = dict(DpCompetence.objects.values_list('uuid', 'title'))
 
     def field_names(self):
         return OrderedDict([
@@ -517,6 +531,11 @@ class EventMaterialsCSV:
             ('sector', _('сектор')),
             ('level', _('уровень')),
             ('sublevel', _('подуровень')),
+            ('meta_instruments', _('Инструменты')),
+            ('meta_model', _('Модель цифрового профиля')),
+            ('meta_activity', _('Деятельность из свойств блока')),
+            ('meta_type', _('Тип из свойств блока')),
+            ('meta_sector_name', _('Название сектора')),
             ('lines_num', _('Количество строк с файлом')),
         ])
 
@@ -535,9 +554,9 @@ class EventMaterialsCSV:
 
     def generate_for_event(self):
         personal_materials = EventMaterial.objects.filter(event=self.event).\
-            select_related('result_v2', 'result_v2__result', 'user')
+            select_related('result_v2', 'result_v2__result', 'result_v2__result__block', 'user')
         team_materials = EventTeamMaterial.objects.filter(event=self.event).\
-            select_related('result_v2', 'result_v2__result')
+            select_related('result_v2', 'result_v2__result', 'result_v2__result__block')
         event_materials = EventOnlyMaterial.objects.filter(event=self.event)
 
         for m in personal_materials.iterator():
@@ -624,6 +643,8 @@ class EventMaterialsCSV:
         d.update({
             'block_title': m.result_v2 and m.result_v2.result.block.title or '',
             'result_title': m.result_v2 and m.result_v2.result.title or '',
+            'meta_type': m.result_v2 and m.result_v2.result.block.block_type,
+            'meta_activity': m.result_v2 and m.result_v2.result.block.description,
         })
 
     def populate_meta(self, d, meta_item):
@@ -631,7 +652,17 @@ class EventMaterialsCSV:
             'sector': meta_item.get('sector', ''),
             'level': meta_item.get('level', ''),
             'sublevel': meta_item.get('sublevel', ''),
+            'meta_instruments': self.format_tools(meta_item.get('tools')),
+            'meta_model': self.model_names.get(meta_item.get('model'), ''),
+            'meta_sector_name': self.competence_names.get(meta_item.get('competence'), ''),
         })
+
+    def format_tools(self, tools):
+        if tools:
+            if isinstance(tools, list) and all(isinstance(i, str) for i in tools):
+                return ', '.join(tools)
+            return str(tools)
+        return ''
 
     def get_meta(self, m):
         if m.result_v2 and isinstance(m.result_v2.result.meta, list) and \
