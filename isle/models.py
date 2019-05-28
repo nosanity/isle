@@ -16,6 +16,7 @@ from django.utils.deconstruct import deconstructible
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext_lazy as _
 from jsonfield import JSONField
+from .cache import UserAvailableContexts
 
 
 def check_permission(user, context, obj_type='file', action='upload'):
@@ -51,7 +52,8 @@ class User(AbstractUser):
         return check_permission(self, context and context.uuid)
 
     def has_assistant_role(self):
-        return any(check_permission(self, c) for c in Context.objects.values_list('uuid', flat=True))
+        ctx = UserAvailableContexts.get(self) or []
+        return bool(ctx)
 
     @cached_property
     def available_context_uuids(self):

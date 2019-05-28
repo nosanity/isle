@@ -29,6 +29,7 @@ raven==6.10.0
 coreapi==2.3.3
 markdown==2.6.7
 casbin==0.3
+python3-memcached==1.51
 
 -e git+https://github.com/EduScaled/carrier-client@master#egg=carrier_client
 -e git+https://github.com/EduScaled/django-carrier-client@master#egg=django_carrier_client

@@ -18,6 +18,7 @@ from django.utils.functional import cached_property
 from django.utils.translation import ugettext as _
 import requests
 from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi, SSOApi
+from isle.cache import UserAvailableContexts
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
                          Team, Author, CasbinData)
@@ -752,6 +753,7 @@ def update_casbin_data():
             CasbinData.objects.filter(id=cdata.id).update(model=data['model'], policy=data['policy'])
         else:
             CasbinData.objects.create(model=data['model'], policy=data['policy'])
+        UserAvailableContexts.discard_many(User.objects.all().iterator())
     except ApiError:
         pass
     except (TypeError, KeyError):
