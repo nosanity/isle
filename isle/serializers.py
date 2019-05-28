@@ -24,6 +24,7 @@ class AttendanceSerializer(serializers.Serializer):
 class FileSerializer(serializers.Serializer):
     file_url = serializers.CharField(source='get_url')
     file_name = serializers.CharField(source='get_file_name')
+    created_at = serializers.DateTimeField(allow_null=True)
 
 
 class UserNestedSerializer(serializers.ModelSerializer):
