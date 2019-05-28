@@ -51,7 +51,7 @@ from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, Lab
 from isle.tasks import generate_events_csv, team_members_set_changed
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
-    EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request
+    EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request, XLSWriter
 
 
 VIEW_MODE_COOKIE_NAME = 'index-view-mode'
@@ -2531,18 +2531,38 @@ class CSVResponseGeneratorMixin:
         return resp
 
 
-class EventCsvData(GetEventMixin, CSVResponseGeneratorMixin, View):
+class XLSResponseGeneratorMixin:
+    def get_xls_response(self, obj):
+        out = io.BytesIO()
+        writer = XLSWriter(out)
+        for row in obj.generate():
+            writer.writerow(row)
+        writer.close()
+        out.seek(0)
+        resp = FileResponse(out)
+        resp['Content-Disposition'] = "attachment; filename*=UTF-8''{}.xlsx".format(obj.get_csv_filename())
+        return resp
+
+
+class ChooseFormatResponseGeneratorMixin(CSVResponseGeneratorMixin, XLSResponseGeneratorMixin):
+    def get_response(self, obj):
+        if self.request.GET.get('format') == 'xls':
+            return self.get_xls_response(obj)
+        return self.get_csv_response(obj)
+
+
+class EventCsvData(GetEventMixin, ChooseFormatResponseGeneratorMixin, View):
     def get(self, request, *args, **kwargs):
         if not self.current_user_is_assistant:
             raise PermissionDenied
         obj = EventMaterialsCSV(self.event)
         if request.GET.get('check_empty'):
             return JsonResponse({'has_contents': obj.has_contents()})
-        return self.get_csv_response(obj)
+        return self.get_response(obj)
 
 
 @method_decorator(login_required, name='dispatch')
-class BaseCsvEventsDataView(CSVResponseGeneratorMixin, View):
+class BaseCsvEventsDataView(ChooseFormatResponseGeneratorMixin, View):
     def get(self, request):
         if not request.user.has_assistant_role():
             raise PermissionDenied
@@ -2554,6 +2574,7 @@ class BaseCsvEventsDataView(CSVResponseGeneratorMixin, View):
             'date_min': date_min,
             'date_max': date_max,
             'context': request.user.chosen_context,
+            'format': 'xlsx' if request.GET.get('format') == 'xls' else 'csv',
         }
         obj = EventGroupMaterialsCSV(events, meta_data)
         num = obj.count_materials()
@@ -2568,7 +2589,7 @@ class BaseCsvEventsDataView(CSVResponseGeneratorMixin, View):
                 'page_url': reverse('csv-dumps-list'),
             })
         if num <= settings.MAX_MATERIALS_FOR_SYNC_GENERATION:
-            return self.get_csv_response(obj)
+            return self.get_response(obj)
         if CSVDump.current_generations_for_user(request.user) >= settings.MAX_PARALLEL_CSV_GENERATIONS:
             raise PermissionDenied
         task_meta = meta_data.copy()
@@ -2577,8 +2598,7 @@ class BaseCsvEventsDataView(CSVResponseGeneratorMixin, View):
         csv_dump = CSVDump.objects.create(
             owner=request.user, header=obj.get_csv_filename(do_quote=False), meta_data=task_meta
         )
-        generate_events_csv.delay(csv_dump.id, [i.id for i in events], get_csv_encoding_for_request(self.request),
-                                  task_meta)
+        generate_events_csv.delay(csv_dump.id, [i.id for i in events], request.GET.get('format'), task_meta)
         return JsonResponse({'page_url': reverse('csv-dumps-list'), 'dump_id': csv_dump.id})
 
     def get_events_for_csv(self):
@@ -2646,7 +2666,7 @@ class LoadCsvDump(View):
             raise PermissionDenied
         obj = get_object_or_404(CSVDump, id=kwargs['dump_id'], status=CSVDump.STATUS_COMPLETE)
         resp = FileResponse(default_storage.open(obj.csv_file.name))
-        resp['Content-Disposition'] = "attachment; filename*=UTF-8''{header}.csv".format(header=quote(obj.header))
+        resp['Content-Disposition'] = "attachment; filename*=UTF-8''{header}".format(header=quote(obj.get_file_name()))
         return resp
 
 

@@ -4,20 +4,23 @@
 {% block title %}Результаты экспорта цифрового следа{% endblock %}
 
 {% block content %}
-    <div class="row">
-        <h2 class="ml--15">Результаты экспорта цифрового следа</h2>
+        <div class="row"><h2>Результаты экспорта цифрового следа</h2></div>
         <div class="row export-results">
+            <ul class="no-bullets no-left-padding">
             {% for obj in object_list %}
+                <li>
                 {% if obj.status == 3 %}<a href="{{ obj.get_download_link }}">{% else %}<span>{% endif %}
                     {% timezone 'Europe/Moscow' %}
                         {{ obj.datetime_ordered|date:'d/m/Y H:i' }}&nbsp;msk,
                     {% endtimezone %}
                     {{ obj.owner.unti_id }},
                     {{ obj.meta.context_guid|default:'-' }},
-                    {{ obj.header }}.csv,
+                    {{ obj.get_file_name }}
                     {{ obj.get_status_display }}
                 {% if obj.status == 3 %}</a>{% else %}</span>{% endif %}
+                </li>
             {% endfor %}
+            </ul>
         </div>
         {% if is_paginated %}
             <div class="row paginator-pages mt-20">
@@ -31,5 +34,4 @@
                 {% endfor %}
             </div>
         {% endif %}
-    </div>
 {% endblock %}
