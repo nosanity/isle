@@ -23,7 +23,7 @@ from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi, SSOApi
 from isle.cache import UserAvailableContexts
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
-                         Team, Author, DpCompetence, CasbinData)
+                         Team, Author, DpCompetence, CasbinData, Run, RunEnrollment)
 
 
 DEFAULT_CACHE = caches['default']
@@ -91,6 +91,13 @@ def refresh_events_data():
                         )[0]
                 for run in runs:
                     run_json = filter_dict(run, RUN_EXCLUDE_KEYS)
+                    if not run.get('uuid'):
+                        logging.error('run has no uuid')
+                        continue
+                    current_run = Run.objects.update_or_create(
+                        uuid=run['uuid'],
+                        defaults={'activity': current_activity, 'deleted': run.get('is_deleted')}
+                    )[0]
                     events = run.get('events') or []
                     for event in events:
                         event_json = filter_dict(event, EVENT_EXCLUDE_KEYS)
@@ -104,6 +111,7 @@ def refresh_events_data():
                         e, e_created = Event.objects.update_or_create(uid=uid, defaults={
                             'is_active': is_active,
                             'activity': current_activity,
+                            'run': current_run,
                             'data': {'event': event_json, 'run': run_json, 'activity': activity_json},
                             'dt_start': dt_start, 'dt_end': dt_end, 'title': title, 'event_type': event_type})
                         update_event_structure(
@@ -272,6 +280,40 @@ def update_event_entries():
         return False
     except Exception:
         logging.exception('Failed to parse xle attendance')
+
+
+def update_run_enrollments():
+    run_uuid_to_id = dict(Run.objects.values_list('uuid', 'id'))
+    unti_id_to_id = dict(User.objects.filter(unti_id__isnull=False).values_list('unti_id', 'id'))
+    failed_unti_ids = set()
+    ids = []
+    try:
+        for data in XLEApi().get_timetable():
+            for item in data:
+                run_id = run_uuid_to_id.get(item['run_uuid'])
+                if not run_id:
+                    logging.error('run with uuid %s not found' % item['run_uuid'])
+                    continue
+                if item['unti_id'] in failed_unti_ids:
+                    continue
+                user_id = unti_id_to_id.get(int(item['unti_id']))
+                if not user_id:
+                    user = pull_sso_user(item['unti_id'])
+                    if not user:
+                        logging.error('user with unti_id %s not found' % item['unti_id'])
+                        failed_unti_ids.add(item['unti_id'])
+                        continue
+                    user_id = user.id
+                    unti_id_to_id[int(item['unti_id'])] = user_id
+                enr = RunEnrollment.all_objects.update_or_create(
+                    user_id=user_id, run_id=run_id, defaults={'deleted': False}
+                )
+                ids.append(enr.id)
+        RunEnrollment.objects.exclude(id__in=ids).update(deleted=True)
+    except ApiError:
+        return False
+    except Exception:
+        logging.exception('Failed to get timetable')
 
 
 def pull_sso_user(unti_id):

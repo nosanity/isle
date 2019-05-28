@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
-from isle.utils import refresh_events_data, update_events_traces, update_contexts, update_event_entries
+from isle.utils import refresh_events_data, update_events_traces, update_contexts, update_event_entries, \
+    update_run_enrollments
 
 
 class Command(BaseCommand):
@@ -10,3 +11,4 @@ class Command(BaseCommand):
         update_events_traces()
         update_contexts()
         update_event_entries()
+        update_run_enrollments()
