@@ -18,6 +18,7 @@ from django.utils.functional import cached_property
 from django.utils.translation import ugettext as _
 import requests
 from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi
+import xlsxwriter
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
                          Team, Author, DpCompetence)
@@ -773,3 +774,18 @@ def get_csv_encoding_for_request(request):
         os_family = ''
     overridden_encoding = settings.CSV_ENCODING_FOR_OS.get(os_family.lower())
     return overridden_encoding or settings.DEFAULT_CSV_ENCODING
+
+
+class XLSWriter:
+    def __init__(self, f):
+        self.workbook = xlsxwriter.Workbook(f)
+        self.worksheet = self.workbook.add_worksheet()
+        self.current_row = 0
+
+    def writerow(self, row):
+        for pos, item in enumerate(row):
+            self.worksheet.write(self.current_row, pos, item)
+        self.current_row += 1
+
+    def close(self):
+        self.workbook.close()

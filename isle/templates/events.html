@@ -35,10 +35,8 @@
         </div>
     {% endif %}
     {% if request.user.is_assistant %}
-        <a class="pull-right export_event_csv" href="{% url 'get_filtered_events_csv' %}">
-            <span class="glyphicon glyphicon-download-alt"></span>&nbsp;Экспортировать все
-        </a>
-        <div class="clearfix"></div>
+        {% url 'get_filtered_events_csv' as export_url %}
+        {% include 'includes/export_event_csv.html' %}
     {% endif %}
     {% url 'events' as reset_filter_url %}
     {% include 'includes/events_filter.html' %}

@@ -852,7 +852,8 @@ class PathAndRename(object):
         self.path = path
 
     def __call__(self, instance, filename):
-        filename = '{}.csv'.format(uuid4().hex)
+        ext = filename.split('.')[-1]
+        filename = '{}.{}'.format(uuid4().hex, ext)
         return os.path.join(self.path, uuid4().hex[0], uuid4().hex[1:3], filename)
 
 
@@ -891,3 +892,15 @@ class CSVDump(models.Model):
 
     def get_download_link(self):
         return reverse('load_csv_dump', kwargs={'dump_id': self.id})
+
+    def get_file_name(self):
+        return '{}.{}'.format(self.header, self.csv_file.name.split('.')[-1] or self.meta_data.get('format', 'csv'))
+
+
+class UserFile(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    source = models.CharField(max_length=50)
+    activity_uuid = models.CharField(default='', max_length=255)
+    file = models.FileField(max_length=300)
+    data = JSONField(null=True)
+
