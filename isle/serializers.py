@@ -1,6 +1,7 @@
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import serializers
-from isle.models import User, Team
+from isle.models import User, Team, UserFile
+from .utils import pull_sso_user
 
 
 class AttendanceSerializer(serializers.Serializer):
@@ -61,3 +62,23 @@ class LabsUserResultSerializer(LabsBaseResultSerializer):
 class LabsTeamResultSerializer(LabsBaseResultSerializer):
     files = FileSerializer(many=True, source='eventteammaterial_set.all')
     team = TeamNestedserializer()
+
+
+class UserFieldSerializer(serializers.BaseSerializer):
+    def to_internal_value(self, data):
+        user = User.objects.filter(unti_id=data).first() or pull_sso_user(data)
+        if not user:
+            raise serializers.ValidationError(_('Пользователь с unti id %s не найден') % data)
+        return user
+
+    def to_representation(self, instance):
+        return instance.unti_id
+
+
+class UserFileSerializer(serializers.ModelSerializer):
+    user = UserFieldSerializer()
+    data = serializers.JSONField(required=False, binary=True)
+
+    class Meta:
+        model = UserFile
+        fields = '__all__'

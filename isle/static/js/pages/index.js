@@ -42,6 +42,21 @@ $('span.sort-col').on('click', (e) => {
     window.location.replace(queryStringUrlReplacement(window.location.href, 'sort', isAsc ? 'asc': 'desc'));
 });
 
+$('#select-view-mode').on('change', (e) => {
+    setCookie('index-view-mode', $(e.target).val(), 1);
+    window.location.reload();
+});
+
+function setCookie(name,value,days) {
+    var expires = "";
+    if (days) {
+        var date = new Date();
+        date.setTime(date.getTime() + (days*24*60*60*1000));
+        expires = "; expires=" + date.toUTCString();
+    }
+    document.cookie = name + "=" + (value || "")  + expires + "; path=/";
+}
+
 function queryStringUrlReplacement(url, param, value) {
     const re = new RegExp(`[\\?&]${param}=([^&#]*)`, "i");
     const match = re.exec(url);

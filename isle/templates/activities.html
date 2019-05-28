@@ -18,7 +18,7 @@
         </div>
 	{% endcomment %}
     </div>
-    {% if request.user.is_assistant %}
+    {% if is_assistant %}
         <a class="pull-right export_event_csv" href="{% url 'get_activities_csv' %}">
             <span class="glyphicon glyphicon-download-alt"></span>&nbsp;Экспортировать все
         </a>
@@ -71,7 +71,7 @@
     <!-- event handlers of buttons are binded in js file below -->
     <script type="text/javascript" src="{% static 'js/pages/activities.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/pages/index.js' %}"></script>
-    {% if request.user.is_assistant %}
+    {% if is_assistant %}
         <script type="text/javascript" src="{% static 'js/pages/index_assistant.js' %}"></script>
     {% endif %}
 {% endblock %}
