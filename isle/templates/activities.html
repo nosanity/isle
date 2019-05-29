@@ -19,10 +19,8 @@
 	{% endcomment %}
     </div>
     {% if is_assistant %}
-        <a class="pull-right export_event_csv" href="{% url 'get_activities_csv' %}">
-            <span class="glyphicon glyphicon-download-alt"></span>&nbsp;Экспортировать все
-        </a>
-        <div class="clearfix"></div>
+        {% url 'get_activities_csv' as export_url %}
+        {% include 'includes/export_event_csv.html' %}
     {% endif %}
     {% url 'index' as reset_filter_url %}
     {% include 'includes/events_filter.html' %}

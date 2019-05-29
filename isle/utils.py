@@ -17,6 +17,7 @@ from django.utils.dateparse import parse_datetime
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext as _
 import requests
+import xlsxwriter
 from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi, SSOApi
 from isle.cache import UserAvailableContexts
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
@@ -790,3 +791,18 @@ def update_casbin_data():
         pass
     except (TypeError, KeyError):
         logging.exception('Unexpected format for casbin data')
+
+
+class XLSWriter:
+    def __init__(self, f):
+        self.workbook = xlsxwriter.Workbook(f)
+        self.worksheet = self.workbook.add_worksheet()
+        self.current_row = 0
+
+    def writerow(self, row):
+        for pos, item in enumerate(row):
+            self.worksheet.write(self.current_row, pos, item)
+        self.current_row += 1
+
+    def close(self):
+        self.workbook.close()
