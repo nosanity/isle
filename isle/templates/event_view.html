@@ -37,13 +37,9 @@
             </div>
         </div>
         <div>
-            {% if is_assistant %}
-                <a class="pull-right export_event_csv" href="{% url 'get_event_csv' uid=event.uid %}">
-                    <span class="glyphicon glyphicon-download-alt"></span>&nbsp;Экспортировать все
-                </a>
-                <div class="clearfix"></div>
-            {% endif %}
-            <a class="nav-item btn btn-danger mt-10" href="{% url 'load-event-materials' uid=event.uid %}">
+            {% url 'get_event_csv' uid=event.uid as export_url %}
+            {% include 'includes/export_event_csv.html' %}
+            <a class="nav-item btn btn-danger mt-10 pull-right" href="{% url 'load-event-materials' uid=event.uid %}">
                 Материалы мероприятия</a>
         </div>
     </div>
