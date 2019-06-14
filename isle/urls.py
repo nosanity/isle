@@ -1,14 +1,18 @@
 from django.conf import settings
-from django.urls import path
+from django.urls import path, include
+from rest_framework.documentation import include_docs_urls
 from isle import views
 
 urlpatterns = [
-    path('', views.Index.as_view(), name='index'),
+    path('carrier-django/', include('django_carrier_client.urls')),
+    path('api/docs/', include_docs_urls()),
+    path('', views.ActivitiesView.as_view(), name='index'),
+    path('events/', views.Events.as_view(), name='events'),
     path('login/', views.login, name='login'),
     path('logout/', views.logout, name='logout'),
     path('update-attendance/<str:uid>', views.UpdateAttendanceView.as_view(), name='update-attendance-view'),
     path('create-team/<str:uid>/', views.CreateTeamView.as_view(), name='create-team'),
-    path('confirm-team/<str:uid>/', views.ConfirmTeamView.as_view(), name='confirm-team'),
+    path('edit-team/<str:uid>/<int:team_id>/', views.EditTeamView.as_view(), name='edit-team'),
     path('load-team/<str:uid>/<int:team_id>/', views.LoadTeamMaterialsResult.as_view(), name='load-team-materials'),
     path('confirm-team-material/<str:uid>/<int:team_id>/', views.ConfirmTeamMaterial.as_view(),
          name='confirm-team-material'),
@@ -29,12 +33,12 @@ urlpatterns = [
     path('transfer-material/<str:uid>/', views.TransferView.as_view(), name='transfer'),
     path('statistics/', views.Statistics.as_view()),
     path('approve-text-edit/<str:event_entry_id>/', views.ApproveTextEdit.as_view(), name='approve-text-edit'),
-    path('activities/', views.ActivitiesView.as_view(), name='activities'),
     path('add-event-block/<str:uid>/', views.AddEventBlockToMaterial.as_view(), name='add-event-block'),
     path('event-block-edit/<str:uid>/', views.EventBlockEditRenderer.as_view(), name='event-block-edit-renderer'),
     path('role-formset-render/<str:uid>/<int:team_id>/', views.RolesFormsetRender.as_view(), name='roles-formset-render'),
     path('get_event_csv/<str:uid>/', views.EventCsvData.as_view(), name='get_event_csv'),
     path('get_events_csv', views.EventsCsvData.as_view(), name='get_filtered_events_csv'),
+    path('get_activities_csv', views.ActivitiesCsvData.as_view(), name='get_activities_csv'),
     path('load_dump/<int:dump_id>/', views.LoadCsvDump.as_view(), name='load_csv_dump'),
     path('csv-dumps/', views.CSVDumpsList.as_view(), name='csv-dumps-list'),
     path('switch-context/', views.switch_context, name='switch_context'),
@@ -43,6 +47,8 @@ urlpatterns = [
     path('api/user-materials/', views.UserMaterialsListView.as_view()),
     path('api/user-result-info/', views.UserResultInfoView.as_view()),
     path('api/team-result-info/', views.TeamResultInfoView.as_view()),
+    path('api/all-user-results/', views.AllUserResultsView.as_view()),
+    path('api/all-team-results/', views.AllTeamResultsView.as_view()),
     path('api/get-dp-data/', views.GetDpData.as_view()),
     path('api/check/', views.ApiCheckHealth.as_view()),
     path('api/upload/create-user-result/', views.CreateUserResultAPI.as_view()),

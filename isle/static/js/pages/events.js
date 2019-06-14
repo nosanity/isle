@@ -12,11 +12,6 @@ $('.approve-text-btn').click((e) => {
 });
 
 if (isAssistant) {
-    $('.btn-confirm-team').on('click', (e) => {
-        e.preventDefault();
-        confirmTeam(e.target);
-    });
-
     $('input.attendance').on('change', (e) => {
         inputAttendanceChange(e.target);
     });
@@ -27,22 +22,33 @@ if (isAssistant) {
     });
 }
 
-$('.export_event_csv').on('click', (e) => {
+$('.prepare-csv-export').on('click', (e) => {
     e.preventDefault();
-    var obj = $(e.target);
+    let obj = $(e.target);
     if (obj[0].tagName == 'SPAN')
         obj = obj.parent('a');
-    var url = obj.attr('href') + '?check_empty=1';
+    $('.export-format-selector').show();
+});
+
+$('.export-format-selector').on('change', (e) => {
+    e.preventDefault();
+    var obj = $(e.target);
+    if (!obj.val()) return;
+    obj.prop('disabled', true);
+    var url = $('.prepare-csv-export').attr('href') + '?check_empty=1';
     $.ajax({
         method: 'GET',
         url: url,
         success: (data) => {
             if (data.has_contents)
-                window.location = obj.attr('href');
+                window.location = $('.prepare-csv-export').attr('href') + '?format=' + obj.val();
             else
                 alert('Ни одного файла или результата не загружено в мероприятие');
         },
-        error: () => { alert('Произошла ошибка'); }
+        error: () => { alert('Произошла ошибка'); },
+        complete: () => {
+            obj.prop('disabled', false).hide().val('');
+        }
     })
 });
 
@@ -69,27 +75,6 @@ function inputAttendanceChange(obj) {
             $obj.prop('checked', !isChecked);
         }
     });    
-}
-
-function confirmTeam(obj) {
-    const $obj = $(obj);
-    const data = {
-        csrfmiddlewaretoken: csrfmiddlewaretoken, 
-        team_id: $obj.val()
-    };
-    $.ajax({
-        url: confirmTeamUrl,
-        method: 'POST',
-        data: data,
-        success: () => {
-            $obj.parents('tr').addClass('confirmed-team-link');
-            $obj.remove();
-        },
-        error: () => {
-            // TODO show appropriate message
-            alert('error');
-        }
-    });
 }
 
 function deleteAttendance(obj) {

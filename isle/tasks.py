@@ -1,18 +1,23 @@
 import csv
 import logging
+import requests
+import tempfile
+
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.utils import timezone
-import requests
+
 from celery import task
+
 from isle.api import PLEApi, ApiError
-from isle.models import Event, CSVDump, Activity, Context, Material, PLEUserResult
-from isle.utils import EventGroupMaterialsCSV, BytesCsvObjWriter
+from isle.kafka import send_object_info, KafkaActions
+from isle.models import Event, CSVDump, Activity, Context, LabsTeamResult, Material, PLEUserResult
+from isle.utils import EventGroupMaterialsCSV, BytesCsvObjWriter, XLSWriter
 from isle.serializers import UserResultSerializer
 
 
 @task
-def generate_events_csv(dump_id, event_ids, encoding, meta):
+def generate_events_csv(dump_id, event_ids, file_format, meta):
     CSVDump.objects.filter(id=dump_id).update(status=CSVDump.STATUS_IN_PROGRESS)
     events = Event.objects.filter(id__in=event_ids).order_by('id')
     try:
@@ -21,15 +26,19 @@ def generate_events_csv(dump_id, event_ids, encoding, meta):
         if meta['context']:
             meta['context'] = Context.objects.get(id=meta['context'])
         obj = EventGroupMaterialsCSV(events, meta)
-        b = BytesCsvObjWriter(encoding)
-        c = csv.writer(b, delimiter=';')
-        for line in obj.generate():
-            c.writerow(list(map(str, line)))
-        csv_dump = CSVDump.objects.get(id=dump_id)
-        csv_dump.csv_file.save('', content=b.file)
-        csv_dump.datetime_ready = timezone.now()
-        csv_dump.status = CSVDump.STATUS_COMPLETE
-        csv_dump.save()
+        if file_format == 'xls':
+            with tempfile.TemporaryFile() as f:
+                writer = XLSWriter(f)
+                for line in obj.generate():
+                    writer.writerow(line)
+                writer.close()
+                save_result_file(dump_id, f, 'xlsx')
+        else:
+            b = BytesCsvObjWriter('utf-8')
+            c = csv.writer(b, delimiter=';')
+            for line in obj.generate():
+                c.writerow(list(map(str, line)))
+            save_result_file(dump_id, b.file, 'csv')
     except Exception:
         logging.exception('Failed to generate events csv')
         CSVDump.objects.filter(id=dump_id).update(status=CSVDump.STATUS_ERROR)
@@ -102,3 +111,17 @@ def handle_ple_user_result(data):
         except ApiError:
             logging.error('Failed to send user result report to PLE. Result: {}. Initial data: {}'.
                           format(result, data))
+
+
+def save_result_file(dump_id, result_file, extension):
+    csv_dump = CSVDump.objects.get(id=dump_id)
+    csv_dump.csv_file.save('.{}'.format(extension), content=result_file)
+    csv_dump.datetime_ready = timezone.now()
+    csv_dump.status = CSVDump.STATUS_COMPLETE
+    csv_dump.save()
+
+
+@task
+def team_members_set_changed(team_id):
+    for result in LabsTeamResult.objects.filter(team_id=team_id).iterator():
+        send_object_info(result, result.id, KafkaActions.UPDATE)

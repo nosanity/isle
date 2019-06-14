@@ -11,9 +11,7 @@
         <button class="btn btn-primary" type="submit">Добавить</button>
     </form>
 
-    <a href="{% url 'event-view' uid=event.uid %}">
-        <button class="btn btn-default mt-20">К странице мероприятия</button>
-    </a>
+    {% include 'includes/to_event_page.html' %}
 {% endblock %}
 
 {% block footer %}

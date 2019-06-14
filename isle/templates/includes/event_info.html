@@ -1,0 +1,6 @@
+{% load tz i18n %}
+<div>
+    <p><b>{% trans "Мероприятие:" %}</b> {{ event.title }}
+    <br>
+    {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }}{% endlocaltime %}</p>
+</div>

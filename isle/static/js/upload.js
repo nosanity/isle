@@ -3,6 +3,15 @@ const uploads = [];
 
 let maxSizeSelector = null;
 
+function get_error_msg(xhr) {
+    try {
+        return xhr.responseJSON.error || 'error';
+    }
+    catch (e) {
+        return 'error';
+    }
+}
+
 if (pageType == 'loadMaterials' || pageType == 'eventStructure') {
     maxSizeSelector = 'form.trace-form input[type=file]';
 
@@ -86,9 +95,9 @@ else if (pageType == 'loadMaterials_v2') {
                 success: (data) => {
                     $('div.user-roles-div').html(data);
                 },
-                error: () => {
+                error: (xhr, err) => {
                     // TODO show appropriate message
-                    alert('error');
+                    alert(get_error_msg(xhr));
                 }
             })
         }
@@ -121,6 +130,10 @@ function isFormValid($form) {
     const $fileField = $form.find('input[name=file_field]');
     const urlFilled = !!$urlField.first().val();
     const fileFilled = !!($fileField && !!$fileField.val());
+
+    if (pageType  == 'loadMaterials') {
+        return !!$form.find('select[name=trace_name]').val() && !(urlFilled == fileFilled);
+    }
 
     return !(urlFilled == fileFilled);
 }
@@ -181,23 +194,35 @@ function result_edit_switcher(result, editable) {
     }
 }
 
+function show_trace_name(trace_id) {
+    let wrapper = $('div.event-trace-materials-wrapper[data-trace-id=' + trace_id + ']');
+    let files_num = wrapper.find('ul.list-group li').length;
+    if (wrapper.find('ul.list-group li').length > 0) {
+        wrapper.find('.event-trace-name').show();
+    }
+    else {
+        wrapper.find('.event-trace-name').hide();
+    }
+}
+
 // handlers
 
-$('body').delegate('button.delete-material-btn', 'click', (e) => {
+$('body').delegate('.delete-material-btn', 'click', (e) => {
     e.preventDefault();
-    if ($(':focus').attr('name') == 'material_id') {
+    if ($(':focus').attr('name') == 'material_id' || pageType == 'loadMaterials') {
         if (confirm('Вы действительно хотите удалить этот файл?')) {
             let obj;
-            if ($(e.target).prop('tagName') == 'SPAN') {
+            if ($(e.target).prop('tagName') == 'SPAN' && pageType != 'loadMaterials') {
                 $obj = $(e.target).parents('button')
             }
             else {
                 $obj = $(e.target);
             }
+            const trace_id = $obj.parents('div.event-trace-materials-wrapper').data('trace-id');
             const data = {
                 csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val() || csrfmiddlewaretoken,
-                trace_name: $obj.parents('form.trace-form').children('input[name=trace_name]').val(),
-                material_id: $obj.val()
+                trace_name: trace_id,
+                material_id: $obj.val() || $obj.attr('value')
             }
             if (pageType == 'loadMaterials_v2') {
                 data['labs_result_id'] = $obj.parents('.material-result-div').data('result');
@@ -215,10 +240,13 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
                     let el = $obj.parents('div.result-items-wrapper');
                     $obj.parent('li').remove();
                     resultFilesNumberHandler(el);
+                    if (pageType == 'loadMaterials') {
+                        show_trace_name(trace_id);
+                    }
                 },
                 error: (xhr, err) => {
                     // TODO show appropriate message
-                    alert('error');
+                    alert(get_error_msg(xhr));
                 }
             })
         }
@@ -244,7 +272,7 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
             },
             error: (xhr, err) => {
                 // TODO show appropriate message
-                alert('error');
+                alert(get_error_msg(xhr));
             }
         })
     }
@@ -270,7 +298,7 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
             // TODO show appropriate message
             let t = $obj.parents('.result-item-li').find('.old_comment_value').val().trim();
             $obj.parents('.result-item-li').find('.result-comment-edit-input').val(t);
-            alert('error');
+            alert(get_error_msg(xhr));
         },
         complete: (xhr, err) => {
             result_edit_switcher($obj.parents('.result-item-li'), false);
@@ -336,14 +364,24 @@ $('body').delegate('button.delete-material-btn', 'click', (e) => {
             }
         },
         error: (xhr, err) => {
-            alert('error');
+            alert(get_error_msg(xhr));
         },
         complete: () => { obj.prop('disabled', false).removeAttr('disabled'); }
     })
 }).delegate('.move-unattached-file', 'click', (e) => {
     e.preventDefault();
     build_move_result_modal($(e.target), null);
+}).delegate('.add-event-material-assistant', 'click', (e) => {
+    $('.add-event-materials-wrapper').removeClass('hidden');
+}).delegate('.hide-add-event-materials-form-btn', 'click', (e) => {
+    $('.add-event-materials-wrapper').addClass('hidden');
 });
+
+if (pageType == 'loadMaterials') {
+    $('body').delegate('form.trace-form select[name=trace_name]', 'change', (e) => {
+        setActivateButton($(e.target).parents('form.trace-form'));
+    })
+}
 
 function build_move_result_modal(result, labs_result_id) {
     if ($('#move_results_modal').length == 0) {
@@ -413,7 +451,7 @@ $('body').delegate('input[name=file_field]', 'change', (e) => {
     
     if (pageType == 'loadMaterials' || pageType == 'eventStructure') {
         $button = $obj.parents('form.trace-form');
-        parentSelector = 'li';
+        parentSelector = 'div.tab-content';
     }
     else if (pageType == 'loadMaterials_v2') {
         $button = $obj.parents('div.material-result-div').find('form.user-materials-form');
@@ -560,9 +598,9 @@ function resultFormHandler(e) {
                     clearForm($form);
                 }
             },
-            error: () => {
+            error: (xhr, err, a) => {
                 // TODO show appropriate message
-                alert('error');
+                alert(get_error_msg(xhr));
                 $('.save-result-btn').prop('disabled', false);
             }
         });
@@ -609,8 +647,7 @@ function successProcessFile(data, $form, result_item_id) {
         item = $form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]');
     }
     else {
-        items = $form.children('ul.list-group').children('li');
-        item = $(items[items.length - 1]);
+        items = $('.event-trace-materials-wrapper[data-trace-id=' + data.trace_id + ']').find('ul.list-group');
     }
     const data_attrs = data.data_attrs;
     let html = null;
@@ -676,17 +713,13 @@ function successProcessFile(data, $form, result_item_id) {
             `;
         } else {
             html = `
-                <li class="list-group-item ${data.uploader_name && isAssistant ? 'assistant-team-link' : ''}">
-                    <a href="${url}">${name}</a>
+                <li class="list-group-item ${data.uploader_name && isAssistant ? 'assistant-team-link' : ''}" data-comment="${data.comment}" data-material-id="${mId}">
+                    <a class="link_preview" href="${url}" ${data_attrs}>${name}</a>
                     &nbsp;
-                    <button name="material_id" value="${mId}" class="btn btn-warning btn-sm pull-right delete-material-btn">
-                        Удалить
-                    </button>
-                    &nbsp;
-                    <button value="${mId}" class="btn btn-success btn-sm pull-right edit-event-block-material">
-                        Редактировать
-                    </button>
-                    ${data.uploader_name ? '<div>(' + data.uploader_name + ')</div>' : ''}
+                    <span name="material_id" value="${mId}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
+                    </span>
+                    <span value="${mId}" class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
+                    </span>
                     <div>
                         <span class="text-muted assistant-info-string">${data.info_string}</span>
                     </div>
@@ -700,7 +733,10 @@ function successProcessFile(data, $form, result_item_id) {
         item.parent('div').find('.result-comment').html(comment);
         resultFilesNumberHandler(item.parents('div.result-items-wrapper'));
     }
-    else { item.before($(html)); }
+    else {
+        items.append($(html));
+        show_trace_name(data.trace_id);
+    }
     if (pageType == 'loadUserMaterials') {
         $('.save-result-btn').prop('disabled', false);
         clearForm($form); 
@@ -739,9 +775,9 @@ function completeProcessFile(num, $form = null) {
     }  
 }
 
-function errorProcessFile() {
+function errorProcessFile(xhr, err) {
     // TODO show appropriate message
-    alert('error');
+    alert(get_error_msg(xhr));
 }
 
 function processUrl(form, result_item_id) {
@@ -837,7 +873,7 @@ function formSubmitHadler(form, resultId = null) {
                 success: function(data) {
                     formSubmitHandler_inner($form, resultId, data.result_id);
                 },
-                error: function() { alert('error'); }
+                error: function(xhr, err) { alert(get_error_msg(xhr)); }
             })
         }
         else {

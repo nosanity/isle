@@ -1,41 +1,53 @@
 {% extends 'base.html' %}
-{% load i18n static tz %}
+{% load i18n static tz helpers %}
 
 {% block content %}
-    <a href="{% url 'event-view' uid=event.uid %}">
-        <button class="btn btn-light font-red"><i class="glyphicon glyphicon-arrow-left"></i>&nbsp;К странице мероприятия</button>
-    </a>
+    {% include 'includes/to_event_page.html' %}
     <h2>{% block page_title %}{% endblock %}</h2>
-    <div>
-        <p><b>{% trans "Мероприятие:" %}</b> {{ event.title }}
-        <br>
-        {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }}{% endlocaltime %}</p>
-    </div>
+    {% include 'includes/event_info.html' %}
     <div>
         {% block info %}{% endblock %}
     </div>
 
     <div>
         {% for block in blocks %}
+            {% if block|show_block %}
             <div class="block-div mt-40">
-                <h4>{% blocktrans with n=block.order %}Блок {{ n }}{% endblocktrans %}
+		    <h4>{% blocktrans with n=block.order %}{{ n }}. {% endblocktrans %}{{block.title }}
                     {% if block.deleted %} ({% blocktrans %}Удалено{% endblocktrans %}){% endif %}</h4>
                 <p>
-                    <b>{% trans "Название:" %}</b> {{ block.title }}
-                    <br>
                     <b>{% trans "Тип:" %}</b> {{ block.block_type }}
                     <br>
                     <b>{% trans "Деятельность:" %}</b> {{ block.description }}
                 </p>
+                {% if not block.deleted and can_upload and user_upload and block.block_has_only_group_results %}
+                    <div>
+                        <p>
+                            {% trans "В данном блоке предусмотрен только командный результат." %}
+                            <br>
+                            <a href="{% url 'event-view' uid=event.uid %}#teams">{% trans "Загрузить командный результат" %}</a>
+                        </p>
+                    </div>
+                {% elif not block.deleted and can_upload and team_upload and block.block_has_only_personal_results %}
+                    <div>
+                        <p>
+                            {% trans "В данном блоке предусмотрен только персональный результат." %}
+                            {% if request.user.id in event_members %}
+                                <br>
+                                <a href="{% url 'load-materials' uid=event.uid unti_id=request.user.unti_id %}">{% trans "Загрузить" %}</a>
+                            {% endif %}
+                        </p>
+                    </div>
+                {% endif %}
                 {% for result in block.results.all %}
+                {% if result|show_result %}
+                {% if user_upload and result.is_personal or team_upload and result.is_group or result.results %}
                     <div class="material-result-div" data-result="{{ result.id }}">
-                        <h4>{% blocktrans with n1=block.order n2=result.order %}Результат {{ n1 }}.{{ n2 }}{% endblocktrans %}
+			    <h4>{% blocktrans with n1=block.order n2=result.order %}{{ n1 }}.{{ n2 }}. {% endblocktrans %} {{ result.title }}
                             {% if block.deleted or result.deleted %} ({% blocktrans %}Удалено{% endblocktrans %}){% endif %}</h4>
                         <div class="row">
                             <div class="col-md-6">
                                 <p>
-                                    <b>{% trans "Ожидаемый результат:" %}</b> {{ result.check }}
-                                    <br>
                                     <b>{% trans "Формат работы:" %}</b> {{ result.result_format }}
                                     <br>
                                     <b>{% trans "Способ фиксации:" %}</b> {{ result.fix }}
@@ -43,9 +55,11 @@
                             </div>
                             <div class="col-md-6">
                                 {% if can_upload and not block.deleted and not result.deleted %}
+                                {% if user_upload and result.is_personal or team_upload and result.is_group %}
                                 <button class="btn btn-warning load-results-btn">
                                     {% if not result.results|length %}{% trans "Загрузить" %}{% else %}{% trans "Загрузить еще один результат" %}{% endif %}
                                 </button>
+                                {% endif %}
                                 {% endif %}
                             </div>
                         </div>
@@ -131,8 +145,11 @@
                         </div>
 
                     </div>
+                {% endif %}
+                {% endif %}
                 {% endfor %}
             </div>
+            {% endif %}
         {% endfor %}
     </div>
 

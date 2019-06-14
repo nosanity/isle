@@ -19,9 +19,10 @@ from django.utils.translation import ugettext as _
 import requests
 from celery.task.control import inspect
 from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi
+import xlsxwriter
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
-                         Team)
+                         Team, Author, DpCompetence)
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -75,6 +76,7 @@ def refresh_events_data():
                             'is_deleted': bool(activity.get('is_deleted')),
                         }
                     )[0]
+                    update_authors(current_activity, authors)
                 else:
                     continue
                 if activity_type and activity_type.get('uuid'):
@@ -123,6 +125,19 @@ def refresh_events_data():
         return
     except Exception:
         logging.exception('Failed to handle events data')
+
+
+def update_authors(activity, data):
+    authors = []
+    for item in data:
+        uid = item.get('uuid')
+        if not uid:
+            continue
+        authors.append(Author.objects.update_or_create(uuid=uid, defaults={
+            'title': item.get('title') or '',
+            'is_main': item.get('is_main'),
+        })[0])
+    activity.authors.set(authors)
 
 
 def update_event_structure(data, event, event_blocks_uuid, metamodels):
@@ -181,13 +196,14 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
                     for model in meta:
                         # подтягивание информации о метамодели, указанной в метаданных, если такая метамодель
                         # еще не подтягивалась в рамках данного запуска обновления данных активностей и эвентов
-                        if isinstance(model, dict) and 'model' in model and model['model'] not in metamodels:
+                        if isinstance(model, dict) and model.get('model') and model['model'] not in metamodels:
                             try:
                                 meta_data = DpApi().get_metamodel(model['model'])
                                 if isinstance(meta_data, dict) and all(i in meta_data for i in ['title', 'guid']):
                                     MetaModel.objects.update_or_create(uuid=model['model'], defaults={
                                         'guid': meta_data['guid'], 'title': meta_data['title']
                                     })
+                                    parse_competences(meta_data)
                                     metamodels.add(model['model'])
                             except ApiError:
                                 pass
@@ -198,6 +214,17 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
             event.blocks.exclude(uuid__in=created_blocks).update(deleted=True)
     except Exception:
         logging.exception('Failed to parse event structure')
+
+
+def parse_competences(data):
+    if not isinstance(data.get('competences'), list):
+        logging.error('Failed to parse competences for meta model %s' % data.get('uuid'))
+        return
+    for item in data['competences']:
+        try:
+            DpCompetence.objects.update_or_create(uuid=item['uuid'], defaults={'title': item['title']})
+        except KeyError:
+            logging.exception('Wrong competence structure')
 
 
 def update_event_entries():
@@ -481,6 +508,8 @@ class EventMaterialsCSV:
     def __init__(self, event):
         self.event = event
         self.teams_data_cache = {}
+        self.model_names = dict(MetaModel.objects.values_list('uuid', 'title'))
+        self.competence_names = dict(DpCompetence.objects.values_list('uuid', 'title'))
 
     def field_names(self):
         return OrderedDict([
@@ -504,6 +533,11 @@ class EventMaterialsCSV:
             ('sector', _('сектор')),
             ('level', _('уровень')),
             ('sublevel', _('подуровень')),
+            ('meta_instruments', _('Инструменты')),
+            ('meta_model', _('Модель цифрового профиля')),
+            ('meta_activity', _('Деятельность из свойств блока')),
+            ('meta_type', _('Тип из свойств блока')),
+            ('meta_sector_name', _('Название сектора')),
             ('lines_num', _('Количество строк с файлом')),
         ])
 
@@ -522,9 +556,9 @@ class EventMaterialsCSV:
 
     def generate_for_event(self):
         personal_materials = EventMaterial.objects.filter(event=self.event).\
-            select_related('result_v2', 'result_v2__result', 'user')
+            select_related('result_v2', 'result_v2__result', 'result_v2__result__block', 'user')
         team_materials = EventTeamMaterial.objects.filter(event=self.event).\
-            select_related('result_v2', 'result_v2__result')
+            select_related('result_v2', 'result_v2__result', 'result_v2__result__block')
         event_materials = EventOnlyMaterial.objects.filter(event=self.event)
 
         for m in personal_materials.iterator():
@@ -611,6 +645,8 @@ class EventMaterialsCSV:
         d.update({
             'block_title': m.result_v2 and m.result_v2.result.block.title or '',
             'result_title': m.result_v2 and m.result_v2.result.title or '',
+            'meta_type': m.result_v2 and m.result_v2.result.block.block_type,
+            'meta_activity': m.result_v2 and m.result_v2.result.block.description,
         })
 
     def populate_meta(self, d, meta_item):
@@ -618,7 +654,17 @@ class EventMaterialsCSV:
             'sector': meta_item.get('sector', ''),
             'level': meta_item.get('level', ''),
             'sublevel': meta_item.get('sublevel', ''),
+            'meta_instruments': self.format_tools(meta_item.get('tools')),
+            'meta_model': self.model_names.get(meta_item.get('model'), ''),
+            'meta_sector_name': self.competence_names.get(meta_item.get('competence'), ''),
         })
+
+    def format_tools(self, tools):
+        if tools:
+            if isinstance(tools, list) and all(isinstance(i, str) for i in tools):
+                return ', '.join(tools)
+            return str(tools)
+        return ''
 
     def get_meta(self, m):
         if m.result_v2 and isinstance(m.result_v2.result.meta, list) and \
@@ -690,7 +736,13 @@ class EventGroupMaterialsCSV(EventMaterialsCSV):
         guid = str(self.meta_data['context'] and self.meta_data['context'].guid)
         if self.meta_data['activity']:
             return f('{}_{}'.format(guid, self.meta_data['activity'].title))
-        return f('{}_{}'.format(guid, self.meta_data['date'].strftime('%d-%m-%Y')))
+        date_min = self.meta_data['date_min']
+        date_max = self.meta_data['date_max']
+        return f('{}_{}-{}'.format(
+            guid,
+            date_min.strftime('%d-%m-%Y') if date_min else 'null',
+            date_max.strftime('%d-%m-%Y') if date_max else 'null'
+        ))
 
     def count_materials(self):
         ids = list([i.id for i in self.events_qs])
@@ -735,3 +787,18 @@ def check_celery_active():
         return True
     except IOError:
         return False
+
+      
+class XLSWriter:
+    def __init__(self, f):
+        self.workbook = xlsxwriter.Workbook(f)
+        self.worksheet = self.workbook.add_worksheet()
+        self.current_row = 0
+
+    def writerow(self, row):
+        for pos, item in enumerate(row):
+            self.worksheet.write(self.current_row, pos, item)
+        self.current_row += 1
+
+    def close(self):
+        self.workbook.close()

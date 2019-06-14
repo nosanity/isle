@@ -1,4 +1,6 @@
 import os
+from raven.contrib.django.models import client
+from raven.contrib.celery import register_signal, register_logger_signal
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -189,6 +191,7 @@ KAFKA_HOST = ''
 KAFKA_PORT = 80
 KAFKA_TOKEN = ''
 KAFKA_PROTOCOL = 'http'
+KAFKA_TOPIC_SSO = 'sso'
 
 # количество всех материалов в выбранных материалов, более которого генерация выгрузки должна идти асинхронно
 MAX_MATERIALS_FOR_SYNC_GENERATION = 500
@@ -196,6 +199,14 @@ MAX_MATERIALS_FOR_SYNC_GENERATION = 500
 MAX_PARALLEL_CSV_GENERATIONS = 5
 # время в секундах, после которого генерация считается проваленой
 TIME_TO_FAIL_CSV_GENERATION = 2 * 3600
+# максимальное количество пользователей, которых можно добавить на мероприятие за один раз
+MAXIMUM_EVENT_MEMBERS_TO_ADD = 100
+# количество мероприятий/активностей на одной странице
+PAGINATE_EVENTS_BY = 100
+# дефолтная пагинация при использовании LimitOffsetPagination
+DRF_LIMIT_OFFSET_PAGINATION_DEFAULT = 20
+# максимальное количество записей на странице при использовании LimitOffsetPagination
+DRF_LIMIT_OFFSET_PAGINATION_MAX = 50
 
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}
@@ -220,3 +231,54 @@ for name in define:
 
 import djcelery
 djcelery.setup_loader()
+
+if locals().get('RAVEN_CONFIG', None):
+    INSTALLED_APPS += ('raven.contrib.django.raven_compat',)
+    register_signal(client)
+    register_logger_signal(client)
+
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'root': {
+            'level': 'INFO',
+            'handlers': ['sentry', 'console'],
+        },
+        'formatters': {
+            'verbose': {
+                'format': '%(levelname)s  %(asctime)s  %(module)s '
+                          '%(process)d  %(thread)d  %(message)s',
+                'datefmt': "%Y-%m-%d %H:%M:%S",
+            },
+        },
+        'handlers': {
+            'sentry': {
+                'level': 'ERROR',
+                'class': 'raven.contrib.django.raven_compat.handlers.SentryHandler',
+                'tags': {'custom-tag': 'x'},
+            },
+            'console': {
+                'level': 'INFO',
+                'class': 'logging.StreamHandler',
+                'formatter': 'verbose'
+            }
+        },
+        'loggers': {
+            'django.db.backends': {
+                'level': 'ERROR',
+                'handlers': ['console'],
+                'propagate': False,
+            },
+            'raven': {
+                'level': 'DEBUG',
+                'handlers': ['console'],
+                'propagate': False,
+            },
+            'sentry.errors': {
+                'level': 'DEBUG',
+                'handlers': ['console'],
+                'propagate': False,
+            },
+        },
+    }
+

@@ -1,0 +1,2 @@
+{% load static %}
+<img class="user-img" src="{% if u.icon and u.icon.Small %}{{ u.icon.Small }}{% else %}{% static 'img/default.jpeg' %}{% endif %}" />

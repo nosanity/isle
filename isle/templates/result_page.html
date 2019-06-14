@@ -7,7 +7,7 @@
     </div>
     <div>
         {% if result.result.title %}<strong>{{ result.result.title }}</strong>{% endif %} <br>
-        {% if result.result.check %}<strong>Ожидаемый результат: {{ result.result.check }}</strong>{% endif %} <br>
+        {% if result.result.block.description %}<strong>Деятельность: {{ result.result.block.description }}</strong>{% endif %} <br>
         {% if result.result.result_format %}<strong>Формат работы: {{ result.result.result_format }}</strong>{% endif %}
     </div>
 

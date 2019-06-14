@@ -37,6 +37,9 @@ class User(AbstractUser):
     def fio(self):
         return ' '.join(filter(None, [self.last_name, self.first_name, self.second_name]))
 
+    def get_full_name(self):
+        return ' '.join(filter(None, [self.last_name, self.first_name]))
+
 
 class EventType(models.Model):
     ext_id = models.PositiveIntegerField(verbose_name='Внешний id', null=True)
@@ -56,12 +59,19 @@ class EventType(models.Model):
         return self.title
 
 
+class Author(models.Model):
+    title = models.CharField(max_length=1000)
+    uuid = models.CharField(max_length=50, unique=True)
+    is_main = models.NullBooleanField()
+
+
 class Activity(models.Model):
     uid = models.CharField(max_length=255, unique=True)
     ext_id = models.PositiveIntegerField(default=None, verbose_name='id в LABS', db_index=True, null=True)
     title = models.CharField(max_length=1000)
     main_author = models.CharField(max_length=500, default='')
     is_deleted = models.BooleanField(default=False, verbose_name=_(u'Удалено'))
+    authors = models.ManyToManyField(Author)
 
     def get_labs_link(self):
         return '{}/admin/activity/view/{}'.format(settings.LABS_URL.rstrip('/'), self.uid)
@@ -167,6 +177,9 @@ class Event(models.Model):
     @cached_property
     def get_results(self):
         return EventBlock.objects.filter(event=self).order_by('id')
+
+    def get_xle_link(self):
+        return '{}/event/{}'.format(settings.XLE_URL.rstrip('/'), self.uid)
 
 
 class BlockType:
@@ -572,6 +585,9 @@ class Team(models.Model):
     def __str__(self):
         return self.name
 
+    def user_can_edit_team(self, user):
+        return user.is_assistant or user.id == self.creator_id or user in self.users.all()
+
 
 class EventTeamMaterial(AbstractMaterial):
     team = models.ForeignKey(Team, on_delete=models.CASCADE)
@@ -705,6 +721,12 @@ class LabsEventBlock(models.Model):
     class Meta:
         ordering = ['order']
 
+    def block_has_only_personal_results(self):
+        return all(r.result_format == 'personal' for r in self.results.all() if not self.deleted and not r.deleted)
+
+    def block_has_only_group_results(self):
+        return all(r.result_format == 'group' for r in self.results.all() if not self.deleted and not r.deleted)
+
 
 class LabsEventResult(models.Model):
     """
@@ -723,6 +745,18 @@ class LabsEventResult(models.Model):
 
     class Meta:
         ordering = ['order']
+
+    def is_personal(self):
+        """
+        является ли результат персональным
+        """
+        return not self.result_format or self.result_format == 'personal'
+
+    def is_group(self):
+        """
+        является ли результат групповым
+        """
+        return not self.result_format or self.result_format == 'group'
 
 
 class AbstractResult(models.Model):
@@ -810,6 +844,11 @@ class MetaModel(models.Model):
     title = models.CharField(max_length=500)
 
 
+class DpCompetence(models.Model):
+    uuid = models.CharField(max_length=50, unique=True)
+    title = models.CharField(max_length=500)
+
+
 @deconstructible
 class PathAndRename(object):
     """
@@ -819,7 +858,8 @@ class PathAndRename(object):
         self.path = path
 
     def __call__(self, instance, filename):
-        filename = '{}.csv'.format(uuid4().hex)
+        ext = filename.split('.')[-1]
+        filename = '{}.{}'.format(uuid4().hex, ext)
         return os.path.join(self.path, uuid4().hex[0], uuid4().hex[1:3], filename)
 
 
@@ -883,3 +923,14 @@ class PLEUserResult(models.Model):
 
 class Material(BaseMaterial):
     ple_result = models.ForeignKey(PLEUserResult, on_delete=models.CASCADE)
+
+    def get_file_name(self):
+        return '{}.{}'.format(self.header, self.csv_file.name.split('.')[-1] or self.meta_data.get('format', 'csv'))
+
+
+class UserFile(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    source = models.CharField(max_length=50)
+    activity_uuid = models.CharField(default='', max_length=255)
+    file = models.FileField(max_length=300)
+    data = JSONField(null=True)
