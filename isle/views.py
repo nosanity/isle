@@ -316,6 +316,7 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
         event_entry = EventEntry.objects.filter(event=self.event, user=self.request.user).first()
         teams = Team.objects.filter(event=self.event).select_related('creator').prefetch_related('users')
         teams = sorted(list(teams), key=lambda x: (int(x.id not in user_teams), x.name.lower()))
+        teams_allowed_to_delete = [i.id for i in teams if i.user_can_delete_team(self.request.user)]
         data.update({
             'students': users,
             'event': self.event,
@@ -323,6 +324,7 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
             'user_teams': user_teams,
             'event_entry': event_entry,
             'event_entry_id': getattr(event_entry, 'id', 0),
+            'teams_allowed_to_delete': teams_allowed_to_delete,
         })
         return data
 
@@ -2821,3 +2823,13 @@ class GetPLEUserResultApi(APIView):
         except PLEUserResult.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
         return Response(user_result.get_json())
+
+
+class DeleteTeamView(GetEventMixinWithAccessCheck, View):
+    def post(self, request, **kwargs):
+        team = get_object_or_404(Team, id=self.kwargs['team_id'])
+        if not team.user_can_delete_team(request.user):
+            raise PermissionDenied
+        logging.warning('User #%s deleted team %s from event %s', request.user.id, team.name, team.event.uid)
+        team.delete()
+        return JsonResponse({'status': 0})

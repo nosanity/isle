@@ -42,6 +42,7 @@ urlpatterns = [
     path('load_dump/<int:dump_id>/', views.LoadCsvDump.as_view(), name='load_csv_dump'),
     path('csv-dumps/', views.CSVDumpsList.as_view(), name='csv-dumps-list'),
     path('switch-context/', views.switch_context, name='switch_context'),
+    path('<str:uid>/delete-team/<int:team_id>/', views.DeleteTeamView.as_view(), name='delete-team'),
     path('<str:uid>/', views.EventView.as_view(), name='event-view'),
     path('<str:uid>/<int:unti_id>/', views.LoadUserMaterialsResult.as_view(), name='load-materials'),
     path('api/user-materials/', views.UserMaterialsListView.as_view()),
