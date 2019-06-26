@@ -21,7 +21,7 @@ def load_test_data(file_name):
 class TestApi(BaseApi):
     name = 'test'
     base_url = 'http://example.com'
-    app_token = '123456'
+    authorization = {'params': {'app_token': '123456'}}
 
 
 class TestPagination(TestCase):
@@ -32,7 +32,7 @@ class TestPagination(TestCase):
     def test_pagination(self):
         def return_val(request):
             params = dict(parse_qsl(urlparse(request.url).query))
-            self.assertEqual(params.get('app_token'), TestApi.app_token)
+            self.assertEqual(params.get('app_token'), TestApi.authorization['params']['app_token'])
             page = params.get('page', 1)
             headers = {'X-Pagination-Page-Count': '2', 'Content-Type': 'application/json'}
             resp_body = json.dumps(load_test_data('test_pagination_page{}.json'.format(page)))
@@ -154,6 +154,31 @@ class TestActivityAPI(TestCase):
         self.assertTrue(Event.objects.filter(uid='ce8e85de-48f8-42fc-9f61-8b8eea04cc24').exists() and
                         not Event.objects.get(uid='ce8e85de-48f8-42fc-9f61-8b8eea04cc24').is_active)
         self.assertFalse(Event.objects.filter(uid='d18093f5-dd5c-41e3-a772-0103402ddf2c').exists())
+
+    def test_default_trace_data(self):
+        """
+        проверка того, что при создании нового типа мероприятия для него прописывается нужный json
+        """
+        with patch.object(LabsApi, 'get_activities', return_value=iter([load_test_data('api_data.json')])):
+            self.assertTrue(refresh_events_data())
+            for et in EventType.objects.all():
+                self.assertListEqual(et.trace_data, settings.DEFAULT_TRACE_DATA_JSON)
+
+    def test_existing_trace_data_does_not_change(self):
+        """
+        проверка того, что при обновлении данных существующий json типа мероприятия не затирается
+        """
+        with patch.object(LabsApi, 'get_activities', return_value=iter([load_test_data('api_data.json')])):
+            self.assertTrue(refresh_events_data())
+        et = EventType.objects.first()
+        test_json = [
+            {"name": "name", "trace_type": "trace_type"}
+        ]
+        EventType.objects.filter(id=et.id).update(trace_data=test_json)
+        with patch.object(LabsApi, 'get_activities', return_value=iter([load_test_data('api_data.json')])):
+            self.assertTrue(refresh_events_data())
+        et = EventType.objects.get(id=et.id)
+        self.assertListEqual(et.trace_data, test_json)
 
     def _get_obj_dict(self, obj, *attrs):
         return {attr: getattr(obj, attr) for attr in attrs}

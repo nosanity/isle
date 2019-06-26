@@ -208,6 +208,33 @@ DRF_LIMIT_OFFSET_PAGINATION_MAX = 50
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}
 
+DEFAULT_TRACE_DATA_JSON = [
+   {
+      "name": "Презентация спикера",
+      "trace_type": "Презентация"
+   },
+   {
+      "name": "Видео",
+      "trace_type": "Видео"
+   },
+   {
+      "name": "Потоковое аудио",
+      "trace_type": "Аудио"
+   },
+   {
+      "name": "Фото мероприятия/участников/продуктов",
+      "trace_type": "Фото"
+   },
+   {
+      "name": "Фото флипчартов",
+      "trace_type": "Фото"
+   },
+   {
+      "name": "Другое",
+      "trace_type": "Файл"
+   }
+]
+
 from os import getenv
 from split_settings.tools import include
 settings_path = getenv('UPLOADS_SETTINGS_PATH', 'local_settings.py')

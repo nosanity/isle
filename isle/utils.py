@@ -84,11 +84,16 @@ def refresh_events_data():
                 if activity_type and activity_type.get('uuid'):
                     event_type = event_types.get(activity_type['uuid'])
                     if not event_type:
-                        event_type = EventType.objects.update_or_create(
+                        event_type, created = EventType.objects.update_or_create(
                             uuid=activity_type['uuid'],
                             defaults={'title': activity_type.get('title'),
                                       'description': activity_type.get('description') or ''}
-                        )[0]
+                        )
+                        if created:
+                            EventType.objects.filter(id=event_type.id).update(
+                                trace_data=settings.DEFAULT_TRACE_DATA_JSON
+                            )
+                        event_types[activity_type['uuid']] = event_type
                 for run in runs:
                     run_json = filter_dict(run, RUN_EXCLUDE_KEYS)
                     if not run.get('uuid'):
