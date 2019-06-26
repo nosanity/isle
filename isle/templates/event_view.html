@@ -193,6 +193,11 @@
                                 <i class="glyphicon glyphicon-pencil" title="{% blocktrans %}Редактировать{% endblocktrans %}"></i>
                             </a>
                         {% endif %}
+                        {% if team.id in teams_allowed_to_delete %}
+                            <btn class="btn btn-danger delete-team-btn" data-action-url="{% url 'delete-team' uid=event.uid team_id=team.id %}">
+                                <i class="glyphicon glyphicon-remove" title="{% blocktrans %}Удалить{% endblocktrans %}"></i>
+                            </btn>
+                        {% endif %}
                     </td>
                 </tr>
             {% endfor %}

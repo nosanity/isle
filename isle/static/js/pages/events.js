@@ -52,6 +52,29 @@ $('.export-format-selector').on('change', (e) => {
     })
 });
 
+$('.delete-team-btn').on('click', (e) => {
+    e.preventDefault();
+    let target = $(e.target);
+    if (confirm('Удалить команду?')) {
+        if (target[0].tagName == 'I')
+            target = target.parent();
+        $.ajax({
+            method: 'POST',
+            url: target.data('action-url'),
+            data: {csrfmiddlewaretoken: csrfmiddlewaretoken},
+            success: (data) => {
+                try {
+                    if (data['status'] === 0) {
+                        target.parents('tr').remove();
+                    }
+                }
+                catch (e) { alert('Произошла ошибка'); }
+            },
+            error: () => { alert('Произошла ошибка'); },
+        })
+    }
+});
+
 function inputAttendanceChange(obj) {
     const $obj = $(obj);
     const isChecked = $obj.prop('checked');

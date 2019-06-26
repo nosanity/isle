@@ -626,6 +626,14 @@ class Team(models.Model):
         return user.is_assistant_for_context(self.event.context) or user.id == self.creator_id or \
                user in self.users.all()
 
+    def user_can_delete_team(self, user):
+        """
+        удалить команду может ассистент, либо тот, кто ее создал, при условии, что у команды нет загруженных файлов
+        """
+        team_is_deletable = not EventTeamMaterial.objects.filter(team=self).exists()
+        user_has_right = user.id == self.creator_id or user.is_assistant_for_context(self.event.context)
+        return team_is_deletable and user_has_right
+
 
 class EventTeamMaterial(AbstractMaterial):
     team = models.ForeignKey(Team, on_delete=models.CASCADE)
