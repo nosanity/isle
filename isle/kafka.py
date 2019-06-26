@@ -6,7 +6,7 @@ from carrier_client.manager import MessageManager, MessageManagerException
 from carrier_client.message import OutgoingMessage
 from django_carrier_client.helpers import MessageManagerHelper
 from isle.api import SSOApi, ApiError
-from isle.models import LabsUserResult, LabsTeamResult
+from isle.models import LabsUserResult, LabsTeamResult, PLEUserResult
 from isle.utils import update_casbin_data
 
 
@@ -42,6 +42,8 @@ def get_payload(obj, obj_id, action):
         return for_type('user_result')
     if isinstance(obj, LabsTeamResult):
         return for_type('team_result')
+    if isinstance(obj, PLEUserResult):
+        return for_type('user_result_ple')
 
 
 def send_object_info(obj, obj_id, action):

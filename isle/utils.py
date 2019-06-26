@@ -18,6 +18,7 @@ from django.utils.functional import cached_property
 from django.utils.translation import ugettext as _
 import requests
 import xlsxwriter
+from celery.task.control import inspect
 from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi, SSOApi
 from isle.cache import UserAvailableContexts
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
@@ -806,3 +807,15 @@ class XLSWriter:
 
     def close(self):
         self.workbook.close()
+
+
+def check_celery_active():
+    if settings.DEBUG and getattr(settings, 'CELERY_ALWAYS_EAGER', False):
+        return True
+    try:
+        stat = inspect().stats()
+        if not stat:
+            return False
+        return True
+    except IOError:
+        return False
