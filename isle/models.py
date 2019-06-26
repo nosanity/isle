@@ -16,6 +16,14 @@ from django.utils.deconstruct import deconstructible
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext_lazy as _
 from jsonfield import JSONField
+from .cache import UserAvailableContexts
+
+
+def check_permission(user, context, obj_type='file', action='upload'):
+    from .casbin import enforce
+    if not user.unti_id or not context:
+        return False
+    return enforce(str(user.unti_id), context, obj_type, action)
 
 
 class User(AbstractUser):
@@ -39,6 +47,17 @@ class User(AbstractUser):
 
     def get_full_name(self):
         return ' '.join(filter(None, [self.last_name, self.first_name]))
+
+    def is_assistant_for_context(self, context):
+        return check_permission(self, context and context.uuid)
+
+    def has_assistant_role(self):
+        ctx = UserAvailableContexts.get(self) or []
+        return bool(ctx)
+
+    @cached_property
+    def available_context_uuids(self):
+        return [c for c in Context.objects.values_list('uuid', flat=True) if check_permission(self, c)]
 
 
 class EventType(models.Model):
@@ -77,6 +96,29 @@ class Activity(models.Model):
         return '{}/admin/activity/view/{}'.format(settings.LABS_URL.rstrip('/'), self.uid)
 
 
+class NotDeletedEntries(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted=False)
+
+
+class Run(models.Model):
+    uuid = models.CharField(max_length=50, unique=True)
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE)
+    deleted = models.BooleanField(default=False)
+
+
+class RunEnrollment(models.Model):
+    run = models.ForeignKey(Run, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    deleted = models.BooleanField(default=False)
+
+    objects = NotDeletedEntries()
+    all_objects = models.Manager()
+
+    class Meta:
+        unique_together = ('run', 'user')
+
+
 class ActivityEnrollment(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE)
@@ -105,6 +147,7 @@ class Event(models.Model):
 
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, default=None, null=True)
     context = models.ForeignKey(Context, on_delete=models.SET_NULL, null=True, default=None)
+    run = models.ForeignKey(Run, on_delete=models.CASCADE, null=True, default=None)
 
     class Meta:
         verbose_name = _(u'Событие')
@@ -136,9 +179,6 @@ class Event(models.Model):
         except pytz.UnknownTimeZoneError:
             tz = default
         return val.astimezone(tz)
-
-    def is_author(self, user):
-        return user.is_assistant
 
     def get_traces(self):
         traces = self.trace_set.order_by('name')
@@ -281,11 +321,6 @@ class Trace(models.Model):
         return self.name
 
 
-class NotDeletedEntries(models.Manager):
-    def get_queryset(self):
-        return super().get_queryset().filter(deleted=False)
-
-
 class EventEntry(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -424,22 +459,12 @@ class TeamResult(ResultAbstract):
             res[field_name] = UserRole.get_initial_data_for_team_result(self.team, self.id)
 
 
-class AbstractMaterial(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+class BaseMaterial(models.Model):
     url = models.URLField(blank=True)
     file = models.FileField(blank=True, max_length=300)
-    trace = models.ForeignKey(Trace, on_delete=models.CASCADE, null=True, default=None)
-    initiator = models.PositiveIntegerField(blank=True, null=True)
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, default=None)
-    object_id = models.PositiveIntegerField(null=True, default=None)
-    parent = GenericForeignKey()
-    deleted = models.BooleanField(default=False)
     file_type = models.CharField(max_length=1000, default='')
     file_size = models.PositiveIntegerField(default=None, null=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True)
-
-    objects = NotDeletedEntries()
-    all_objects = models.Manager()
 
     class Meta:
         abstract = True
@@ -451,6 +476,22 @@ class AbstractMaterial(models.Model):
             if self.file.url.startswith('/'):
                 return '{}{}'.format(settings.BASE_URL, self.file.url)
             return self.file.url
+
+
+class AbstractMaterial(BaseMaterial):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    trace = models.ForeignKey(Trace, on_delete=models.CASCADE, null=True, default=None)
+    initiator = models.PositiveIntegerField(blank=True, null=True)
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, default=None)
+    object_id = models.PositiveIntegerField(null=True, default=None)
+    parent = GenericForeignKey()
+    deleted = models.BooleanField(default=False)
+
+    objects = NotDeletedEntries()
+    all_objects = models.Manager()
+
+    class Meta:
+        abstract = True
 
     def get_file_name(self):
         if self.url:
@@ -523,6 +564,7 @@ class EventMaterial(AbstractMaterial):
     comment = models.CharField(default='', max_length=255)
     result = models.ForeignKey(UserResult, on_delete=models.CASCADE, null=True, default=None)
     result_v2 = models.ForeignKey('LabsUserResult', on_delete=models.SET_NULL, null=True, default=None)
+    loaded_by_assistant = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = _(u'Материал')
@@ -563,6 +605,7 @@ class Team(models.Model):
     name = models.CharField(max_length=500, verbose_name='Название команды')
     creator = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None, related_name='team_creator')
     confirmed = models.BooleanField(default=True)
+    created_by_assistant = models.BooleanField(default=False)
 
     @property
     def team_name(self):
@@ -580,7 +623,16 @@ class Team(models.Model):
         return self.name
 
     def user_can_edit_team(self, user):
-        return user.is_assistant or user.id == self.creator_id or user in self.users.all()
+        return user.is_assistant_for_context(self.event.context) or user.id == self.creator_id or \
+               user in self.users.all()
+
+    def user_can_delete_team(self, user):
+        """
+        удалить команду может ассистент, либо тот, кто ее создал, при условии, что у команды нет загруженных файлов
+        """
+        team_is_deletable = not EventTeamMaterial.objects.filter(team=self).exists()
+        user_has_right = user.id == self.creator_id or user.is_assistant_for_context(self.event.context)
+        return team_is_deletable and user_has_right
 
 
 class EventTeamMaterial(AbstractMaterial):
@@ -590,6 +642,7 @@ class EventTeamMaterial(AbstractMaterial):
     owners = models.ManyToManyField(User)
     result = models.ForeignKey(TeamResult, on_delete=models.CASCADE, null=True, default=None)
     result_v2 = models.ForeignKey('LabsTeamResult', on_delete=models.CASCADE, null=True, default=None)
+    loaded_by_assistant = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = _(u'Материал команды')
@@ -838,6 +891,11 @@ class MetaModel(models.Model):
     title = models.CharField(max_length=500)
 
 
+class DpCompetence(models.Model):
+    uuid = models.CharField(max_length=50, unique=True)
+    title = models.CharField(max_length=500)
+
+
 @deconstructible
 class PathAndRename(object):
     """
@@ -847,7 +905,8 @@ class PathAndRename(object):
         self.path = path
 
     def __call__(self, instance, filename):
-        filename = '{}.csv'.format(uuid4().hex)
+        ext = filename.split('.')[-1]
+        filename = '{}.{}'.format(uuid4().hex, ext)
         return os.path.join(self.path, uuid4().hex[0], uuid4().hex[1:3], filename)
 
 
@@ -886,3 +945,40 @@ class CSVDump(models.Model):
 
     def get_download_link(self):
         return reverse('load_csv_dump', kwargs={'dump_id': self.id})
+
+    def get_file_name(self):
+        return '{}.{}'.format(self.header, self.csv_file.name.split('.')[-1] or self.meta_data.get('format', 'csv'))
+
+
+class UserFile(BaseMaterial, models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    source = models.CharField(max_length=50)
+    activity_uuid = models.CharField(default='', max_length=255)
+    data = JSONField(null=True)
+    ple_result = models.ForeignKey('PLEUserResult', on_delete=models.CASCADE, null=True, default=None)
+
+    
+class CasbinData(models.Model):
+    model = models.TextField()
+    policy = models.TextField()
+
+
+class PLEUserResult(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    comment = models.TextField(default='')
+    meta = JSONField()
+
+    def get_json(self, with_materials=True):
+        data = {
+            'id': self.id,
+            'user': self.user.unti_id,
+            'meta': self.meta,
+            'comment': self.comment,
+        }
+        if with_materials:
+            materials = UserFile.objects.filter(ple_result=self)
+            data['materials'] = [{'uploads_url': i.get_url(), 'id': i.id} for i in materials]
+        return data
+
+    def get_url(self):
+        return reverse('api-ple-result', kwargs={'result_id': self.id})

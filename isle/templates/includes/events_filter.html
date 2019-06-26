@@ -1,5 +1,5 @@
 <div class="row {% if activity_filter %}mt-10{% endif %}">
-    <div class="col">
+    <div class="col activity-filter-wrapper">
         <div>
             <form class="form-inline">
                 <input type="search" id="search-events" placeholder="Найти" class="form-control" {% if search %}value="{{ search }}{% endif %}">
@@ -15,3 +15,14 @@
         </div>
     </div>
 </div>
+{% if has_assistant_role %}
+    <div>
+        <form class="form-inline">
+            <label>Смотреть как</label>
+            <select id="select-view-mode" class="form-control">
+                <option value="as_assistant" {% if is_assistant %}selected{% endif %}>ассистент</option>
+                <option value="as_user" {% if not is_assistant %}selected{% endif %}>пользователь</option>
+            </select>
+        </form>
+    </div>
+{% endif %}

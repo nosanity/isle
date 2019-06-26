@@ -16,7 +16,7 @@ from django.contrib.auth.views import logout as base_logout
 from django.core.files.storage import default_storage
 from django.core.exceptions import PermissionDenied, SuspiciousOperation
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, F
 from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404, FileResponse, \
     StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -30,25 +30,32 @@ import requests
 from dal import autocomplete
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
-from rest_framework.generics import ListAPIView
+from rest_framework.generics import ListAPIView, CreateAPIView
 from rest_framework.pagination import PageNumberPagination, LimitOffsetPagination
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import BasePermission, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
 from isle.api import LabsApi, XLEApi, DpApi, SSOApi
+from isle.cache import UserAvailableContexts
 from isle.filters import LabsUserResultFilter, LabsTeamResultFilter
 from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset, \
     EventMaterialForm, EditTeamForm
 from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
-    LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump
-from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer
-from isle.tasks import generate_events_csv, team_members_set_changed
+    LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, PLEUserResult, RunEnrollment
+from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer, \
+    UserFileSerializer, UserResultSerializer
+from isle.tasks import generate_events_csv, team_members_set_changed, handle_ple_user_result
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
-    EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request
+    EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request, XLSWriter, \
+    check_celery_active
+
+
+VIEW_MODE_COOKIE_NAME = 'index-view-mode'
 
 
 def login(request):
@@ -70,7 +77,7 @@ def context_setter(f):
             uid = kwargs.get('uid')
             if uid:
                 event = Event.objects.filter(uid=uid).first()
-                if event and request.user.is_authenticated and request.user.is_assistant and \
+                if event and request.user.is_authenticated and request.user.has_assistant_role() and \
                         request.user.chosen_context_id != event.context_id:
                     request.user.chosen_context_id = event.context_id
                     request.user.save(update_fields=['chosen_context_id'])
@@ -128,6 +135,27 @@ class SearchHelperMixin:
             'search': self.request.GET.get('search') or '',
         })
 
+    @cached_property
+    def current_user_has_assistant_role(self):
+        return self.request.user.has_assistant_role()
+
+    @cached_property
+    def current_mode_is_assistant(self):
+        """
+        просматривает ли пользователь страницу в режиме ассистента
+        """
+        if self.current_user_has_assistant_role:
+            return self.request.COOKIES.get(VIEW_MODE_COOKIE_NAME) != 'as_user'
+        return False
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        data.update({
+            'is_assistant': self.current_mode_is_assistant,
+            'has_assistant_role': self.current_user_has_assistant_role,
+        })
+        return data
+
 
 class IndexPageEventsFilterMixin(SearchHelperMixin):
     @cached_property
@@ -144,11 +172,12 @@ class IndexPageEventsFilterMixin(SearchHelperMixin):
         return qs
 
     def get_events(self):
-        if self.request.user.is_assistant:
+        if self.current_mode_is_assistant:
             events = Event.objects.filter(is_active=True)
         else:
-            events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user).
-                                          values_list('event_id', flat=True))
+            events = Event.objects.filter(
+                Q(id__in=EventEntry.objects.filter(user=self.request.user).values_list('event_id', flat=True)) |
+                Q(run_id__in=RunEnrollment.objects.filter(user=self.request.user).values_list('run_id', flat=True)))
         events = events.filter(Q(event_type_id__in=get_allowed_event_type_ids()) | Q(event_type__isnull=True))
         min_dt, max_dt = self.get_datetimes()
         if min_dt:
@@ -159,8 +188,12 @@ class IndexPageEventsFilterMixin(SearchHelperMixin):
             events = events.filter(activity=self.activity_filter)
         events = self.filter_search(events)
         events = events.order_by('{}dt_start'.format('' if self.is_asc_sort() else '-'))
-        if self.request.user.is_assistant and self.request.user.chosen_context_id:
-            events = events.filter(context_id=self.request.user.chosen_context_id)
+        if self.current_mode_is_assistant:
+            if self.request.user.chosen_context_id and \
+                    self.request.user.is_assistant_for_context(self.request.user.chosen_context):
+                events = events.filter(context_id=self.request.user.chosen_context_id)
+            else:
+                events = events.filter(context__uuid__in=UserAvailableContexts.get(self.request.user) or [])
         return events
 
     def is_asc_sort(self):
@@ -188,9 +221,9 @@ class Events(IndexPageEventsFilterMixin, ListView):
         })
         self.update_context_with_search_parameters(ctx)
         event_ids = [i.id for i in objects]
-        if self.request.user.is_assistant:
+        if self.current_mode_is_assistant:
             fdict = {
-                'initiator__in': User.objects.filter(is_assistant=True).values_list('unti_id', flat=True)
+                'loaded_by_assistant': True,
             }
             ctx.update({
                 'elements_cnt': EventMaterial.objects.filter(event_id__in=event_ids).count() +
@@ -199,7 +232,13 @@ class Events(IndexPageEventsFilterMixin, ListView):
                 'elements_user_cnt': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event_id__in=event_ids).count() +
                                      EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event_id__in=event_ids).count(),
             })
-            enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
+            run_enrs = Event.objects.filter(id__in=event_ids, run__runenrollment__isnull=False)\
+                .values_list('id', 'run__runenrollment__user_id')
+            event_enrs = EventEntry.objects.filter(event_id__in=event_ids).values_list('event_id', 'user_id')
+            enrs = event_enrs.union(run_enrs)
+            enrollments = defaultdict(int)
+            for event_id, _ in enrs.iterator():
+                enrollments[event_id] += 1
             check_ins = dict(EventEntry.objects.filter(is_active=True).values_list('event_id')
                              .annotate(cnt=Count('user_id')))
             event_files_cnt = defaultdict(int)
@@ -238,12 +277,22 @@ class GetEventMixin:
     def dispatch(self, request, *args, **kwargs):
         return super().dispatch(request, *args, **kwargs)
 
+    @cached_property
+    def current_user_is_assistant(self):
+        return self.request.user.is_assistant_for_context(self.event.context)
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        data['is_assistant'] = self.current_user_is_assistant
+        return data
+
 
 class GetEventMixinWithAccessCheck(GetEventMixin):
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return HttpResponseRedirect('{}?next={}'.format(reverse('login'), request.get_full_path()))
-        if request.user.is_assistant or EventEntry.objects.filter(user=request.user, event=self.event).exists():
+        if self.current_user_is_assistant or EventEntry.objects.filter(user=request.user, event=self.event).exists() \
+                or (self.event.run_id and RunEnrollment.objects.filter(user=request.user, run_id=self.event.run_id)):
             return super().dispatch(request, *args, **kwargs)
         return render(request, 'to_xle.html', {
             'link': getattr(settings, 'XLE_URL', 'https://xle.2035.university/feedback'),
@@ -252,8 +301,10 @@ class GetEventMixinWithAccessCheck(GetEventMixin):
 
 
 def get_event_participants(event):
-    users = EventEntry.objects.filter(event=event).values_list('user_id')
-    return User.objects.filter(id__in=users).order_by('last_name', 'first_name', 'second_name')
+    q = Q(id__in=EventEntry.objects.filter(event=event).values_list('user_id'))
+    if event.run_id:
+        q |= Q(id__in=RunEnrollment.objects.filter(run_id=event.run_id).values_list('user_id', flat=True))
+    return User.objects.filter(q).order_by('last_name', 'first_name', 'second_name')
 
 
 @method_decorator(context_setter, name='get')
@@ -264,6 +315,7 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
     template_name = 'event_view.html'
 
     def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
         users = list(get_event_participants(self.event))
         user_entry = [i for i in users if i.id == self.request.user.id]
         if user_entry:
@@ -273,7 +325,7 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
         chat_bot_added = set(Attendance.objects.filter(event=self.event, confirmed_by_system=Attendance.SYSTEM_CHAT_BOT)
                              .values_list('user_id', flat=True))
         user_teams = list(Team.objects.filter(event=self.event, users=self.request.user).values_list('id', flat=True))
-        if not self.request.user.is_assistant:
+        if not self.current_user_is_assistant:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users, is_public=True).
                        values_list('user_id').annotate(num=Count('event_id')))
             num[self.request.user.id] = EventMaterial.objects.filter(event=self.event, user=self.request.user).count()
@@ -291,14 +343,17 @@ class EventView(GetEventMixinWithAccessCheck, TemplateView):
         event_entry = EventEntry.objects.filter(event=self.event, user=self.request.user).first()
         teams = Team.objects.filter(event=self.event).select_related('creator').prefetch_related('users')
         teams = sorted(list(teams), key=lambda x: (int(x.id not in user_teams), x.name.lower()))
-        return {
+        teams_allowed_to_delete = [i.id for i in teams if i.user_can_delete_team(self.request.user)]
+        data.update({
             'students': users,
             'event': self.event,
             'teams': teams,
             'user_teams': user_teams,
             'event_entry': event_entry,
             'event_entry_id': getattr(event_entry, 'id', 0),
-        }
+            'teams_allowed_to_delete': teams_allowed_to_delete,
+        })
+        return data
 
 
 @method_decorator(context_setter, name='get')
@@ -324,7 +379,7 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
         return []
 
     def can_upload(self):
-        return self.request.user.is_assistant
+        return self.current_user_is_assistant
 
     def _can_set_public(self):
         return False
@@ -480,7 +535,9 @@ class BaseLoadMaterialsLabsResults:
             'old_results': self.get_old_results(),
             'links': links,
             'blocks_structure_json': json.dumps(structure, ensure_ascii=False),
-            'event_members': list(EventEntry.objects.filter(event=self.event).values_list('user_id', flat=True)),
+            'event_members': list(EventEntry.objects.filter(event=self.event).values_list('user_id', flat=True)) +
+                             list(RunEnrollment.objects.filter(run_id=self.event.run_id)
+                                  .values_list('user_id', flat=True)),
         }))
         return data
 
@@ -567,7 +624,7 @@ class BaseLoadMaterialsLabsResults:
         """
         перемещение объекта результата из одного блока результата в другой
         """
-        if not request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         item_result = self.results_model.objects.filter(**self._update_query_dict({
             'result_id': request.POST.get('labs_result_id'),
@@ -595,7 +652,7 @@ class BaseLoadMaterialsLabsResults:
         """
         перемещение файла, у которого нет связей с трейсом или результатом, в результат
         """
-        if not request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         try:
             material = self.material_model.objects.get(**self._update_query_dict({
@@ -801,7 +858,7 @@ class BaseLoadMaterialsResults(object):
         resp = self.check_post_allowed(request)
         if resp is not None:
             return resp
-        if not request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         if 'add_btn' not in request.POST:
             return self.delete_item(request)
@@ -845,7 +902,7 @@ class LoadMaterials(BaseLoadMaterials):
         return self.request.user.unti_id == int(self.kwargs['unti_id'])
 
     def can_upload(self):
-        return self.request.user.is_assistant or int(self.kwargs['unti_id']) == self.request.user.unti_id
+        return self.current_user_is_assistant or int(self.kwargs['unti_id']) == self.request.user.unti_id
 
     def get_materials(self):
         if self.can_upload():
@@ -871,7 +928,8 @@ class LoadMaterials(BaseLoadMaterials):
         return JsonResponse({})
 
     def add_item(self, request, **kwargs):
-        if not EventEntry.objects.filter(event=self.event, user=self.user).exists():
+        if not (EventEntry.objects.filter(event=self.event, user=self.user).exists() or (self.event.run_id and
+                RunEnrollment.objects.filter(run_id=self.event.run_id, user=self.user).exists())):
             return JsonResponse({}, status=400)
         return super().add_item(request, **kwargs)
 
@@ -890,7 +948,8 @@ class LoadUserMaterialsResult(BaseLoadMaterialsLabsResults, LoadMaterials):
     extra_context = {'user_upload': True}
 
     def get_material_fields(self, request):
-        return dict(event=self.event, user=self.user, is_public=True)
+        return dict(event=self.event, user=self.user, is_public=True,
+                    loaded_by_assistant=self.current_user_is_assistant)
 
     def _log_material_delete(self, material):
         logging.warning('User %s has deleted file %s for user %s' %
@@ -947,14 +1006,6 @@ class LoadMaterialsAssistant(BaseLoadMaterialsResults, LoadMaterials):
         return JsonResponse({})
 
 
-def choose_view(assistant_view, user_view):
-    def wrapped(request, *args, **kwargs):
-        if request.user.is_authenticated and request.user.is_assistant:
-            return assistant_view.as_view()(request, *args, **kwargs)
-        return user_view.as_view()(request, *args, **kwargs)
-    return wrapped
-
-
 class LoadTeamMaterials(BaseLoadMaterials):
     """
     Просмотр/загрузка командных материалов по эвенту
@@ -982,7 +1033,7 @@ class LoadTeamMaterials(BaseLoadMaterials):
         users = {i.unti_id: i for i in User.objects.filter(unti_id__in=filter(None, [j.initiator for j in qs]))}
         for item in qs:
             item.initiator_user = users.get(item.initiator)
-            if not self.request.user.is_assistant:
+            if not self.current_user_is_assistant:
                 item.is_owner = self.request.user in item.owners.all()
                 item.ownership_url = reverse('team-material-owner', kwargs={
                     'uid': self.event.uid, 'material_id': item.id, 'team_id': self.team.id})
@@ -990,12 +1041,12 @@ class LoadTeamMaterials(BaseLoadMaterials):
 
     def can_upload(self):
         # командные файлы загружает ассистент или участники этой команды
-        return self.request.user.is_assistant or self.team.users.filter(id=self.request.user.id).exists()
+        return self.current_user_is_assistant or self.team.users.filter(id=self.request.user.id).exists()
 
     def post(self, request, *args, **kwargs):
         # загрузка и удаление файлов доступны только для эвентов, доступных для оцифровки, и по
         # командам, сформированным в данном эвенте
-        if not self.event.is_active or not (self.request.user.is_assistant or
+        if not self.event.is_active or not (self.current_user_is_assistant or
                 Team.objects.filter(event=self.event, id=self.kwargs['team_id']).exists()):
             return JsonResponse({}, status=403)
         try:
@@ -1031,7 +1082,7 @@ class LoadTeamMaterials(BaseLoadMaterials):
 
     def get_material_fields(self, request):
         return dict(event=self.event, team=self.team, comment=request.POST.get('comment', ''),
-                    confirmed=self.request.user.is_assistant)
+                    confirmed=self.current_user_is_assistant)
 
 
 class LoadTeamMaterialsResult(BaseLoadMaterialsLabsResults, LoadTeamMaterials):
@@ -1041,7 +1092,7 @@ class LoadTeamMaterialsResult(BaseLoadMaterialsLabsResults, LoadTeamMaterials):
     template_name = 'team_results.html'
 
     def get_material_fields(self, request):
-        return dict(event=self.event, team=self.team)
+        return dict(event=self.event, team=self.team, loaded_by_assistant=self.current_user_is_assistant)
 
     def _log_material_delete(self, material):
         logging.warning('User %s has deleted file %s for team %s' %
@@ -1108,7 +1159,7 @@ class LoadEventMaterials(BaseLoadMaterials):
     extra_context = {'with_comment_input': True, 'show_owners': True, 'event_upload': True}
 
     def post(self, request, *args, **kwargs):
-        if request.user.is_authenticated and request.user.is_assistant and 'change_material_info' in request.POST:
+        if request.user.is_authenticated and self.current_user_is_assistant and 'change_material_info' in request.POST:
             return self.change_material_info(request)
         return super().post(request, *args, **kwargs)
 
@@ -1150,7 +1201,7 @@ class LoadEventMaterials(BaseLoadMaterials):
     def get_materials(self):
         qs = EventOnlyMaterial.objects.filter(event=self.event)
         for item in qs:
-            if not self.request.user.is_assistant:
+            if not self.current_user_is_assistant:
                 item.is_owner = self.request.user in item.owners.all()
                 item.ownership_url = reverse('event-material-owner', kwargs={
                     'uid': self.event.uid, 'material_id': item.id})
@@ -1193,7 +1244,7 @@ class BaseTeamView(GetEventMixin):
     form_class = CreateTeamForm
 
     def dispatch(self, request, *args, **kwargs):
-        if not request.user.is_authenticated or not (request.user.is_assistant or
+        if not request.user.is_authenticated or not (self.current_user_is_assistant or
                 self.has_permission(request)):
             return HttpResponseForbidden()
         return super().dispatch(request, *args, **kwargs)
@@ -1208,7 +1259,7 @@ class BaseTeamView(GetEventMixin):
 
     def post(self, request, **kwargs):
         form = self.form_class(data=request.POST, event=self.event, users_qs=self.get_available_users(),
-                               creator=request.user, instance=self.team)
+                               creator=self.request.user, instance=self.team)
         if not form.is_valid():
             return JsonResponse({}, status=400)
         team, members_changed = form.save()
@@ -1227,7 +1278,8 @@ class CreateTeamView(BaseTeamView, TemplateView):
     extra_context = {'edit': False}
 
     def has_permission(self, request):
-        return EventEntry.objects.filter(event=self.event, user=request.user).exists()
+        return EventEntry.objects.filter(event=self.event, user=request.user).exists() or (self.event.run_id and
+               RunEnrollment.objects.filter(run_id=self.event.run_id, user=request.user).exists())
 
 
 class EditTeamView(BaseTeamView, TemplateView):
@@ -1259,7 +1311,7 @@ class AddUserToEvent(GetEventMixin, TemplateView):
     template_name = 'add_user.html'
 
     def dispatch(self, request, *args, **kwargs):
-        if request.user.is_authenticated and request.user.is_assistant:
+        if request.user.is_authenticated and self.current_user_is_assistant:
             return super().dispatch(request, *args, **kwargs)
         return HttpResponseForbidden()
 
@@ -1296,7 +1348,7 @@ class AddUserToEvent(GetEventMixin, TemplateView):
 
 class RemoveUserFromEvent(GetEventMixin, View):
     def post(self, request, uid=None):
-        if not request.user.is_authenticated or not request.user.is_assistant:
+        if not request.user.is_authenticated or not self.current_user_is_assistant:
             return JsonResponse({}, status=403)
         try:
             entry = EventEntry.objects.get(event=self.event, user_id=request.POST.get('user_id'),
@@ -1313,12 +1365,16 @@ class RemoveUserFromEvent(GetEventMixin, View):
 class UserAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
         event_id = self.forwarded.get('event_id')
+        event = Event.objects.filter(id=event_id).first()
+        run_id = event and event.run_id
         chosen = self.forwarded.get('users') or []
-        if not self.request.user.is_authenticated or not self.request.user.is_assistant or not event_id:
+        if not self.request.user.is_authenticated or not self.request.user.has_assistant_role() or not event_id:
             return User.objects.none()
-        qs = User.objects.exclude(
-            id__in=EventEntry.objects.filter(event_id=event_id).values_list('user_id', flat=True)
-        ).filter(id__in=UserSocialAuth.objects.all().values_list('user__id', flat=True)).exclude(id__in=chosen)
+        q = Q(id__in=EventEntry.objects.filter(event_id=event_id).values_list('user_id', flat=True))
+        if run_id:
+            q |= Q(id__in=RunEnrollment.objects.filter(run_id=run_id).values_list('user_id', flat=True))
+        qs = User.objects.exclude(q).filter(
+            id__in=UserSocialAuth.objects.all().values_list('user__id', flat=True)).exclude(id__in=chosen)
         if self.q:
             qs = self.search_user(qs, self.q)
         return qs
@@ -1348,13 +1404,15 @@ class UserAutocomplete(autocomplete.Select2QuerySetView):
 
 class ResultTypeAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
-        if not self.request.user.is_authenticated or not self.request.user.is_assistant:
+        if not self.request.user.is_authenticated:
             return []
         try:
             event = Event.objects.get(id=self.forwarded.get('event'))
         except (TypeError, ValueError, Event.DoesNotExist):
             logging.warning("User %s hasn't provided event parameter for ResultTypeAutocomplete")
             raise SuspiciousOperation
+        if not self.request.user.is_assistant_for_context(event.context):
+            return []
         return BlockType.result_types_for_event(event)
 
     def get_result_label(self, result):
@@ -1370,7 +1428,8 @@ class EventItemAutocompleteBase(autocomplete.Select2QuerySetView):
     def get_queryset(self):
         exclude = self.forwarded.get('exclude') or []
         event_id = str(self.forwarded.get('event'))
-        if not event_id.isdigit() or not (self.request.user.is_authenticated and self.request.user.is_assistant):
+        event = Event.objects.get(id=event_id)
+        if not event_id.isdigit() or not (self.request.user.is_authenticated and self.request.user.is_assistant_for_context(event.context)):
             return self.model.objects.none()
         return self.model.objects.filter(**self.get_filters(event_id)).exclude(id__in=exclude)
 
@@ -1527,7 +1586,7 @@ class UpdateAttendanceView(GetEventMixin, View):
         if not user_id or 'status' not in request.POST:
             return JsonResponse({}, status=400)
         user = User.objects.filter(id=user_id).first()
-        if not request.user.is_assistant:
+        if not self.current_user_is_assistant:
             return JsonResponse({}, status=400)
         is_confirmed = request.POST.get('status') == 'true'
         Attendance.objects.update_or_create(
@@ -1561,7 +1620,7 @@ class IsMaterialPublic(GetEventMixin, View):
 
 class ConfirmTeamMaterial(GetEventMixin, View):
     def post(self, request, uid=None, team_id=None):
-        if not request.user.is_authenticated or not request.user.is_assistant:
+        if not request.user.is_authenticated or not self.current_user_is_assistant:
             return JsonResponse({}, status=403)
         try:
             team = Team.objects.get(event=self.event, id=team_id)
@@ -1577,7 +1636,7 @@ class ConfirmTeamMaterial(GetEventMixin, View):
 
 class BaseOwnershipChecker(GetEventMixin, View):
     def post(self, request, **kwargs):
-        if request.user.is_assistant or not EventEntry.objects.filter(event=self.event, user=request.user):
+        if self.current_user_is_assistant or not EventEntry.objects.filter(event=self.event, user=request.user):
             return JsonResponse({}, status=403)
         material = self.get_material()
         confirm = request.POST.get('confirm')
@@ -1698,7 +1757,7 @@ class Statistics(TemplateView):
 
 class TransferView(GetEventMixin, View):
     def dispatch(self, request, *args, **kwargs):
-        if request.user.is_authenticated and not request.user.is_assistant:
+        if request.user.is_authenticated and not self.current_user_is_assistant:
             return HttpResponseForbidden()
         return super().dispatch(request, *args, **kwargs)
 
@@ -1720,7 +1779,8 @@ class TransferView(GetEventMixin, View):
             user = User.objects.get(id=request.POST.get('dest_id'))
         except (User.DoesNotExist, TypeError, ValueError):
             return JsonResponse({}, status=404)
-        if not EventEntry.objects.filter(event=self.event, user=user).exists():
+        if not (EventEntry.objects.filter(event=self.event, user=user).exists() or
+                (self.event.run_id and RunEnrollment.objects.filter(run_id=self.event.run_id, user=user).exists())):
             return JsonResponse({}, status=400)
         EventMaterial.copy_from_object(material, user)
         logging.info('User %s transferred event file %s to user %s' % (request.user.username, material.id, user.id))
@@ -1747,7 +1807,9 @@ class TransferView(GetEventMixin, View):
             return JsonResponse({}, status=404)
         if not obj.trace:
             return JsonResponse({}, status=404)
-        if model == EventMaterial and not EventEntry.objects.filter(event=self.event, user=obj.user_id).exists():
+        if model == EventMaterial and not (EventEntry.objects.filter(event=self.event, user=obj.user_id).exists() or
+                                           (self.event.run_id and RunEnrollment.objects.filter(
+                                               run_id=self.event.run_id, user_id=obj.user_id).exists())):
             return JsonResponse({}, status=400)
         if model == EventTeamMaterial and not Team.objects.filter(id=obj.team_id, event=self.event).exists():
             return JsonResponse({}, status=400)
@@ -1767,17 +1829,18 @@ class ActivitiesFilter(SearchHelperMixin):
     def get_activities(self):
         if not self.only_my_activities():
             qs = Activity.objects.filter(is_deleted=False)
-            if self.request.user.is_assistant:
+            if self.current_mode_is_assistant:
                 qs = self.filter_context(qs)
             else:
-                qs = qs.filter(id__in=EventEntry.objects.filter(
-                    user=self.request.user).values_list('event__activity_id', flat=True)
+                qs = qs.filter(
+                    Q(id__in=EventEntry.objects.filter(user=self.request.user)
+                      .values_list('event__activity_id', flat=True)) |
+                    Q(id__in=RunEnrollment.objects.filter(user=self.request.user).values_list('run__activity_id'))
                 )
         else:
-            qs = self.filter_context(Activity.objects.filter(
+            qs = Activity.objects.filter(
                 is_deleted=False,
                 id__in=ActivityEnrollment.objects.filter(user=self.request.user).values_list('activity_id', flat=True))
-            )
         min_dt, max_dt = self.get_datetimes()
         if min_dt:
             qs = qs.filter(event__dt_start__gte=min_dt)
@@ -1787,11 +1850,13 @@ class ActivitiesFilter(SearchHelperMixin):
         return qs.distinct().order_by('title', 'id')
 
     def filter_context(self, qs):
-        if self.request.user.is_assistant and self.request.user.chosen_context_id:
-            return qs.filter(id__in=Event.objects.filter(
-                context_id=self.request.user.chosen_context_id).values_list('activity_id', flat=True)
-            )
-        return qs
+        if self.request.user.chosen_context_id:
+            if self.request.user.is_assistant_for_context(self.request.user.chosen_context):
+                return qs.filter(id__in=Event.objects.filter(
+                    context_id=self.request.user.chosen_context_id).values_list('activity_id', flat=True)
+                )
+            return qs.none()
+        return qs.filter(event__context__uuid__in=UserAvailableContexts.get(self.request.user) or [])
 
     def only_my_activities(self):
         return self.request.GET.get('activities') == 'my'
@@ -1809,11 +1874,18 @@ class ActivitiesView(ActivitiesFilter, ListView):
         data = super().get_context_data(**kwargs)
         self.update_context_with_search_parameters(data)
         activities = data['object_list']
+        activity_ids = [i.id for i in activities]
         user_materials = dict(EventMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
         team_materials = dict(EventTeamMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
         event_materials = dict(EventOnlyMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
-        participants = dict(EventEntry.objects.filter(deleted=False).values_list('event__activity_id').
-                            annotate(cnt=Count('user_id')))
+        run_enrs = RunEnrollment.objects.filter(run__activity_id__in=activity_ids)\
+            .values_list('run__activity_id', 'user_id')
+        activity_enrs = EventEntry.objects.filter(event__activity_id__in=activity_ids)\
+            .values_list('event__activity_id', 'user_id')
+        participants = defaultdict(int)
+        enrs = run_enrs.union(activity_enrs)
+        for activity_id, _ in enrs.iterator():
+            participants[activity_id] += 1
         check_ins = dict(EventEntry.objects.filter(deleted=False, is_active=True).values_list('event__activity_id').
                          annotate(cnt=Count('user_id')))
         activity_types = dict(Event.objects.values_list('activity_id', 'event_type__title'))
@@ -1878,7 +1950,7 @@ class ImportEventBlocks(GetEventMixin, TemplateView):
     template_name = 'includes/_blocks_form.html'
 
     def get_context_data(self, **kwargs):
-        if not self.request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         try:
             event = Event.objects.get(id=self.request.GET.get('id'), activity_id=self.event.activity_id)
@@ -1892,7 +1964,7 @@ class CheckEventBlocks(GetEventMixin, View):
     проверка того, что для текущей структуры мероприятия нет файлов мероприятия, привязанных к блокам
     """
     def get(self, request, **kwargs):
-        if request.user.is_assistant:
+        if self.current_user_is_assistant:
             return JsonResponse({
                 'blocks_with_materials': EventOnlyMaterial.objects.filter(event_block__event=self.event).exists(),
             })
@@ -1901,7 +1973,7 @@ class CheckEventBlocks(GetEventMixin, View):
 
 class DeleteEventBlock(GetEventMixin, View):
     def get(self, request, **kwargs):
-        if request.user.is_authenticated and request.user.is_assistant:
+        if request.user.is_authenticated and self.current_user_is_assistant:
             block = EventBlock.objects.filter(id=kwargs['block_id']).first()
             if not block:
                 raise Http404
@@ -1909,7 +1981,7 @@ class DeleteEventBlock(GetEventMixin, View):
         raise PermissionDenied
 
     def post(self, request, **kwargs):
-        if request.user.is_authenticated and request.user.is_assistant:
+        if request.user.is_authenticated and self.current_user_is_assistant:
             EventBlock.objects.filter(id=kwargs['block_id']).delete()
             return JsonResponse({'redirect': reverse('create-blocks', kwargs={'uid': self.event.uid})})
         raise PermissionDenied
@@ -1920,7 +1992,7 @@ class BaseCreateResult(GetEventMixin, View):
     result_model = UserResult
 
     def post(self, request, **kwargs):
-        if not request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         instance = None
         if request.POST.get('result_id'):
@@ -1978,7 +2050,7 @@ class RolesFormsetRender(GetEventMixin, TemplateView):
     template_name = 'includes/_user_roles_formset.html'
 
     def get_context_data(self, **kwargs):
-        if not self.request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         try:
             result = TeamResult.objects.get(id=self.request.GET.get('id'))
@@ -1998,7 +2070,7 @@ class AddEventBlockToMaterial(GetEventMixin, View):
         изменение блока, пользователей и команд у файла мероприятия ассистентом
         """
         pref = request.POST.get('custom_form_prefix')
-        if not request.user.is_assistant or not pref:
+        if not self.current_user_is_assistant or not pref:
             raise PermissionDenied
         try:
             material = EventOnlyMaterial.objects.get(id=EventBlockEditRenderer.parse_material_id_from_prefix(pref))
@@ -2021,7 +2093,7 @@ class EventBlockEditRenderer(GetEventMixin, TemplateView):
     template_name = 'includes/_material_event_block.html'
 
     def get_context_data(self, **kwargs):
-        if not self.request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         try:
             material = EventOnlyMaterial.objects.get(id=self.request.GET.get('id'))
@@ -2181,7 +2253,11 @@ class BaseResultInfoView(APIView):
             'approved': result.approved,
             'levels': result.result.meta,
             'url': result.get_page_url(),
-            'files': [{'file_url': f.get_url(), 'file_name': f.get_file_name()} for f in materials]
+            'files': [{
+                'file_url': f.get_url(),
+                'file_name': f.get_file_name(),
+                'created_at': f.created_at and f.created_at.isoformat()
+            } for f in materials]
         }
         self.update_response(resp, result)
         return Response(resp)
@@ -2215,7 +2291,11 @@ class UserResultInfoView(BaseResultInfoView):
                 "user": {"unti_id": 1},
                 "url": "https://uploads.2035.university/11111111-1111-1111-11111111/123/",
                 "files": [
-                    {"file_url": "http://example.com/file.pdf", "file_name": "file.pdf"}
+                    {
+                        "file_url": "http://example.com/file.pdf",
+                        "file_name": "file.pdf",
+                        "created_at": "2019-04-26T10:33:09.223871+00:00"
+                    }
                 ]
             }
         * 400 неполный запрос
@@ -2252,7 +2332,11 @@ class TeamResultInfoView(BaseResultInfoView):
                 "team": {"id": 1, "name": "name", "members": [1, 2]},
                 "url": "https://uploads.2035.university/load-team/11111111-1111-1111-11111111/123/",
                 "files": [
-                    {"file_url": "http://example.com/file.pdf", "file_name": "file.pdf"}
+                    {
+                        "file_url": "http://example.com/file.pdf",
+                        "file_name": "file.pdf",
+                        "created_at": "2019-04-26T10:33:09.223871+00:00"
+                    }
                 ]
             }
         * 400 неполный запрос
@@ -2310,7 +2394,8 @@ class AllUserResultsView(ListAPIView):
                         "files": [
                             {
                                 "file_url": "http://example.com/media/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/22/file.pdf",
-                                "file_name": "file.pdf"
+                                "file_name": "file.pdf",
+                                "created_at": "2019-04-26T10:33:09.223871+00:00"
                             }
                         ],
                         "user": {
@@ -2368,7 +2453,8 @@ class AllTeamResultsView(ListAPIView):
                         "files": [
                             {
                                 "file_url": "http://example.com/media/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/22/file.pdf",
-                                "file_name": "file.pdf"
+                                "file_name": "file.pdf",
+                                "created_at": "2019-04-26T10:33:09.223871+00:00"
                             }
                         ],
                         "team": {
@@ -2495,20 +2581,40 @@ class CSVResponseGeneratorMixin:
         return resp
 
 
-class EventCsvData(GetEventMixin, CSVResponseGeneratorMixin, View):
+class XLSResponseGeneratorMixin:
+    def get_xls_response(self, obj):
+        out = io.BytesIO()
+        writer = XLSWriter(out)
+        for row in obj.generate():
+            writer.writerow(row)
+        writer.close()
+        out.seek(0)
+        resp = FileResponse(out)
+        resp['Content-Disposition'] = "attachment; filename*=UTF-8''{}.xlsx".format(obj.get_csv_filename())
+        return resp
+
+
+class ChooseFormatResponseGeneratorMixin(CSVResponseGeneratorMixin, XLSResponseGeneratorMixin):
+    def get_response(self, obj):
+        if self.request.GET.get('format') == 'xls':
+            return self.get_xls_response(obj)
+        return self.get_csv_response(obj)
+
+
+class EventCsvData(GetEventMixin, ChooseFormatResponseGeneratorMixin, View):
     def get(self, request, *args, **kwargs):
-        if not request.user.is_assistant:
+        if not self.current_user_is_assistant:
             raise PermissionDenied
         obj = EventMaterialsCSV(self.event)
         if request.GET.get('check_empty'):
             return JsonResponse({'has_contents': obj.has_contents()})
-        return self.get_csv_response(obj)
+        return self.get_response(obj)
 
 
 @method_decorator(login_required, name='dispatch')
-class BaseCsvEventsDataView(CSVResponseGeneratorMixin, View):
+class BaseCsvEventsDataView(ChooseFormatResponseGeneratorMixin, View):
     def get(self, request):
-        if not request.user.is_assistant:
+        if not request.user.has_assistant_role():
             raise PermissionDenied
         events = self.get_events_for_csv()
         activity_filter = getattr(self, 'activity_filter', None)
@@ -2518,6 +2624,7 @@ class BaseCsvEventsDataView(CSVResponseGeneratorMixin, View):
             'date_min': date_min,
             'date_max': date_max,
             'context': request.user.chosen_context,
+            'format': 'xlsx' if request.GET.get('format') == 'xls' else 'csv',
         }
         obj = EventGroupMaterialsCSV(events, meta_data)
         num = obj.count_materials()
@@ -2532,7 +2639,7 @@ class BaseCsvEventsDataView(CSVResponseGeneratorMixin, View):
                 'page_url': reverse('csv-dumps-list'),
             })
         if num <= settings.MAX_MATERIALS_FOR_SYNC_GENERATION:
-            return self.get_csv_response(obj)
+            return self.get_response(obj)
         if CSVDump.current_generations_for_user(request.user) >= settings.MAX_PARALLEL_CSV_GENERATIONS:
             raise PermissionDenied
         task_meta = meta_data.copy()
@@ -2541,8 +2648,7 @@ class BaseCsvEventsDataView(CSVResponseGeneratorMixin, View):
         csv_dump = CSVDump.objects.create(
             owner=request.user, header=obj.get_csv_filename(do_quote=False), meta_data=task_meta
         )
-        generate_events_csv.delay(csv_dump.id, [i.id for i in events], get_csv_encoding_for_request(self.request),
-                                  task_meta)
+        generate_events_csv.delay(csv_dump.id, [i.id for i in events], request.GET.get('format'), task_meta)
         return JsonResponse({'page_url': reverse('csv-dumps-list'), 'dump_id': csv_dump.id})
 
     def get_events_for_csv(self):
@@ -2573,7 +2679,7 @@ def switch_context(request):
     """
     Установка нового контекста для пользователя. Возвращает урл редиректа
     """
-    if not request.user.is_assistant:
+    if not request.user.has_assistant_role():
         raise PermissionDenied
     try:
         if 'context_id' in request.POST and request.POST['context_id'] == '':
@@ -2591,7 +2697,14 @@ def switch_context(request):
                 redirect_url = reverse('events')
         except Resolver404:
             redirect_url = reverse('index')
-        return JsonResponse({'redirect': redirect_url})
+        resp = JsonResponse({'redirect': redirect_url})
+        if context:
+            # если пользователь ассистент в выбранном контексте, по дефолту показывать мероприятия в режиме ассистента
+            resp.set_cookie(
+                VIEW_MODE_COOKIE_NAME,
+                'as_assistant' if request.user.is_assistant_for_context(context) else 'as_user'
+            )
+        return resp
     except (Context.DoesNotExist, ValueError, TypeError):
         raise Http404
 
@@ -2599,11 +2712,11 @@ def switch_context(request):
 @method_decorator(login_required, name='dispatch')
 class LoadCsvDump(View):
     def get(self, request, **kwargs):
-        if not request.user.is_assistant:
+        if not request.user.has_assistant_role():
             raise PermissionDenied
         obj = get_object_or_404(CSVDump, id=kwargs['dump_id'], status=CSVDump.STATUS_COMPLETE)
         resp = FileResponse(default_storage.open(obj.csv_file.name))
-        resp['Content-Disposition'] = "attachment; filename*=UTF-8''{header}.csv".format(header=quote(obj.header))
+        resp['Content-Disposition'] = "attachment; filename*=UTF-8''{header}".format(header=quote(obj.get_file_name()))
         return resp
 
 
@@ -2617,7 +2730,7 @@ class CSVDumpsList(ListView):
         return self.model.objects.filter(owner=self.request.user).order_by('-datetime_ordered').select_related('owner')
 
     def get_context_data(self, *, object_list=None, **kwargs):
-        if not self.request.user.is_assistant:
+        if not self.request.user.has_assistant_role():
             raise PermissionDenied
         data = super().get_context_data(object_list=object_list, **kwargs)
         context_ids = {}
@@ -2631,3 +2744,139 @@ class CSVDumpsList(ListView):
                 'context_guid': contexts.get(context_ids[obj.id]),
             }
         return data
+
+
+class UploadUserFile(CreateAPIView):
+    """
+    **Описание**
+
+        Загрузка пользовательского файла
+
+    **Пример запроса**
+
+        POST /api/upload-user-file/
+
+    **Параметры post-запроса**
+
+        * user: int - unti id пользователя
+        * source: str - система инициатор загрузки
+        * file: загружаемый файл
+        * activity_uuid: str - uuid активности (необязательный параметр)
+        * data: str - json с дополнительными данными (необязательный параметр)
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "id":8,
+                "user":1,
+                "data":"{\"qwerty\": 123}",
+                "source":"PLE",
+                "activity_uuid":"",
+                "file":"http://127.0.0.1:8092/media/course-image.jpg"
+            }
+        * 400 некорректный запрос
+        * 403 api key отсутствует или неправильный
+    """
+
+    permission_classes = (ApiPermission, )
+    serializer_class = UserFileSerializer
+    parser_classes = (MultiPartParser, )
+
+
+class CreateUserResultAPI(APIView):
+    """
+    **Описание**
+
+        Загрузка пользовательского результата
+
+    **Пример запроса**
+
+        POST /api/upload/create-user-result/{
+            "user": 1,
+            "comment": "",
+            "meta": "{\"key\": \"value\"}",
+            "materials": [{"url": "http://example.com/file.pdf"}, {"file": "http://example.com/file.pdf"}],
+            "callback_url": "https://ple.2035.university/callback"
+        }
+
+    **Параметры запроса**
+
+        * user - unti id пользователя
+        * comment - комментарий к результату (необязательно)
+        * additional_data - json c разметкой
+        * materials - массив ссылок на файлы или ссылки результата, ключ url должен присутствовать для ссылок,
+                      а file - для файлов, которые uploads будет закачивать
+        * callback_url - url, к которому обратится uploads после обработки запроса
+
+    **Пример ответа**
+
+        * 200 успешно
+        * 400 некорректный запрос
+        * 403 неверный api key
+        * 417 если невозможно обработать запрос
+    """
+
+    permission_classes = (ApiPermission,)
+    serializer_class = UserResultSerializer
+
+    def post(self, request):
+        if not check_celery_active():
+            return Response(status=status.HTTP_417_EXPECTATION_FAILED)
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        handle_ple_user_result.delay(request.data)
+        return Response(status=status.HTTP_200_OK)
+
+
+class GetPLEUserResultApi(APIView):
+    """
+    **Описание**
+
+        Запрос информации о пользовательском результате в PLE
+
+    **Пример запроса**
+
+        GET /api/get-ple-user-result/{result_id}/
+
+    **Параметры запроса**
+
+        * result_id - id результата, обязательный параметр
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "id": 1,
+                "user": 1,
+                "meta": {"key": "value"},
+                "comment": "",
+                "materials": [
+                    {
+                        "id": 1,
+                        "uploads_url": "http://example.com/file.pdf"
+                    }
+                ]
+            }
+        * 403 неверный api key
+        * 404 результат с указанным id не существует
+    """
+
+    permission_classes = (ApiPermission,)
+
+    def get(self, request, *args, **kwargs):
+        try:
+            user_result = PLEUserResult.objects.get(id=kwargs['result_id'])
+        except PLEUserResult.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(user_result.get_json())
+
+
+class DeleteTeamView(GetEventMixinWithAccessCheck, View):
+    def post(self, request, **kwargs):
+        team = get_object_or_404(Team, id=self.kwargs['team_id'])
+        if not team.user_can_delete_team(request.user):
+            raise PermissionDenied
+        logging.warning('User #%s deleted team %s from event %s', request.user.id, team.name, team.event.uid)
+        team.delete()
+        return JsonResponse({'status': 0})

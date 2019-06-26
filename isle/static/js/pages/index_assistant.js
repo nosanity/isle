@@ -23,20 +23,29 @@ function show_export_modal(text) {
     $('#events_csv_export_modal').modal('show');
 }
 
-$('.export_event_csv').on('click', (e) => {
+$('.prepare-csv-export').on('click', (e) => {
     e.preventDefault();
     let obj = $(e.target);
     if (obj[0].tagName == 'SPAN')
         obj = obj.parent('a');
-    let url = obj.attr('href') + window.location.search;
+    $('.export-format-selector').show();
+});
+
+$('.export-format-selector').on('change', (e) => {
+    e.preventDefault();
+    var obj = $(e.target);
+    if (!obj.val()) return;
+    obj.prop('disabled', true);
+    let url = $('.prepare-csv-export').attr('href') + window.location.search;
     let url_check = queryStringUrlReplacement(url, 'check_empty', '1');
+    let url_request = queryStringUrlReplacement(url, 'format', obj.val());
     $.ajax({
         method: 'GET',
         url: url_check,
         success: (data) => {
             if (data.has_contents) {
                 if (data.sync) {
-                    window.location = url;
+                    window.location = url_request;
                 }
                 else {
                     let modal_text;
@@ -45,7 +54,7 @@ $('.export_event_csv').on('click', (e) => {
                         let result_url = data.page_url;
                         $.ajax({
                             method: 'GET',
-                            url: url,
+                            url: url_request,
                             success: (data) => {
                                 modal_text = `
                                     Выгрузка содержит более ${num} материалов.
@@ -69,6 +78,9 @@ $('.export_event_csv').on('click', (e) => {
             else
                 alert('Ни одного файла или результата не загружено в выбранные мероприятия');
         },
-        error: () => { alert('Произошла ошибка'); }
+        error: () => { alert('Произошла ошибка'); },
+        complete: () => {
+            obj.prop('disabled', false).hide().val('');
+        }
     })
 });

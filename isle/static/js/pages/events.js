@@ -22,23 +22,57 @@ if (isAssistant) {
     });
 }
 
-$('.export_event_csv').on('click', (e) => {
+$('.prepare-csv-export').on('click', (e) => {
     e.preventDefault();
-    var obj = $(e.target);
+    let obj = $(e.target);
     if (obj[0].tagName == 'SPAN')
         obj = obj.parent('a');
-    var url = obj.attr('href') + '?check_empty=1';
+    $('.export-format-selector').show();
+});
+
+$('.export-format-selector').on('change', (e) => {
+    e.preventDefault();
+    var obj = $(e.target);
+    if (!obj.val()) return;
+    obj.prop('disabled', true);
+    var url = $('.prepare-csv-export').attr('href') + '?check_empty=1';
     $.ajax({
         method: 'GET',
         url: url,
         success: (data) => {
             if (data.has_contents)
-                window.location = obj.attr('href');
+                window.location = $('.prepare-csv-export').attr('href') + '?format=' + obj.val();
             else
                 alert('Ни одного файла или результата не загружено в мероприятие');
         },
-        error: () => { alert('Произошла ошибка'); }
+        error: () => { alert('Произошла ошибка'); },
+        complete: () => {
+            obj.prop('disabled', false).hide().val('');
+        }
     })
+});
+
+$('.delete-team-btn').on('click', (e) => {
+    e.preventDefault();
+    let target = $(e.target);
+    if (confirm('Удалить команду?')) {
+        if (target[0].tagName == 'I')
+            target = target.parent();
+        $.ajax({
+            method: 'POST',
+            url: target.data('action-url'),
+            data: {csrfmiddlewaretoken: csrfmiddlewaretoken},
+            success: (data) => {
+                try {
+                    if (data['status'] === 0) {
+                        target.parents('tr').remove();
+                    }
+                }
+                catch (e) { alert('Произошла ошибка'); }
+            },
+            error: () => { alert('Произошла ошибка'); },
+        })
+    }
 });
 
 function inputAttendanceChange(obj) {

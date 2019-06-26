@@ -17,10 +17,14 @@ from django.utils.dateparse import parse_datetime
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext as _
 import requests
-from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi
+import xlsxwriter
+from celery.task.control import inspect
+from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi, SSOApi
+from isle.cache import UserAvailableContexts
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
-                         Team, Author)
+                         Team, Author, DpCompetence, CasbinData, Run, RunEnrollment)
+
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -92,6 +96,13 @@ def refresh_events_data():
                         event_types[activity_type['uuid']] = event_type
                 for run in runs:
                     run_json = filter_dict(run, RUN_EXCLUDE_KEYS)
+                    if not run.get('uuid'):
+                        logging.error('run has no uuid')
+                        continue
+                    current_run = Run.objects.update_or_create(
+                        uuid=run['uuid'],
+                        defaults={'activity': current_activity, 'deleted': run.get('is_deleted')}
+                    )[0]
                     events = run.get('events') or []
                     for event in events:
                         event_json = filter_dict(event, EVENT_EXCLUDE_KEYS)
@@ -105,6 +116,7 @@ def refresh_events_data():
                         e, e_created = Event.objects.update_or_create(uid=uid, defaults={
                             'is_active': is_active,
                             'activity': current_activity,
+                            'run': current_run,
                             'data': {'event': event_json, 'run': run_json, 'activity': activity_json},
                             'dt_start': dt_start, 'dt_end': dt_end, 'title': title, 'event_type': event_type})
                         update_event_structure(
@@ -206,6 +218,7 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
                                     MetaModel.objects.update_or_create(uuid=model['model'], defaults={
                                         'guid': meta_data['guid'], 'title': meta_data['title']
                                     })
+                                    parse_competences(meta_data)
                                     metamodels.add(model['model'])
                             except ApiError:
                                 pass
@@ -216,6 +229,17 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
             event.blocks.exclude(uuid__in=created_blocks).update(deleted=True)
     except Exception:
         logging.exception('Failed to parse event structure')
+
+
+def parse_competences(data):
+    if not isinstance(data.get('competences'), list):
+        logging.error('Failed to parse competences for meta model %s' % data.get('uuid'))
+        return
+    for item in data['competences']:
+        try:
+            DpCompetence.objects.update_or_create(uuid=item['uuid'], defaults={'title': item['title']})
+        except KeyError:
+            logging.exception('Wrong competence structure')
 
 
 def update_event_entries():
@@ -261,6 +285,40 @@ def update_event_entries():
         return False
     except Exception:
         logging.exception('Failed to parse xle attendance')
+
+
+def update_run_enrollments():
+    run_uuid_to_id = dict(Run.objects.values_list('uuid', 'id'))
+    unti_id_to_id = dict(User.objects.filter(unti_id__isnull=False).values_list('unti_id', 'id'))
+    failed_unti_ids = set()
+    ids = []
+    try:
+        for data in XLEApi().get_timetable():
+            for item in data:
+                run_id = run_uuid_to_id.get(item['run_uuid'])
+                if not run_id:
+                    logging.error('run with uuid %s not found' % item['run_uuid'])
+                    continue
+                if item['unti_id'] in failed_unti_ids:
+                    continue
+                user_id = unti_id_to_id.get(int(item['unti_id']))
+                if not user_id:
+                    user = pull_sso_user(item['unti_id'])
+                    if not user:
+                        logging.error('user with unti_id %s not found' % item['unti_id'])
+                        failed_unti_ids.add(item['unti_id'])
+                        continue
+                    user_id = user.id
+                    unti_id_to_id[int(item['unti_id'])] = user_id
+                enr = RunEnrollment.all_objects.update_or_create(
+                    user_id=user_id, run_id=run_id, defaults={'deleted': False}
+                )
+                ids.append(enr.id)
+        RunEnrollment.objects.exclude(id__in=ids).update(deleted=True)
+    except ApiError:
+        return False
+    except Exception:
+        logging.exception('Failed to get timetable')
 
 
 def pull_sso_user(unti_id):
@@ -499,6 +557,8 @@ class EventMaterialsCSV:
     def __init__(self, event):
         self.event = event
         self.teams_data_cache = {}
+        self.model_names = dict(MetaModel.objects.values_list('uuid', 'title'))
+        self.competence_names = dict(DpCompetence.objects.values_list('uuid', 'title'))
 
     def field_names(self):
         return OrderedDict([
@@ -522,6 +582,11 @@ class EventMaterialsCSV:
             ('sector', _('сектор')),
             ('level', _('уровень')),
             ('sublevel', _('подуровень')),
+            ('meta_instruments', _('Инструменты')),
+            ('meta_model', _('Модель цифрового профиля')),
+            ('meta_activity', _('Деятельность из свойств блока')),
+            ('meta_type', _('Тип из свойств блока')),
+            ('meta_sector_name', _('Название сектора')),
             ('lines_num', _('Количество строк с файлом')),
         ])
 
@@ -540,9 +605,9 @@ class EventMaterialsCSV:
 
     def generate_for_event(self):
         personal_materials = EventMaterial.objects.filter(event=self.event).\
-            select_related('result_v2', 'result_v2__result', 'user')
+            select_related('result_v2', 'result_v2__result', 'result_v2__result__block', 'user')
         team_materials = EventTeamMaterial.objects.filter(event=self.event).\
-            select_related('result_v2', 'result_v2__result')
+            select_related('result_v2', 'result_v2__result', 'result_v2__result__block')
         event_materials = EventOnlyMaterial.objects.filter(event=self.event)
 
         for m in personal_materials.iterator():
@@ -629,6 +694,8 @@ class EventMaterialsCSV:
         d.update({
             'block_title': m.result_v2 and m.result_v2.result.block.title or '',
             'result_title': m.result_v2 and m.result_v2.result.title or '',
+            'meta_type': m.result_v2 and m.result_v2.result.block.block_type,
+            'meta_activity': m.result_v2 and m.result_v2.result.block.description,
         })
 
     def populate_meta(self, d, meta_item):
@@ -636,7 +703,17 @@ class EventMaterialsCSV:
             'sector': meta_item.get('sector', ''),
             'level': meta_item.get('level', ''),
             'sublevel': meta_item.get('sublevel', ''),
+            'meta_instruments': self.format_tools(meta_item.get('tools')),
+            'meta_model': self.model_names.get(meta_item.get('model'), ''),
+            'meta_sector_name': self.competence_names.get(meta_item.get('competence'), ''),
         })
+
+    def format_tools(self, tools):
+        if tools:
+            if isinstance(tools, list) and all(isinstance(i, str) for i in tools):
+                return ', '.join(tools)
+            return str(tools)
+        return ''
 
     def get_meta(self, m):
         if m.result_v2 and isinstance(m.result_v2.result.meta, list) and \
@@ -747,3 +824,45 @@ def get_csv_encoding_for_request(request):
         os_family = ''
     overridden_encoding = settings.CSV_ENCODING_FOR_OS.get(os_family.lower())
     return overridden_encoding or settings.DEFAULT_CSV_ENCODING
+
+
+def update_casbin_data():
+    try:
+        data = SSOApi().get_casbin_data()
+        cdata = CasbinData.objects.first()
+        if cdata:
+            CasbinData.objects.filter(id=cdata.id).update(model=data['model'], policy=data['policy'])
+        else:
+            CasbinData.objects.create(model=data['model'], policy=data['policy'])
+        UserAvailableContexts.discard_many(User.objects.all().iterator())
+    except ApiError:
+        pass
+    except (TypeError, KeyError):
+        logging.exception('Unexpected format for casbin data')
+
+
+class XLSWriter:
+    def __init__(self, f):
+        self.workbook = xlsxwriter.Workbook(f)
+        self.worksheet = self.workbook.add_worksheet()
+        self.current_row = 0
+
+    def writerow(self, row):
+        for pos, item in enumerate(row):
+            self.worksheet.write(self.current_row, pos, item)
+        self.current_row += 1
+
+    def close(self):
+        self.workbook.close()
+
+
+def check_celery_active():
+    if settings.DEBUG and getattr(settings, 'CELERY_ALWAYS_EAGER', False):
+        return True
+    try:
+        stat = inspect().stats()
+        if not stat:
+            return False
+        return True
+    except IOError:
+        return False

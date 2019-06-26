@@ -495,3 +495,11 @@ img.user-img {
     background: rgba(0, 0, 0, 0);
     border: 1px solid #ccc;
 }
+
+.export-format-selector {
+    max-width: 250px;
+}
+
+.activity-filter-wrapper {
+    min-width: 750px;
+}

@@ -6,7 +6,8 @@ from carrier_client.manager import MessageManager, MessageManagerException
 from carrier_client.message import OutgoingMessage
 from django_carrier_client.helpers import MessageManagerHelper
 from isle.api import SSOApi, ApiError
-from isle.models import LabsUserResult, LabsTeamResult
+from isle.models import LabsUserResult, LabsTeamResult, PLEUserResult
+from isle.utils import update_casbin_data
 
 
 message_manager = MessageManager(
@@ -41,6 +42,8 @@ def get_payload(obj, obj_id, action):
         return for_type('user_result')
     if isinstance(obj, LabsTeamResult):
         return for_type('team_result')
+    if isinstance(obj, PLEUserResult):
+        return for_type('user_result_ple')
 
 
 def send_object_info(obj, obj_id, action):
@@ -103,4 +106,24 @@ class SSOUserChangeListener(KafkaBaseListener):
             logging.error('Got wrong object id from kafka: %s' % obj_id)
 
 
+class CasbinPolicyListener(KafkaBaseListener):
+    topic = settings.KAFKA_TOPIC_SSO
+    actions = (KafkaActions.CREATE, KafkaActions.DELETE, KafkaActions.UPDATE)
+    msg_type = 'casbin_policy'
+
+    def _handle_for_id(self, obj_id, action):
+        update_casbin_data()
+
+
+class CasbinModelListener(KafkaBaseListener):
+    topic = settings.KAFKA_TOPIC_SSO
+    actions = (KafkaActions.CREATE, KafkaActions.UPDATE)
+    msg_type = 'casbin_model'
+
+    def _handle_for_id(self, obj_id, action):
+        update_casbin_data()
+
+
 MessageManagerHelper.set_manager_to_listen(SSOUserChangeListener())
+MessageManagerHelper.set_manager_to_listen(CasbinPolicyListener())
+MessageManagerHelper.set_manager_to_listen(CasbinModelListener())
