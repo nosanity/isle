@@ -45,13 +45,14 @@ from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResul
 from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
-    LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump
+    LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, PLEUserResult
 from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer, \
-    UserFileSerializer
-from isle.tasks import generate_events_csv, team_members_set_changed
+    UserFileSerializer, UserResultSerializer
+from isle.tasks import generate_events_csv, team_members_set_changed, handle_ple_user_result
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
-    EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request, XLSWriter
+    EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request, XLSWriter, \
+    check_celery_active
 
 
 VIEW_MODE_COOKIE_NAME = 'index-view-mode'
@@ -2732,3 +2733,91 @@ class UploadUserFile(CreateAPIView):
     permission_classes = (ApiPermission, )
     serializer_class = UserFileSerializer
     parser_classes = (MultiPartParser, )
+
+
+class CreateUserResultAPI(APIView):
+    """
+    **Описание**
+
+        Загрузка пользовательского результата
+
+    **Пример запроса**
+
+        POST /api/upload/create-user-result/{
+            "user": 1,
+            "comment": "",
+            "meta": "{\"key\": \"value\"}",
+            "materials": [{"url": "http://example.com/file.pdf"}, {"file": "http://example.com/file.pdf"}],
+            "callback_url": "https://ple.2035.university/callback"
+        }
+
+    **Параметры запроса**
+
+        * user - unti id пользователя
+        * comment - комментарий к результату (необязательно)
+        * additional_data - json c разметкой
+        * materials - массив ссылок на файлы или ссылки результата, ключ url должен присутствовать для ссылок,
+                      а file - для файлов, которые uploads будет закачивать
+        * callback_url - url, к которому обратится uploads после обработки запроса
+
+    **Пример ответа**
+
+        * 200 успешно
+        * 400 некорректный запрос
+        * 403 неверный api key
+        * 417 если невозможно обработать запрос
+    """
+
+    permission_classes = (ApiPermission,)
+    serializer_class = UserResultSerializer
+
+    def post(self, request):
+        if not check_celery_active():
+            return Response(status=status.HTTP_417_EXPECTATION_FAILED)
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        handle_ple_user_result.delay(request.data)
+        return Response(status=status.HTTP_200_OK)
+
+
+class GetPLEUserResultApi(APIView):
+    """
+    **Описание**
+
+        Запрос информации о пользовательском результате в PLE
+
+    **Пример запроса**
+
+        GET /api/get-ple-user-result/{result_id}/
+
+    **Параметры запроса**
+
+        * result_id - id результата, обязательный параметр
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "id": 1,
+                "user": 1,
+                "meta": {"key": "value"},
+                "comment": "",
+                "materials": [
+                    {
+                        "id": 1,
+                        "uploads_url": "http://example.com/file.pdf"
+                    }
+                ]
+            }
+        * 403 неверный api key
+        * 404 результат с указанным id не существует
+    """
+
+    permission_classes = (ApiPermission,)
+
+    def get(self, request, *args, **kwargs):
+        try:
+            user_result = PLEUserResult.objects.get(id=kwargs['result_id'])
+        except PLEUserResult.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(user_result.get_json())

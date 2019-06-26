@@ -1,6 +1,8 @@
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import serializers
-from isle.models import User, Team, UserFile
+from rest_framework.exceptions import ValidationError
+from isle.api import SSOApi, ApiError
+from isle.models import User, Team, UserFile, PLEUserResult
 from .utils import pull_sso_user
 
 
@@ -81,4 +83,85 @@ class UserFileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserFile
-        fields = '__all__'
+        exclude = ['ple_result', 'url', 'created_at', 'file_type', 'file_size']
+        extra_kwargs = {
+            'file': {'required': True}
+        }
+
+    def save(self, **kwargs):
+        f = self.validated_data['file']
+        kwargs.update({
+            'file_size': f.size,
+            'file_type': f.content_type,
+        })
+        return super().save(**kwargs)
+
+
+class UserFromUntiIdSerializer(serializers.BaseSerializer):
+    """
+    Поле для сериализации пользователя по его unti id.
+    Пытается получить пользователя из sso, если он не был найден
+    """
+    def get_user(self, data, raise_exception=True):
+        try:
+            return User.objects.get(unti_id=data)
+        except User.DoesNotExist:
+            if raise_exception:
+                raise ValidationError(_('Пользователь с unti_id "{}" не найден').format(data))
+
+    def create_user(self, data):
+        try:
+            SSOApi().push_user_to_uploads(data)
+        except ApiError:
+            pass
+
+    def to_internal_value(self, data):
+        user = self.get_user(data, raise_exception=False)
+        if not user:
+            self.create_user(data)
+            user = self.get_user(data)
+        return user
+
+    def to_representation(self, instance):
+        return instance.unti_id
+
+
+class UserMaterialSerializer(serializers.Serializer):
+    url = serializers.URLField(required=False)
+    file = serializers.URLField(required=False)
+
+    def is_valid(self, raise_exception=False):
+        super().is_valid(raise_exception=False)
+        url = self._validated_data.get('url')
+        file_ = self._validated_data.get('file')
+        if bool(url) != bool(file_):
+            self._errors['__all__'] = _('Должен быть указан или url или file')
+        if self._errors and raise_exception:
+            raise ValidationError(self.errors)
+        return not bool(self._errors)
+
+
+class UserResultSerializer(serializers.ModelSerializer):
+    """
+    сериализатор для валидации запроса на создание пользовательского результата
+    """
+    user = UserFromUntiIdSerializer(required=True)
+    materials = UserMaterialSerializer(required=True, many=True)
+    meta = serializers.JSONField(required=True, binary=True)
+    callback_url = serializers.URLField(required=True)
+
+    def is_valid(self, raise_exception=False):
+        super().is_valid(raise_exception=False)
+        files = self._validated_data.get('files')
+        if isinstance(files, list) and len(files) == 0:
+            self._errors['files'] = _('Массив не должен быть пустым')
+        if self._errors and raise_exception:
+            raise ValidationError(self.errors)
+        return not bool(self._errors)
+
+    class Meta:
+        model = PLEUserResult
+        fields = ['user', 'comment', 'meta', 'materials', 'callback_url']
+        extra_kwargs = {
+            'comment': {'allow_blank': True},
+        }

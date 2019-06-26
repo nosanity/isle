@@ -172,8 +172,8 @@ class BaseApi:
             try:
                 kwargs['params']['page'] = page
                 resp = requests.request(method, url, **kwargs)
-                total_pages = int(resp.headers['X-Pagination-Page-Count'])
                 assert resp.ok, 'status_code %s' % resp.status_code
+                total_pages = int(resp.headers['X-Pagination-Page-Count'])
                 yield resp.json()
                 page += 1
             except (ValueError, TypeError, AssertionError):
@@ -190,7 +190,8 @@ class BaseApi:
         """
         запрос, не предполагающий пагинацию в ответе
         """
-        url = '{}{}'.format(self.base_url, url)
+        if not url.startswith(('http://', 'https://')):
+            url = '{}{}'.format(self.base_url, url)
         kwargs.setdefault('timeout', settings.CONNECTION_TIMEOUT)
         self.add_authorization_to_kwargs(kwargs)
         try:
