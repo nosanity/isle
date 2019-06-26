@@ -240,6 +240,9 @@ class XLEApi(BaseApi):
     def get_attendance(self):
         return self.make_request('/api/v1/checkin')
 
+    def get_timetable(self):
+        return self.make_request('/api/v1/timetable')
+
 
 class DpApi(BaseApi):
     name = 'dp'

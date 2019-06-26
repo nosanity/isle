@@ -16,7 +16,7 @@ from django.contrib.auth.views import logout as base_logout
 from django.core.files.storage import default_storage
 from django.core.exceptions import PermissionDenied, SuspiciousOperation
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, F
 from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404, FileResponse, \
     StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -45,7 +45,7 @@ from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResul
 from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
-    LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, PLEUserResult
+    LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, PLEUserResult, RunEnrollment
 from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer, \
     UserFileSerializer, UserResultSerializer
 from isle.tasks import generate_events_csv, team_members_set_changed, handle_ple_user_result
@@ -158,8 +158,9 @@ class IndexPageEventsFilterMixin(SearchHelperMixin):
         if self.current_mode_is_assistant:
             events = Event.objects.filter(is_active=True)
         else:
-            events = Event.objects.filter(id__in=EventEntry.objects.filter(user=self.request.user).
-                                          values_list('event_id', flat=True))
+            events = Event.objects.filter(
+                Q(id__in=EventEntry.objects.filter(user=self.request.user).values_list('event_id', flat=True)) |
+                Q(run_id__in=RunEnrollment.objects.filter(user=self.request.user).values_list('run_id', flat=True)))
         events = events.filter(Q(event_type_id__in=get_allowed_event_type_ids()) | Q(event_type__isnull=True))
         min_dt, max_dt = self.get_datetimes()
         if min_dt:
@@ -214,7 +215,13 @@ class Events(IndexPageEventsFilterMixin, ListView):
                 'elements_user_cnt': EventMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event_id__in=event_ids).count() +
                                      EventTeamMaterial.objects.exclude(initiator__isnull=True).exclude(**fdict).filter(event_id__in=event_ids).count(),
             })
-            enrollments = dict(EventEntry.objects.values_list('event_id').annotate(cnt=Count('user_id')))
+            run_enrs = Event.objects.filter(id__in=event_ids, run__runenrollment__isnull=False)\
+                .values_list('id', 'run__runenrollment__user_id')
+            event_enrs = EventEntry.objects.filter(event_id__in=event_ids).values_list('event_id', 'user_id')
+            enrs = event_enrs.union(run_enrs)
+            enrollments = defaultdict(int)
+            for event_id, _ in enrs.iterator():
+                enrollments[event_id] += 1
             check_ins = dict(EventEntry.objects.filter(is_active=True).values_list('event_id')
                              .annotate(cnt=Count('user_id')))
             event_files_cnt = defaultdict(int)
@@ -267,7 +274,8 @@ class GetEventMixinWithAccessCheck(GetEventMixin):
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return HttpResponseRedirect('{}?next={}'.format(reverse('login'), request.get_full_path()))
-        if self.current_user_is_assistant or EventEntry.objects.filter(user=request.user, event=self.event).exists():
+        if self.current_user_is_assistant or EventEntry.objects.filter(user=request.user, event=self.event).exists() \
+                or (self.event.run_id and RunEnrollment.objects.filter(user=request.user, run_id=self.event.run_id)):
             return super().dispatch(request, *args, **kwargs)
         return render(request, 'to_xle.html', {
             'link': getattr(settings, 'XLE_URL', 'https://xle.2035.university/feedback'),
@@ -276,8 +284,10 @@ class GetEventMixinWithAccessCheck(GetEventMixin):
 
 
 def get_event_participants(event):
-    users = EventEntry.objects.filter(event=event).values_list('user_id')
-    return User.objects.filter(id__in=users).order_by('last_name', 'first_name', 'second_name')
+    q = Q(id__in=EventEntry.objects.filter(event=event).values_list('user_id'))
+    if event.run_id:
+        q |= Q(id__in=RunEnrollment.objects.filter(run_id=event.run_id).values_list('user_id', flat=True))
+    return User.objects.filter(q).order_by('last_name', 'first_name', 'second_name')
 
 
 @method_decorator(context_setter, name='get')
@@ -506,7 +516,9 @@ class BaseLoadMaterialsLabsResults:
             'old_results': self.get_old_results(),
             'links': links,
             'blocks_structure_json': json.dumps(structure, ensure_ascii=False),
-            'event_members': list(EventEntry.objects.filter(event=self.event).values_list('user_id', flat=True)),
+            'event_members': list(EventEntry.objects.filter(event=self.event).values_list('user_id', flat=True)) +
+                             list(RunEnrollment.objects.filter(run_id=self.event.run_id)
+                                  .values_list('user_id', flat=True)),
         }))
         return data
 
@@ -897,7 +909,8 @@ class LoadMaterials(BaseLoadMaterials):
         return JsonResponse({})
 
     def add_item(self, request, **kwargs):
-        if not EventEntry.objects.filter(event=self.event, user=self.user).exists():
+        if not (EventEntry.objects.filter(event=self.event, user=self.user).exists() or (self.event.run_id and
+                RunEnrollment.objects.filter(run_id=self.event.run_id, user=self.user).exists())):
             return JsonResponse({}, status=400)
         return super().add_item(request, **kwargs)
 
@@ -1246,7 +1259,8 @@ class CreateTeamView(BaseTeamView, TemplateView):
     extra_context = {'edit': False}
 
     def has_permission(self, request):
-        return EventEntry.objects.filter(event=self.event, user=request.user).exists()
+        return EventEntry.objects.filter(event=self.event, user=request.user).exists() or (self.event.run_id and
+               RunEnrollment.objects.filter(run_id=self.event.run_id, user=request.user).exists())
 
 
 class EditTeamView(BaseTeamView, TemplateView):
@@ -1332,12 +1346,16 @@ class RemoveUserFromEvent(GetEventMixin, View):
 class UserAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
         event_id = self.forwarded.get('event_id')
+        event = Event.objects.filter(id=event_id).first()
+        run_id = event and event.run_id
         chosen = self.forwarded.get('users') or []
         if not self.request.user.is_authenticated or not self.request.user.has_assistant_role() or not event_id:
             return User.objects.none()
-        qs = User.objects.exclude(
-            id__in=EventEntry.objects.filter(event_id=event_id).values_list('user_id', flat=True)
-        ).filter(id__in=UserSocialAuth.objects.all().values_list('user__id', flat=True)).exclude(id__in=chosen)
+        q = Q(id__in=EventEntry.objects.filter(event_id=event_id).values_list('user_id', flat=True))
+        if run_id:
+            q |= Q(id__in=RunEnrollment.objects.filter(run_id=run_id).values_list('user_id', flat=True))
+        qs = User.objects.exclude(q).filter(
+            id__in=UserSocialAuth.objects.all().values_list('user__id', flat=True)).exclude(id__in=chosen)
         if self.q:
             qs = self.search_user(qs, self.q)
         return qs
@@ -1742,7 +1760,8 @@ class TransferView(GetEventMixin, View):
             user = User.objects.get(id=request.POST.get('dest_id'))
         except (User.DoesNotExist, TypeError, ValueError):
             return JsonResponse({}, status=404)
-        if not EventEntry.objects.filter(event=self.event, user=user).exists():
+        if not (EventEntry.objects.filter(event=self.event, user=user).exists() or
+                (self.event.run_id and RunEnrollment.objects.filter(run_id=self.event.run_id, user=user).exists())):
             return JsonResponse({}, status=400)
         EventMaterial.copy_from_object(material, user)
         logging.info('User %s transferred event file %s to user %s' % (request.user.username, material.id, user.id))
@@ -1769,7 +1788,9 @@ class TransferView(GetEventMixin, View):
             return JsonResponse({}, status=404)
         if not obj.trace:
             return JsonResponse({}, status=404)
-        if model == EventMaterial and not EventEntry.objects.filter(event=self.event, user=obj.user_id).exists():
+        if model == EventMaterial and not (EventEntry.objects.filter(event=self.event, user=obj.user_id).exists() or
+                                           (self.event.run_id and RunEnrollment.objects.filter(
+                                               run_id=self.event.run_id, user_id=obj.user_id).exists())):
             return JsonResponse({}, status=400)
         if model == EventTeamMaterial and not Team.objects.filter(id=obj.team_id, event=self.event).exists():
             return JsonResponse({}, status=400)
@@ -1792,8 +1813,10 @@ class ActivitiesFilter(SearchHelperMixin):
             if self.current_mode_is_assistant:
                 qs = self.filter_context(qs)
             else:
-                qs = qs.filter(id__in=EventEntry.objects.filter(
-                    user=self.request.user).values_list('event__activity_id', flat=True)
+                qs = qs.filter(
+                    Q(id__in=EventEntry.objects.filter(user=self.request.user)
+                      .values_list('event__activity_id', flat=True)) |
+                    Q(id__in=RunEnrollment.objects.filter(user=self.request.user).values_list('run__activity_id'))
                 )
         else:
             qs = Activity.objects.filter(
@@ -1832,11 +1855,18 @@ class ActivitiesView(ActivitiesFilter, ListView):
         data = super().get_context_data(**kwargs)
         self.update_context_with_search_parameters(data)
         activities = data['object_list']
+        activity_ids = [i.id for i in activities]
         user_materials = dict(EventMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
         team_materials = dict(EventTeamMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
         event_materials = dict(EventOnlyMaterial.objects.values_list('event__activity_id').annotate(cnt=Count('id')))
-        participants = dict(EventEntry.objects.filter(deleted=False).values_list('event__activity_id').
-                            annotate(cnt=Count('user_id')))
+        run_enrs = RunEnrollment.objects.filter(run__activity_id__in=activity_ids)\
+            .values_list('run__activity_id', 'user_id')
+        activity_enrs = EventEntry.objects.filter(event__activity_id__in=activity_ids)\
+            .values_list('event__activity_id', 'user_id')
+        participants = defaultdict(int)
+        enrs = run_enrs.union(activity_enrs)
+        for activity_id, _ in enrs.iterator():
+            participants[activity_id] += 1
         check_ins = dict(EventEntry.objects.filter(deleted=False, is_active=True).values_list('event__activity_id').
                          annotate(cnt=Count('user_id')))
         activity_types = dict(Event.objects.values_list('activity_id', 'event_type__title'))

@@ -96,6 +96,29 @@ class Activity(models.Model):
         return '{}/admin/activity/view/{}'.format(settings.LABS_URL.rstrip('/'), self.uid)
 
 
+class NotDeletedEntries(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted=False)
+
+
+class Run(models.Model):
+    uuid = models.CharField(max_length=50, unique=True)
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE)
+    deleted = models.BooleanField(default=False)
+
+
+class RunEnrollment(models.Model):
+    run = models.ForeignKey(Run, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    deleted = models.BooleanField(default=False)
+
+    objects = NotDeletedEntries()
+    all_objects = models.Manager()
+
+    class Meta:
+        unique_together = ('run', 'user')
+
+
 class ActivityEnrollment(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE)
@@ -124,6 +147,7 @@ class Event(models.Model):
 
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, default=None, null=True)
     context = models.ForeignKey(Context, on_delete=models.SET_NULL, null=True, default=None)
+    run = models.ForeignKey(Run, on_delete=models.CASCADE, null=True, default=None)
 
     class Meta:
         verbose_name = _(u'Событие')
@@ -295,11 +319,6 @@ class Trace(models.Model):
 
     def __str__(self):
         return self.name
-
-
-class NotDeletedEntries(models.Manager):
-    def get_queryset(self):
-        return super().get_queryset().filter(deleted=False)
 
 
 class EventEntry(models.Model):
