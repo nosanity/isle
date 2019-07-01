@@ -53,3 +53,23 @@ def show_block(block):
 @register.filter
 def show_result(result):
     return len(result.results) if result.deleted or result.block.deleted else True
+
+
+@register.simple_tag(takes_context=True)
+def upload_files_compact_view(context):
+    cnt = 0
+    for block in context['blocks'] or []:
+        personal_result_only = not block.deleted and context.get('can_upload') and context.get('user_upload') and \
+                               block.block_has_only_group_results()
+        group_result_only = not block.deleted and context.get('can_upload') and context.get('team_upload') and \
+                            block.block_has_only_personal_results()
+        if personal_result_only or group_result_only:
+            cnt += 1
+            continue
+        if show_block(block):
+            for result in block.results.all():
+                if show_result(result) and (context.get('user_upload') and result.is_personal() or
+                                            context.get('team_upload') and result.is_group() or
+                                            result.results):
+                    cnt += 1
+    return cnt == 1
