@@ -39,6 +39,7 @@
         <div>
             {% url 'get_event_csv' uid=event.uid as export_url %}
             {% include 'includes/export_event_csv.html' %}
+            <div class="clearfix"></div>
             <a class="nav-item btn btn-danger mt-10 pull-right" href="{% url 'load-event-materials' uid=event.uid %}">
                 Материалы мероприятия</a>
         </div>
