@@ -433,6 +433,7 @@ function build_move_result_modal(result, labs_result_id) {
     else
         $('#btn-move-selected-result').data('labs_result_id', labs_result_id).data('material_id', $(result).data('file-id')).data('mv-type', "file");
     $('#move_results_modal').modal('show');
+    check_move_material_btn_availability();
 }
 
 $('body').delegate(maxSizeSelector, 'change', (e) => {
@@ -440,7 +441,11 @@ $('body').delegate(maxSizeSelector, 'change', (e) => {
         $(e.target).val('');
         alert("Максимальный размер файла не должен превышать " + maxSize + "Мб");
     }
-});
+}).delegate('[name=move-result-radiobox]', 'change', check_move_material_btn_availability);
+
+function check_move_material_btn_availability() {
+    $('#btn-move-selected-result').prop('disabled', $('[name=move-result-radiobox]:checked').length == 0);
+}
 
 $('body').delegate('input[name=file_field]', 'change', (e) => {
 
