@@ -1,5 +1,5 @@
 {% extends 'base_results_upload.html' %}
-{% load i18n static tz %}
+{% load i18n static tz helpers %}
 
 {% block title %}{% trans "Командные результаты" %}{% endblock %}
 
@@ -9,10 +9,11 @@
     <h4>{% trans "Состав команды" %}</h4>
     <div class="row">
         {% for member in team.users.all %}
+            {% item_not_in_container member.id event_participants as half_transparent %}
             <div class="col-md-6 mt-10">
                 <div class="user-photo-div">
                     {% include 'includes/user_image.html' with u=member %}
-                </div>{{ member.fio }}
+                </div><span {% if half_transparent %}class="color-grey"{%endif %}>{{ member.fio }}</span>
             </div>
         {% endfor %}
     </div>

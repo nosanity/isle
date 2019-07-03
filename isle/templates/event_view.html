@@ -178,13 +178,15 @@
                     <td class="td-user-images">
                         {% for u in team.users.all %}
                             <div class="user-images-cell">
+                                {% item_not_in_container u students as half_transparent %}
                                 {% include 'includes/user_image.html' %}
                             </div>
                         {% endfor %}
                     </td>
                     <td>
                         {% for u in team.users.all %}
-                            {{ u.fio }}<br>
+                            {% item_not_in_container u students as half_transparent %}
+                            <span {% if half_transparent %}class="color-grey"{%endif %}>{{ u.fio }}</span><br>
                         {% endfor %}
                     </td>
                     <td>{{ team.traces_number }}</td>

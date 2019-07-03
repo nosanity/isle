@@ -176,6 +176,9 @@ XLE_TOKEN = ''
 DP_URL = ''
 DP_TOKEN = ''
 
+PT_URL = ''
+PT_TOKEN = ''
+
 # базовый урл uploads
 BASE_URL = ''
 
@@ -204,6 +207,8 @@ PAGINATE_EVENTS_BY = 100
 DRF_LIMIT_OFFSET_PAGINATION_DEFAULT = 20
 # максимальное количество записей на странице при использовании LimitOffsetPagination
 DRF_LIMIT_OFFSET_PAGINATION_MAX = 50
+# включить отображение команд, сформированных в pt, на мероприятиях
+ENABLE_PT_TEAMS = False
 
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}
@@ -246,7 +251,7 @@ except IOError as e:
 
 define = [
     'SSO_UNTI_URL', 'SSO_API_KEY', 'SSO_API_KEY', 'SOCIAL_AUTH_UNTI_SECRET', 'LABS_URL', 'LABS_TOKEN',
-    'XLE_URL', 'XLE_TOKEN', 'DP_URL', 'DP_TOKEN', 'BASE_URL'
+    'XLE_URL', 'XLE_TOKEN', 'DP_URL', 'DP_TOKEN', 'BASE_URL', 'PT_URL', 'PT_TOKEN',
 ]
 
 for name in define:

@@ -221,6 +221,25 @@ class Event(models.Model):
     def get_xle_link(self):
         return '{}/event/{}'.format(settings.XLE_URL.rstrip('/'), self.uid)
 
+    def get_pt_teams(self, user_ids=None):
+        """
+        Команды, полученные из pt, которые должны отображаться на странице мероприятия.
+        Если соответствующая настройка отключена показываются только те, для которых есть загруженный след
+        """
+        if self.context:
+            user_ids = user_ids or list(EventEntry.objects.filter(event=self).values_list('user_id', flat=True))
+            qs = Team.objects.all()
+            filter_dict = {
+                'system': Team.SYSTEM_PT,
+                'contexts': self.context,
+                'users__id__in': user_ids,
+            }
+            if not settings.ENABLE_PT_TEAMS:
+                qs = qs.annotate(material_cnt=models.Count('eventteammaterial', filter=models.Q(event_id=self.id)))
+                filter_dict['material_cnt__gt'] = 0
+            return qs.filter(**filter_dict).distinct().prefetch_related('users')
+        return Team.objects.none()
+
 
 class BlockType:
     type_choices = (
@@ -601,20 +620,28 @@ class EventMaterial(AbstractMaterial):
 
 
 class Team(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, verbose_name='Событие')
+    SYSTEM_UPLOADS = 0
+    SYSTEM_PT = 1
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, verbose_name='Событие', null=True)
+    contexts = models.ManyToManyField(Context)
     users = models.ManyToManyField(User, verbose_name='Студенты')
     name = models.CharField(max_length=500, verbose_name='Название команды')
     creator = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None, related_name='team_creator')
     confirmed = models.BooleanField(default=True)
     created_by_assistant = models.BooleanField(default=False)
+    system = models.SmallIntegerField(choices=(
+        (SYSTEM_UPLOADS, SYSTEM_UPLOADS),
+        (SYSTEM_PT, SYSTEM_PT),
+    ), default=SYSTEM_UPLOADS)
+    uuid = models.CharField(max_length=50, default='')
 
     @property
     def team_name(self):
         return 'team_{}'.format(self.id)
 
-    @property
-    def traces_number(self):
-        return EventTeamMaterial.objects.filter(team=self).count()
+    def get_traces_number_for_event(self, event):
+        return EventTeamMaterial.objects.filter(team=self, event=event).count()
 
     class Meta:
         verbose_name = 'Команда'
@@ -624,6 +651,8 @@ class Team(models.Model):
         return self.name
 
     def user_can_edit_team(self, user):
+        if self.system != self.SYSTEM_UPLOADS:
+            return False
         return user.is_assistant_for_context(self.event.context) or user.id == self.creator_id or \
                user in self.users.all()
 
@@ -631,9 +660,19 @@ class Team(models.Model):
         """
         удалить команду может ассистент, либо тот, кто ее создал, при условии, что у команды нет загруженных файлов
         """
+        if self.system != self.SYSTEM_UPLOADS:
+            return False
         team_is_deletable = not EventTeamMaterial.objects.filter(team=self).exists()
         user_has_right = user.id == self.creator_id or user.is_assistant_for_context(self.event.context)
         return team_is_deletable and user_has_right
+
+    def get_members_for_event(self, event, user_ids=None):
+        if self.system == self.SYSTEM_UPLOADS:
+            return self.users.all() if event.id == self.event_id else Team.objects.none()
+        user_ids = user_ids or list(EventEntry.objects.filter(event=event).values_list('user_id', flat=True))
+        if hasattr(self, '_prefetched_objects_cache') and self._prefetched_objects_cache.get('users'):
+            return [i for i in self._prefetched_objects_cache['users'] if i.id in user_ids]
+        return self.users.filter(id__in=user_ids)
 
 
 class EventTeamMaterial(AbstractMaterial):

@@ -221,6 +221,7 @@ class Events(IndexPageEventsFilterMixin, ListView):
         })
         self.update_context_with_search_parameters(ctx)
         event_ids = [i.id for i in objects]
+        context_ids = list(set([i.context_id for i in objects if i.context_id]))
         if self.current_mode_is_assistant:
             fdict = {
                 'loaded_by_assistant': True,
@@ -254,7 +255,10 @@ class Events(IndexPageEventsFilterMixin, ListView):
         else:
             user_materials_num = dict(EventMaterial.objects.filter(event_id__in=event_ids, user=self.request.user)
                                       .values_list('event_id').annotate(cnt=Count('user_id')))
-            teams = Team.objects.filter(event_id__in=event_ids, users=self.request.user).values_list('id', flat=True)
+            teams = Team.objects.filter(
+                Q(system=Team.SYSTEM_UPLOADS, event_id__in=event_ids) |
+                Q(system=Team.SYSTEM_PT, contexts__id__in=context_ids)
+            ).filter(users=self.request.user).values_list('id', flat=True)
             team_materials_num = dict(EventTeamMaterial.objects.filter(event_id__in=event_ids, team_id__in=teams)
                                       .values_list('event_id').annotate(cnt=Count('team_id')))
             event_num, trace_num = 0, 0
@@ -310,7 +314,7 @@ def get_event_participants(event):
 @method_decorator(context_setter, name='get')
 class EventView(GetEventMixin, TemplateView):
     """
-    Просмотр статистики загрузок материалов по эвентам
+    Страница мероприятия
     """
     template_name = 'event_view.html'
 
@@ -324,7 +328,6 @@ class EventView(GetEventMixin, TemplateView):
         attends = set(Attendance.objects.filter(event=self.event, is_confirmed=True).values_list('user_id', flat=True))
         chat_bot_added = set(Attendance.objects.filter(event=self.event, confirmed_by_system=Attendance.SYSTEM_CHAT_BOT)
                              .values_list('user_id', flat=True))
-        user_teams = list(Team.objects.filter(event=self.event, users=self.request.user).values_list('id', flat=True))
         if not self.current_user_is_assistant:
             num = dict(EventMaterial.objects.filter(event=self.event, user__in=users, is_public=True).
                        values_list('user_id').annotate(num=Count('event_id')))
@@ -341,8 +344,15 @@ class EventView(GetEventMixin, TemplateView):
             u.can_delete = u.id in can_delete
             u.added_by_chat_bot = u.id in chat_bot_added
         event_entry = EventEntry.objects.filter(event=self.event, user=self.request.user).first()
-        teams = Team.objects.filter(event=self.event).select_related('creator').prefetch_related('users')
+        teams = list(Team.objects.filter(event=self.event).select_related('creator').prefetch_related('users')) + \
+            list(self.event.get_pt_teams(user_ids=[i.id for i in users]))
+        user_teams = [
+            i.id for i in teams if self.request.user in
+                i.get_members_for_event(self.event, user_ids=[i.id for i in users])
+        ]
         teams = sorted(list(teams), key=lambda x: (int(x.id not in user_teams), x.name.lower()))
+        for team in teams:
+            team.traces_number = team.get_traces_number_for_event(self.event)
         teams_allowed_to_delete = [i.id for i in teams if i.user_can_delete_team(self.request.user)]
         data.update({
             'students': users,
@@ -1021,6 +1031,8 @@ class LoadTeamMaterials(BaseLoadMaterials):
         for u in users:
             u.materials_num = num.get(u.id, 0)
         data.update({'students': users, 'event': self.event, 'team_name': getattr(self.team, 'name', ''),
+                     'event_participants': list(get_event_participants(self.event).order_by()
+                                                .values_list('id', flat=True)),
                      'team': self.team, 'other_materials': self.team.connected_materials.order_by('id')})
         return data
 
@@ -1063,7 +1075,9 @@ class LoadTeamMaterials(BaseLoadMaterials):
         # загрузка и удаление файлов доступны только для эвентов, доступных для оцифровки, и по
         # командам, сформированным в данном эвенте
         if super().check_post_allowed(request) is not None or not \
-                Team.objects.filter(event=self.event, id=self.kwargs['team_id']).exists():
+                Team.objects.filter(Q(event=self.event, id=self.kwargs['team_id'], system=Team.SYSTEM_UPLOADS) |
+                                    (Q(system=Team.SYSTEM_PT, contexts=self.event.context, id=self.kwargs['team_id']))
+                                    ).exists():
             return JsonResponse({}, status=403)
 
     def _delete_item(self, trace, material_id):
@@ -2355,7 +2369,7 @@ class TeamResultInfoView(BaseResultInfoView):
         resp['team'] = {
             'id': result.team_id,
             'name': result.team.name,
-            'members': list(result.team.users.values_list('unti_id', flat=True))
+            'members': [i.unti_id for i in result.team.get_members_for_event(result.result.block.event)]
         }
 
 

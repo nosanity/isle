@@ -263,3 +263,12 @@ class SSOApi(BaseApi):
 
     def get_casbin_data(self):
         return self.make_request_no_pagination('/api/casbin/')
+
+
+class PTApi(BaseApi):
+    name = 'pt'
+    base_url = settings.PT_URL.rstrip('/')
+    authorization = {'params': {'app_token': getattr(settings, 'PT_TOKEN', '')}}
+
+    def fetch_teams(self):
+        return self.make_request('/api/v1/team')
