@@ -63,7 +63,7 @@ def login(request):
 
 
 def logout(request):
-    return base_logout(request, next_page='index')
+    return base_logout(request)
 
 
 def context_setter(f):
@@ -294,7 +294,9 @@ class GetEventMixin:
 class GetEventMixinWithAccessCheck(GetEventMixin):
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
-            return HttpResponseRedirect('{}?next={}'.format(reverse('login'), request.get_full_path()))
+            return HttpResponseRedirect('{}?next={}'.format(
+                reverse('begin', kwargs={'backend': 'unti'}), request.get_full_path()
+            ))
         if self.current_user_is_assistant or EventEntry.objects.filter(user=request.user, event=self.event).exists() \
                 or (self.event.run_id and RunEnrollment.objects.filter(user=request.user, run_id=self.event.run_id)):
             return super().dispatch(request, *args, **kwargs)

@@ -269,9 +269,13 @@ nav.navbar {
     width: 100% !important;
 }
 
-.material-result-div {
+.material-result-div--full {
     border: solid #ccc 1px;
     padding: 20px;
+    margin-top: 20px;
+}
+
+.material-result-div--compact {
     margin-top: 20px;
 }
 
@@ -281,7 +285,7 @@ nav.navbar {
     color: white;
 }
 
-.load-results-btn {
+.load-results-btn--full {
     position: absolute;
     bottom: 20px;
     right: 20px;

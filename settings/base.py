@@ -129,7 +129,8 @@ AUTHENTICATION_BACKENDS = (
     'isle.auth.UNTIBackend',
     'django.contrib.auth.backends.ModelBackend'
 )
-LOGIN_URL = '/login/'
+LOGIN_URL = '/login/unti/'
+LOGOUT_REDIRECT_URL = 'https://my.2035.university'
 
 AWS_S3_FILE_OVERWRITE = False
 
