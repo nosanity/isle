@@ -312,7 +312,7 @@ def update_run_enrollments():
                     unti_id_to_id[int(item['unti_id'])] = user_id
                 enr = RunEnrollment.all_objects.update_or_create(
                     user_id=user_id, run_id=run_id, defaults={'deleted': False}
-                )
+                )[0]
                 ids.append(enr.id)
         RunEnrollment.objects.exclude(id__in=ids).update(deleted=True)
     except ApiError:
