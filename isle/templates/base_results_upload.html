@@ -9,6 +9,36 @@
         {% block info %}{% endblock %}
     </div>
 
+    {% upload_files_compact_view as compact_view %}
+    {% if compact_view %}
+        <div>
+            {% for block in blocks %}
+                {% if block|show_block %}
+                    {% for result in block.results.all %}
+                        {% if result|show_result %}
+                            {% if user_upload and result.is_personal or team_upload and result.is_group or result.results %}
+                                <div class="material-result-div material-result-div--compact" data-result="{{ result.id }}">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            {% if can_upload and not block.deleted and not result.deleted %}
+                                            {% if user_upload and result.is_personal or team_upload and result.is_group %}
+                                            <button class="btn btn-warning load-results-btn">
+                                                {% if not result.results|length %}{% trans "Загрузить" %}{% else %}{% trans "Загрузить еще один результат" %}{% endif %}
+                                            </button>
+                                            {% endif %}
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% include 'includes/file_uploads_form.html' %}
+                                    {% include 'includes/result_items.html' %}
+                                </div>
+                            {% endif %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            {% endfor %}
+        </div>
+    {% else %}
     <div>
         {% for block in blocks %}
             {% if block|show_block %}
@@ -42,7 +72,7 @@
                 {% for result in block.results.all %}
                 {% if result|show_result %}
                 {% if user_upload and result.is_personal or team_upload and result.is_group or result.results %}
-                    <div class="material-result-div" data-result="{{ result.id }}">
+                    <div class="material-result-div material-result-div--full" data-result="{{ result.id }}">
 			    <h4>{% blocktrans with n1=block.order n2=result.order %}{{ n1 }}.{{ n2 }}. {% endblocktrans %} {{ result.title }}
                             {% if block.deleted or result.deleted %} ({% blocktrans %}Удалено{% endblocktrans %}){% endif %}</h4>
                         <div class="row">
@@ -56,7 +86,7 @@
                             <div class="col-md-6">
                                 {% if can_upload and not block.deleted and not result.deleted %}
                                 {% if user_upload and result.is_personal or team_upload and result.is_group %}
-                                <button class="btn btn-warning load-results-btn">
+                                <button class="btn btn-warning load-results-btn load-results-btn--full">
                                     {% if not result.results|length %}{% trans "Загрузить" %}{% else %}{% trans "Загрузить еще один результат" %}{% endif %}
                                 </button>
                                 {% endif %}
@@ -65,84 +95,8 @@
                         </div>
 
 
-                                <form method="post" class="form hidden user-materials-form">
-                                    <div class="row">
-                                        {% csrf_token %}
-                                        <input name="labs_result_id" type="hidden" value="{{ result.id }}">
-                                        <div class="col-sm-12 col-md-3 mb-10">
-                                            <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
-                                                <a class="nav-link active" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home-{{ result.id }}" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы</a>
-                                                <a class="nav-link" id="v-pills-profile-tab" data-toggle="pill" href="#v-pills-profile-{{ result.id }}" role="tab" aria-controls="v-pills-profile" aria-selected="false">Ссылки</a>
-                                            </div>
-                                        </div>
-                                        <div class="col-sm-12 col-md-9">
-                                            <div class="tab-content" id="v-pills-tabContent">
-                                                <div class="tab-pane fade show active" id="v-pills-home-{{ result.id }}" role="tabpanel" aria-labelledby="v-pills-home-tab">
-                                                    {% if allow_file_upload %}
-                                                        <label class="btn btn-block btn-file border label-overflow select-files-btn">
-                                                            {% trans "Выбрать файлы" %}
-                                                            <input type="file" multiple name="file_field" class="form-control hidden">
-                                                        </label>
-                                                    {% endif %}
-                                                    <div><span class="file-name"></span></div>
-                                                    <div class="uploads"></div>
-                                                </div>
-                                                <div class="tab-pane fade" id="v-pills-profile-{{ result.id }}" role="tabpanel" aria-labelledby="v-pills-profile-tab">
-                                                    <input type="url" name="url_field" class="form-control full-width" id="url" placeholder="Укажите URL-ссылку на материал">
-                                                </div>
-                                                <div class="materials-form-comment-div">
-                                                    <textarea maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Описание файлов (не обязательно)"></textarea>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="row">
-                                        <div class="col-sm-3">
-                                            <button name="add_btn" type="submit" class="btn btn-success btn-block add-material-btn" disabled="disabled">{% trans "Сохранить" %}</button>
-                                        </div>
-                                        <div class="col-sm-3">
-                                            <span class="btn btn-danger btn-block hide-results-form-btn">{% trans "Отменить" %}</span>
-                                        </div>
-                                    </div>
-                                </form>
-
-                        <div class="result-items-wrapper">
-                            <ul class="list-group list-group-flush">
-                                {% for result_item in result.results %}
-                                    <li class="list-group-item no-left-padding result-item-li">
-                                        <div class="row">
-                                            <div class="col-md-9">
-                                                <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="{{ result_item.id }}">
-                                                    {% for link in result_item.links %}
-                                                        <li>
-                                                            <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
-                                                            {% if can_upload %}
-                                                                <button name="material_id" value="{{ link.id }}" class="btn-transparent delete-material-btn pull-right">
-                                                                    <span class="glyphicon glyphicon-remove"></span>
-                                                                </button>
-                                                            {% endif %}
-                                                        </li>
-                                                    {% endfor %}
-                                                </ul>
-                                                <p class="result-comment">{{ result_item.comment }}</p>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <div class="result-helper-block">
-                                                    {% if can_upload %}
-                                                    <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
-                                                    {% endif %}
-                                                    <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
-                                                    <span data-url="{{ result_item.get_page_url }}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
-                                                    {% if is_assistant %}
-                                                        <span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>
-                                                    {% endif %}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </li>
-                                {% endfor %}
-                            </ul>
-                        </div>
+                        {% include 'includes/file_uploads_form.html' %}
+                        {% include 'includes/result_items.html' %}
 
                     </div>
                 {% endif %}
@@ -152,6 +106,7 @@
             {% endif %}
         {% endfor %}
     </div>
+    {% endif %}
 
     {% if old_results %}
         <div id="results-jumper">
