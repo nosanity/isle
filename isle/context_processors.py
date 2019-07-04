@@ -1,5 +1,5 @@
 from isle.cache import UserAvailableContexts
-from isle.models import Context
+from isle.models import Context, ZendeskData
 
 
 def context(request):
@@ -10,4 +10,5 @@ def context(request):
         contexts = [(i[0], i[1] or i[2] or i[3]) for i in qs]
     return {
         'AVAILABLE_CONTEXTS': contexts,
+        'ZENDESK_DATA': ZendeskData.objects.first(),
     }

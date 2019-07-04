@@ -1022,3 +1022,12 @@ class PLEUserResult(models.Model):
 
     def get_url(self):
         return reverse('api-ple-result', kwargs={'result_id': self.id})
+
+
+class ZendeskData(models.Model):
+    after_head = models.TextField(verbose_name=_('Код до закрывающегося тега head'), blank=True, default='')
+    before_body = models.TextField(verbose_name=_('Код после открывающегося тега body'), blank=True, default='')
+
+    class Meta:
+        verbose_name = _('Виджет zendesk')
+        verbose_name_plural = _('Виджет zendesk')
