@@ -3,7 +3,7 @@ from django import forms
 from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.utils.translation import ugettext_lazy as _
-from isle.models import Event, Team, EventType, Trace
+from isle.models import Event, Team, EventType, Trace, ZendeskData
 
 
 class RemoveDeleteActionMixin:
@@ -87,3 +87,9 @@ class EventTypeAdmin(RemoveDeleteActionMixin, admin.ModelAdmin):
                 if item not in added_traces:
                     Trace.objects.filter(id=trace_id).update(deleted=True)
                     logging.warning('Trace #%s %s was deleted' % (trace_id, item))
+
+
+@admin.register(ZendeskData)
+class ZerndeskDataAdmin(admin.ModelAdmin):
+    def has_add_permission(self, request):
+        return not ZendeskData.objects.exists()
