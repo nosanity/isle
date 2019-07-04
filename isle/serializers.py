@@ -35,17 +35,18 @@ class UserNestedSerializer(serializers.ModelSerializer):
         fields = ['unti_id']
 
 
-class TeamMembersSerializer(serializers.BaseSerializer):
+class TeamNestedserializer(serializers.BaseSerializer):
     def to_representation(self, instance):
-        return instance.unti_id
+        team = instance.team
+        members = team.get_members_for_event(instance.result.block.event)
+        return {
+            'id': team.id,
+            'name': team.name,
+            'members': [i.unti_id for i in members]
+        }
 
-
-class TeamNestedserializer(serializers.ModelSerializer):
-    members = TeamMembersSerializer(many=True, source='users.all')
-
-    class Meta:
-        model = Team
-        fields = ['id', 'name', 'members']
+    def get_attribute(self, instance):
+        return instance
 
 
 class LabsBaseResultSerializer(serializers.Serializer):

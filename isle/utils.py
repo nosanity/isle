@@ -19,7 +19,7 @@ from django.utils.translation import ugettext as _
 import requests
 import xlsxwriter
 from celery.task.control import inspect
-from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi, SSOApi
+from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi, SSOApi, PTApi
 from isle.cache import UserAvailableContexts
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
@@ -482,6 +482,59 @@ def update_contexts():
         logging.exception('Failed to parse contexts')
 
 
+def update_teams():
+    """
+    обновление команд из pt, если включена соответствующая настройка
+    """
+    if not settings.ENABLE_PT_TEAMS:
+        return
+    try:
+        context_uuid_to_id = dict(Context.objects.values_list('uuid', 'id'))
+        unti_id_to_id = dict(User.objects.filter(unti_id__isnull=False).values_list('unti_id', 'id'))
+        failed_unti_ids = set()
+        for resp in PTApi().fetch_teams():
+            for item in resp:
+                context_ids = set()
+                for ct in item['contexts']:
+                    ct_id = context_uuid_to_id.get(ct['uuid'])
+                    if ct_id is None:
+                        logging.error('Context with uuid %s not found', ct['uuid'])
+                        continue
+                    context_ids.add(ct_id)
+                user_ids = set()
+                for u in item['users']:
+                    if u['unti_id'] in failed_unti_ids:
+                        continue
+                    user_id = unti_id_to_id.get(u['unti_id'])
+                    if user_id is None:
+                        user = pull_sso_user(u['unti_id'])
+                        if not user:
+                            failed_unti_ids.add(u['unti_id'])
+                            logging.error('User with unti_id %s not found', u['unti_id'])
+                            continue
+                        unti_id_to_id[u['unti_id']] = user.id
+                        user_id = user.id
+                    user_ids.add(user_id)
+                if not context_ids:
+                    logging.error('PT team %s has no valid contexts', item['uuid'])
+                    continue
+                if not user_ids:
+                    logging.error('PT team %s has no valid users', item['uuid'])
+                    continue
+                team = Team.objects.update_or_create(uuid=item['uuid'], defaults={
+                    'name': item['title'],
+                    'system': Team.SYSTEM_PT
+                })[0]
+                team_contexts = set(team.contexts.values_list('id', flat=True))
+                if context_ids != team_contexts:
+                    team.contexts.set(context_ids)
+                team_users = set(team.users.values_list('id', flat=True))
+                if user_ids != team_users:
+                    team.users.set(user_ids)
+    except Exception:
+        logging.exception('Failed to fetch teams')
+
+
 def get_results_list(event=None):
     """
     возвращает генератор списков вида
@@ -747,7 +800,7 @@ class EventMaterialsCSV:
     def _get_team_data(self, team_id):
         if team_id not in self.teams_data_cache:
             team = Team.objects.prefetch_related('users').get(id=team_id)
-            team_data = {'members': list(team.users.all()), 'title': team.name}
+            team_data = {'members': list(team.get_members_for_event(self.event)), 'title': team.name}
             self.teams_data_cache[team_id] = team_data
         return self.teams_data_cache[team_id]
 
@@ -777,6 +830,7 @@ class EventGroupMaterialsCSV(EventMaterialsCSV):
         yield self.generate_headers()
         for event in self.events_qs:
             self.event = event
+            self.teams_data_cache = {}
             for line in self.generate_for_event():
                 yield line
 

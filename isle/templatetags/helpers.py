@@ -55,6 +55,11 @@ def show_result(result):
     return len(result.results) if result.deleted or result.block.deleted else True
 
 
+@register.simple_tag
+def item_not_in_container(item, container):
+    return item not in container
+
+  
 @register.simple_tag(takes_context=True)
 def upload_files_compact_view(context):
     cnt = 0

@@ -462,6 +462,14 @@ img.user-img {
     height: 50px;
 }
 
+.opacity-50 {
+    opacity: 0.5;
+}
+
+.color-grey {
+    color: grey;
+}
+
 .user-images-cell {
     display: inline-block;
 }
