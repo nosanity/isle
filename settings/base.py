@@ -212,6 +212,9 @@ DRF_LIMIT_OFFSET_PAGINATION_MAX = 50
 ENABLE_PT_TEAMS = False
 # ссылка на now
 NOW_URL = '/'
+HEADER_CABINET_URL = 'https://now.2035.university'
+HEADER_FULL_SCHEDULE_URL = 'https://xle.u2035test.ru/island1022/timetable/all'
+HEADER_MY_SCHEDULE_URL = 'https://xle.u2035test.ru/island1022/timetable'
 
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}
