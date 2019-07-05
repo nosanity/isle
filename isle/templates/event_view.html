@@ -68,14 +68,6 @@
         </div>
     {% endif %}
 
-    <nav class="nav nav-pills nav-justified">
-        {% if not is_assistant and event_entry and not event_entry.approved %}
-            <a class="nav-item btn btn-primary text-white item-margin" id="i-was-here">
-                {% if event_entry.approve_text %}Изменить подтверждение присутствия{% else %}Я тут точно был!{% endif %}
-            </a>      
-        {% endif %}
-    </nav>
-
     <div class="row">
         <div class="col">
             <div class="inline-divs-wrapper mt-40">
