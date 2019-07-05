@@ -210,6 +210,8 @@ DRF_LIMIT_OFFSET_PAGINATION_DEFAULT = 20
 DRF_LIMIT_OFFSET_PAGINATION_MAX = 50
 # включить отображение команд, сформированных в pt, на мероприятиях
 ENABLE_PT_TEAMS = False
+# ссылка на now
+NOW_URL = '/'
 
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}
