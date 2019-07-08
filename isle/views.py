@@ -914,7 +914,9 @@ class LoadMaterials(BaseLoadMaterials):
         return self.request.user.unti_id == int(self.kwargs['unti_id'])
 
     def can_upload(self):
-        return self.current_user_is_assistant or int(self.kwargs['unti_id']) == self.request.user.unti_id
+        # UPLOADS-229 разрешить грузить материалы мероприятия всем
+        return True
+        # return self.current_user_is_assistant or int(self.kwargs['unti_id']) == self.request.user.unti_id
 
     def get_materials(self):
         if self.can_upload():
