@@ -2,7 +2,7 @@ from django.utils.translation import ugettext_lazy as _
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from isle.api import SSOApi, ApiError
-from isle.models import User, Team, UserFile, PLEUserResult
+from isle.models import User, Team, UserFile, PLEUserResult, EventOnlyMaterial, Trace
 from .utils import pull_sso_user
 
 
@@ -166,3 +166,21 @@ class UserResultSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'comment': {'allow_blank': True},
         }
+
+
+class TraceSerializer(serializers.ModelSerializer):
+    event_type = serializers.CharField(source='event_type.uuid')
+
+    class Meta:
+        model = Trace
+        fields = ['trace_type', 'name', 'event_type', 'deleted']
+
+
+class EventOnlyMaterialSerializer(serializers.ModelSerializer):
+    event = serializers.CharField(source='event.uid')
+    trace = TraceSerializer()
+
+    class Meta:
+        model = EventOnlyMaterial
+        fields = ['id', 'url', 'file', 'file_type', 'file_size', 'created_at', 'initiator', 'deleted',
+                  'comment', 'event', 'trace']
