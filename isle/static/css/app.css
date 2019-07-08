@@ -362,7 +362,7 @@ nav.navbar {
 
 .context-switching-select {
     margin-bottom: -5px;
-    margin-left: 20px;
+    margin-left: 0px;
     max-width: 300px;
     text-overflow: ellipsis;
 }
@@ -388,8 +388,29 @@ nav.navbar {
     color: #e52127 !important;
 }
 
+.navbar-full-menu {
+    margin-left: 40px;
+}
+
+.navbar-grey {
+    color: grey !important;
+}
+
 .navbar-user {
     padding: 0.25rem 0 0 0 !important;
+}
+
+.navbar-menu-icon {
+    display: none;
+}
+
+.nav-logout-btn-container {
+    float: right;
+    margin-top: 5px;
+}
+
+.nav-leader-id-container {
+    float: left;
 }
 
 @media (max-width: 768px) {
@@ -407,6 +428,28 @@ nav.navbar {
         order: 3;
         margin-top: 10px;
     }
+    .navbar-full-menu {
+        display: none;
+    }
+    .navbar-menu-icon {
+        display: inline;
+        margin-left: 2em;
+    }
+    .big-icon {
+        font-size: 40px;
+    }
+    .navbar-mobile-menu {
+        position: absolute !important;
+    }
+    .md-hide {
+        display: none;
+    }
+    .md-ml-auto {
+        float: right;
+    }
+    .nav-leader-id-container {
+        float: none;
+    }
 }
 
 .navbar-leader-id {
@@ -419,7 +462,7 @@ nav.navbar {
 
 .badge-leader-id {
     color: #fff !important;
-    background-color: #e52127;
+    background-color: grey;
     margin-top: 5px;
 }
 
@@ -514,4 +557,8 @@ img.user-img {
 
 .activity-filter-wrapper {
     min-width: 750px;
+}
+
+.btn-red-border {
+    border: 2px solid #dc3545;
 }

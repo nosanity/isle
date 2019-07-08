@@ -21,12 +21,37 @@
         <div class="container">
             <header>
                 <nav class="navbar navbar-expand-lg navbar-light">
-                    <a href="{% url 'index' %}" class="navbar-brand">
-                        <img src="/static/img/logo.png">
-                    </a>
-                    {% include 'includes/context_switcher.html' %}
-                    <div>
-                    <ul class="navbar-nav nav-row">
+                    <ul class="navbar-nav">
+                        <li class="nav-item">
+                            <a href="{{ NOW_URL }}" class="navbar-brand">
+                                <img src="/static/img/logo.png">
+                            </a>
+                        </li>
+                    </ul>
+                    <ul class="navbar-nav nav-row navbar-full-menu">
+                        <li class="nav-item">
+                            <a href="{{ HEADER_CABINET_URL }}" class="dropdown-item">{% trans "Личный кабинет" %}</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{{ HEADER_FULL_SCHEDULE_URL }}" class="dropdown-item">{% trans "Полное расписание" %}</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{{ HEADER_MY_SCHEDULE_URL }}" class="dropdown-item">{% trans "Мое раписание" %}</a>
+                        </li>
+                    </ul>
+                    <ul class="navbar-nav nav-row navbar-menu-icon">
+                        <li class="nav-item dropdown">
+                            <a href="#" class="nav-link" data-toggle="dropdown" aria-expanded="false">
+                                <i class="fa fa-bars big-icon"></i>
+                            </a>
+                            <div class="dropdown-menu navbar-mobile-menu">
+                                <a href="{{ HEADER_CABINET_URL }}" class="dropdown-item">{% trans "Личный кабинет" %}</a>
+                                <a href="{{ HEADER_FULL_SCHEDULE_URL }}" class="dropdown-item">{% trans "Полное расписание" %}</a>
+                                <a href="{{ HEADER_MY_SCHEDULE_URL }}" class="dropdown-item">{% trans "Мое раписание" %}</a>
+                            </div>
+                        </li>
+                    </ul>
+                    <ul class="navbar-nav nav-row ml-auto">
                         {% if request.user.is_authenticated %}
                             {% if request.user.icon %}
                                 <li class="nav-item nav-user-image">
@@ -36,19 +61,21 @@
                             <li class="nav-item">
                                 <ul class="navbar-nav">
                                     <li class="nav-item">
-                                        <span class="navbar-red navbar-text navbar-user">
-                                            {{ request.user.get_full_name }}
-                                        </span>
-                                        {% if request.user.leader_id %}
-                                            <span class="nav-link padding-0">
-                                                <span class="badge badge-leader-id">L{{ request.user.leader_id }}</span>
-                                            </span>
-                                        {% endif %}
-                                    </li>
-                                    <li class="nav-item logout-link">
-                                        <a class="navbar-red nav-link" href="{% url 'logout' %}" title="{% blocktrans %}Выйти{% endblocktrans %}">
-                                            <i class="fa fa-sign-out" title="{% blocktrans %}Выйти{% endblocktrans %}"></i>
-                                        </a>
+                                        <div>
+                                            <div class="md-hide">
+                                                <span class="color-grey">{{ request.user.get_full_name }}</span>
+                                            </div>
+                                            <div>
+                                                <div class="nav-leader-id-container">
+                                                    <span class="badge badge-leader-id">L{{ request.user.leader_id }}</span>
+                                                </div>
+                                                <div class="ml-auto nav-logout-btn-container">
+                                                    <a href="{% url 'logout' %}" title="{% blocktrans %}Выйти{% endblocktrans %}">
+                                                        <i class="fa fa-sign-out navbar-grey" title="{% blocktrans %}Выйти{% endblocktrans %}"></i>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </li>
                                 </ul>
                             </li>
@@ -60,9 +87,9 @@
                             </li>
                         {% endif %}
                     </ul>
-                    </div>
                 </nav>
             </header>
+            {% include 'includes/context_switcher.html' %}
             <main>
                 {% block content %}{% endblock %}
             </main>

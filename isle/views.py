@@ -2909,3 +2909,67 @@ class EventSelfEnroll(GetEventMixin, View):
             user=request.user, event=self.event, defaults={'self_enrolled': True, 'deleted': False}
         )
         return JsonResponse({'status': 0})
+
+
+class CheckUserTraceApi(APIView):
+    """
+    **Описание**
+
+        Проверка загрузки пользователем цифрового следа для мероприятия
+
+    **Пример запроса**
+
+        GET /api/check-user-trace/?leader_id=1&event_id=cd602dd7-4fef-440b-82bf-013b5817e3dd
+
+    **Параметры запроса**
+
+        * event_id - uuid мероприятия, обязательный параметр
+        * leader_id - leader id пользователя, обязательный параметр
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "exists": true,
+                "n_personal": 2,
+                "n_team": 3
+            }
+            где n_personal - количество ЦС, который пользователь загрузил для себя,
+            n_team - количество ЦС из команд event-а, в которых есть пользователь,
+            exists true, если хотя бы одно из значенй n_personal или n_team больше 0
+        * 400
+            {
+                "leader_id": "user with leader_id 1 not found",
+                "event_id": "event with uuid cd602dd7-4fef-440b-82bf-013b5817e3dd not found"
+            }
+            если не указан какой-то параметр или не найден пользователь/мероприятие с описанием ошибок по параметрам
+    """
+    permission_classes = ()
+
+    def get(self, request):
+        event_id = request.query_params.get('event_id')
+        leader_id = request.query_params.get('leader_id')
+        errors = {}
+        if not event_id:
+            errors['event_id'] = 'required parameter'
+        else:
+            try:
+                event = Event.objects.get(uid=event_id)
+            except Event.DoesNotExist:
+                errors['event_id'] = 'event with uuid {} not found'.format(event_id)
+        if not leader_id:
+            errors['leader_id'] = 'leader_id required'
+        else:
+            try:
+                user = User.objects.get(leader_id=leader_id)
+            except (User.DoesNotExist, User.MultipleObjectsReturned):
+                errors['leader_id'] = 'user with leader_id {} not found'.format(leader_id)
+        if errors:
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        n_personal = EventMaterial.objects.filter(event=event, user=user).count()
+        n_team = EventTeamMaterial.objects.filter(event=event, team__users=user).distinct().count()
+        return Response({
+            'exists': n_personal + n_team > 0,
+            'n_personal': n_personal,
+            'n_team': n_team,
+        })
