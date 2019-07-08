@@ -28,7 +28,7 @@ from django.views.generic import TemplateView, View, ListView
 import django_filters
 import requests
 from dal import autocomplete
-from rest_framework import status
+from rest_framework import status, exceptions
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView, CreateAPIView
 from rest_framework.pagination import PageNumberPagination, LimitOffsetPagination
@@ -47,7 +47,7 @@ from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, Eve
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
     LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, PLEUserResult, RunEnrollment
 from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer, \
-    UserFileSerializer, UserResultSerializer
+    UserFileSerializer, UserResultSerializer, EventOnlyMaterialSerializer
 from isle.tasks import generate_events_csv, team_members_set_changed, handle_ple_user_result
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
@@ -2975,3 +2975,64 @@ class CheckUserTraceApi(APIView):
             'n_personal': n_personal,
             'n_team': n_team,
         })
+
+
+class EventMaterialsApi(ListAPIView):
+    """
+    **Описание**
+
+        Получение списка материалов мероприятия
+
+    **Пример запроса**
+
+        GET /api/event-materials/?event_id=cd602dd7-4fef-440b-82bf-013b5817e3dd
+
+    **Параметры запроса**
+
+        * event_id - uuid мероприятия, обязательный параметр
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "count": 1, // количество объектов
+                "next": null, // полный url следующей страницы (если есть)
+                "previous": null, // полный url предыдущей страницы (если есть)
+                "results": [
+                    {
+                        "id": 1,
+                        "url": "", // урл файла, если он был загружен ссылкой
+                        "file": "http://127.0.0.1:8092/media/file.csv", // урл файла в uploads, если он был загружен как файл
+                        "file_type": "text/csv", // тип файла
+                        "file_size": 8835, // размер в байтах
+                        "created_at": "2019-07-08T20:01:50.104666+10:00",
+                        "initiator": 11111134, // unti_id того, кто загрузил файл (может быть null)
+                        "deleted": false, // если deleted: true, значит файл был перенесен в личные или командные
+                        "comment": "qwe",
+                        "event": "c26530a5-09a0-485d-89cc-3ccb790ba876",
+                        "trace": { // информация о блоке, который загружен файл
+                            "trace_type": "Презентация",
+                            "name": "Презентация спикера",
+                            "event_type": "36364eea-de91-4a9d-b498-87e5beb9b3c1", // uuid типа события из labs
+                            "deleted": false
+                        }
+                    }
+                ]
+            }
+
+        * 400 если не указан event_id или такого мероприятия нет
+        * 403 если не указан хедер X-API-KEY или ключ неверен
+    """
+
+    permission_classes = (ApiPermission, )
+    serializer_class = EventOnlyMaterialSerializer
+    pagination_class = Paginator
+
+    def get_queryset(self):
+        if not self.request.query_params.get('event_id'):
+            raise exceptions.ValidationError({'event_id': 'required parameter'})
+        event = Event.objects.filter(uid=self.request.query_params.get('event_id')).first()
+        if not event:
+            raise exceptions.ValidationError({'event_id': 'event with uuid {} not found'.
+                                             format(self.request.query_params.get('event_id'))})
+        return EventOnlyMaterial.objects.filter(event=event).select_related('event', 'trace', 'trace__event_type')
