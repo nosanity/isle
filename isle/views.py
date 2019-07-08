@@ -3035,4 +3035,4 @@ class EventMaterialsApi(ListAPIView):
         if not event:
             raise exceptions.ValidationError({'event_id': 'event with uuid {} not found'.
                                              format(self.request.query_params.get('event_id'))})
-        return EventOnlyMaterial.objects.filter(event=event).select_related('event', 'trace', 'trace__event_type')
+        return EventOnlyMaterial.all_objects.filter(event=event).select_related('event', 'trace', 'trace__event_type')
