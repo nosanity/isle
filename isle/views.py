@@ -369,7 +369,7 @@ class EventView(GetEventMixin, TemplateView):
 
 
 @method_decorator(context_setter, name='get')
-class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
+class BaseLoadMaterials(TemplateView):
     template_name = 'load_materials.html'
     material_model = None
 
@@ -496,6 +496,10 @@ class BaseLoadMaterials(GetEventMixinWithAccessCheck, TemplateView):
         users = {i.unti_id: i for i in User.objects.filter(unti_id__in=filter(None, [j.initiator for j in qs]))}
         for item in qs:
             item.initiator_user = users.get(item.initiator)
+
+
+class BaseLoadMaterialsWithAccessCheck(GetEventMixinWithAccessCheck, BaseLoadMaterials):
+    pass
 
 
 class BaseLoadMaterialsLabsResults:
@@ -898,7 +902,7 @@ class BaseLoadMaterialsResults(object):
         return self._delete_item(material_id)
 
 
-class LoadMaterials(BaseLoadMaterials):
+class LoadMaterials(BaseLoadMaterialsWithAccessCheck):
     """
     Просмотр/загрузка материалов по эвенту
     """
@@ -914,9 +918,7 @@ class LoadMaterials(BaseLoadMaterials):
         return self.request.user.unti_id == int(self.kwargs['unti_id'])
 
     def can_upload(self):
-        # UPLOADS-229 разрешить грузить материалы мероприятия всем
-        return True
-        # return self.current_user_is_assistant or int(self.kwargs['unti_id']) == self.request.user.unti_id
+        return self.current_user_is_assistant or int(self.kwargs['unti_id']) == self.request.user.unti_id
 
     def get_materials(self):
         if self.can_upload():
@@ -1020,7 +1022,7 @@ class LoadMaterialsAssistant(BaseLoadMaterialsResults, LoadMaterials):
         return JsonResponse({})
 
 
-class LoadTeamMaterials(BaseLoadMaterials):
+class LoadTeamMaterials(BaseLoadMaterialsWithAccessCheck):
     """
     Просмотр/загрузка командных материалов по эвенту
     """
@@ -1169,7 +1171,7 @@ class LoadTeamMaterialsAssistant(BaseLoadMaterialsResults, LoadTeamMaterials):
         return JsonResponse({})
 
 
-class LoadEventMaterials(BaseLoadMaterials):
+class LoadEventMaterials(GetEventMixin, BaseLoadMaterials):
     """
     Загрузка материалов мероприятия
     """
@@ -1213,6 +1215,12 @@ class LoadEventMaterials(BaseLoadMaterials):
         })
         return data
 
+    def can_upload(self):
+        """
+        любой пользователь может грузить материалы мероприятия
+        """
+        return True
+
     def get_unattached_files(self):
         return self.material_model.objects.filter(event=self.event, trace__isnull=True)
 
@@ -1231,6 +1239,9 @@ class LoadEventMaterials(BaseLoadMaterials):
             event=self.event, trace=trace, id=material_id
         ).first()
         if not material:
+            return JsonResponse({}, status=400)
+        if not (self.request.user.unti_id and self.request.user.unti_id == material.initiator or
+                self.current_user_is_assistant):
             return JsonResponse({}, status=400)
         if self.event.uid == getattr(settings, 'API_DATA_EVENT', ''):
             ApiUserChart.objects.update(updated=None)

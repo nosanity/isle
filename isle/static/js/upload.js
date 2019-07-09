@@ -685,21 +685,6 @@ function successProcessFile(data, $form, result_item_id) {
                 <span>${comment}</span>
             </div>
         `;
-    }
-    else if (!isAssistant) {
-        html = `
-            <li class="list-group-item">
-                <a href="${url}">${name}</a>
-                &nbsp;
-                <button name="material_id" value="${mId}" class="btn btn-warning btn-sm pull-right delete-material-btn">
-                    Удалить
-                </button>
-                ${data.uploader_name ? '<div>(' + data.uploader_name + ')</div>' : ''}
-                <div>
-                    <span>${comment}</span>
-                </div>
-            </li>
-        `;
     } else {
         if (pageType == 'eventStructure') {
             html = `
@@ -717,14 +702,19 @@ function successProcessFile(data, $form, result_item_id) {
                 </li>
             `;
         } else {
+            let edit_btn = ``;
+            if (isAssistant) {
+                edit_btn = `
+                    <span value="${mId}" class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
+                    </span>`
+            }
             html = `
-                <li class="list-group-item ${data.uploader_name && isAssistant ? 'assistant-team-link' : ''}" data-comment="${data.comment}" data-material-id="${mId}">
+                <li class="list-group-item ${data.uploader_name ? 'assistant-team-link' : ''}" data-comment="${data.comment}" data-material-id="${mId}">
                     <a class="link_preview" href="${url}" ${data_attrs}>${name}</a>
                     &nbsp;
                     <span name="material_id" value="${mId}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
                     </span>
-                    <span value="${mId}" class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
-                    </span>
+                    ${edit_btn}
                     <div>
                         <span class="text-muted assistant-info-string">${data.info_string}</span>
                     </div>
