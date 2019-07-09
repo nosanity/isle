@@ -1,9 +1,9 @@
-import logging
 from django import forms
 from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.utils.translation import ugettext_lazy as _
-from isle.models import Event, Team, EventType, Trace, ZendeskData
+from isle.models import Event, EventType, ZendeskData
+from isle.utils import create_traces_for_event_type
 
 
 class RemoveDeleteActionMixin:
@@ -71,22 +71,7 @@ class EventTypeAdmin(RemoveDeleteActionMixin, admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         obj.save()
-        data = obj.trace_data
-        if data:
-            traces = {}
-            for t in Trace.objects.filter(event_type=obj, ext_id__isnull=True):
-                traces[t.id] = (t.trace_type, t.name)
-            added_traces = set()
-            for i in data:
-                item = (i['trace_type'], i['name'])
-                added_traces.add(item)
-                if item in traces.values():
-                    continue
-                Trace.objects.create(event_type=obj, **i)
-            for trace_id, item in traces.items():
-                if item not in added_traces:
-                    Trace.objects.filter(id=trace_id).update(deleted=True)
-                    logging.warning('Trace #%s %s was deleted' % (trace_id, item))
+        create_traces_for_event_type(obj)
 
 
 @admin.register(ZendeskData)

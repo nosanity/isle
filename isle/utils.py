@@ -90,9 +90,9 @@ def refresh_events_data():
                                       'description': activity_type.get('description') or ''}
                         )
                         if created:
-                            EventType.objects.filter(id=event_type.id).update(
-                                trace_data=settings.DEFAULT_TRACE_DATA_JSON
-                            )
+                            event_type.trace_data = settings.DEFAULT_TRACE_DATA_JSON
+                            event_type.save(update_fields=['trace_data'])
+                            create_traces_for_event_type(event_type)
                         event_types[activity_type['uuid']] = event_type
                 for run in runs:
                     run_json = filter_dict(run, RUN_EXCLUDE_KEYS)
@@ -920,3 +920,25 @@ def check_celery_active():
         return True
     except IOError:
         return False
+
+
+def create_traces_for_event_type(obj):
+    data = obj.trace_data
+    if data:
+        traces = {}
+        for t in Trace.objects.filter(event_type=obj, ext_id__isnull=True):
+            traces[(t.trace_type, t.name)] = t.id
+        added_traces = set()
+        active_traces = set()
+        for i in data:
+            item = (i['trace_type'], i['name'])
+            added_traces.add(item)
+            if item in traces:
+                active_traces.add(traces[item])
+                continue
+            Trace.objects.create(event_type=obj, **i)
+        Trace.objects.filter(id__in=active_traces).update(deleted=False)
+        for item, trace_id in traces.items():
+            if item not in added_traces:
+                Trace.objects.filter(id=trace_id).update(deleted=True)
+                logging.warning('Trace #%s %s was deleted' % (trace_id, item))
