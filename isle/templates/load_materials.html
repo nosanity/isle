@@ -61,7 +61,7 @@
         </form>
     </div>
     <div class="clearfix"></div>
-    {% if is_assistant and event_upload %}
+    {% if event_upload %}
         <div class="modal fade text-left" tabindex="-1" role="dialog" id="transfer-modal">
           <div class="modal-dialog">
             <div class="modal-content">
@@ -106,20 +106,20 @@
                     <li class="list-group-item" data-comment="{{ link.comment }}" data-material-id="{{ link.id }}">
                         <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
                         {% if can_upload %}
+                            {% if request.user.unti_id and link.initiator == request.user.unti_id or is_assistant %}
                             <span name="material_id" value="{{ link.id }}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
                             </span>
+                            {% endif %}
+                            {% if is_assistant %}
                             <span value="{{ link.id }}" class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
                             </span>
+                            {% endif %}
                         {% endif %}
-                        {% if is_assistant %}
-                            <div>
-                                <span class="text-muted assistant-info-string">
-                                    {{ link.get_info_string }}
-                                </span>
-                            </div>
-                        {% else %}
-                            <div><span>{{ link.comment }}</span></div>
-                        {% endif %}
+                        <div>
+                            <span class="text-muted assistant-info-string">
+                                {{ link.get_info_string }}
+                            </span>
+                        </div>
                         {% if show_owners %}<div><span class="material-owners">{% if link.get_owners %}Связан с: {% endif %}{{ link.get_owners|join:', ' }}</span></div>{% endif %}
                         <div class="info-string-edit"></div>
                     </li>
