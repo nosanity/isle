@@ -1,10 +1,10 @@
 {% load i18n %}
 {% if is_assistant %}
-    <div class="pull-right">
-        <a class="pull-right prepare-csv-export" href="{{ export_url }}">
+    <div class="pull-right export-link mb-2">
+        <a class="prepare-csv-export" href="{{ export_url }}">
             <span class="glyphicon glyphicon-download-alt"></span>&nbsp;Экспортировать все
         </a>
-        <select autocomplete="off" style="display: none" class="form-control export-format-selector pull-right">
+        <select autocomplete="off" style="display: none" class="form-control export-format-selector">
             <option value="">{% trans "Выберите формат" %}</option>
             <option value="csv">{% trans "В формате CSV файла" %}</option>
             <option value="xls">{% trans "В формате XLS файла" %}</option>
