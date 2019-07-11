@@ -32,6 +32,8 @@
                                     {% include 'includes/file_uploads_form.html' %}
                                     {% include 'includes/result_items.html' %}
                                 </div>
+                            {% else %}
+                                {% include 'includes/result_type_constraint.html' %}
                             {% endif %}
                         {% endif %}
                     {% endfor %}
@@ -50,25 +52,7 @@
                     <br>
                     <b>{% trans "Деятельность:" %}</b> {{ block.description }}
                 </p>
-                {% if not block.deleted and can_upload and user_upload and block.block_has_only_group_results %}
-                    <div>
-                        <p>
-                            {% trans "В данном блоке предусмотрен только командный результат." %}
-                            <br>
-                            <a href="{% url 'event-view' uid=event.uid %}#teams">{% trans "Загрузить командный результат" %}</a>
-                        </p>
-                    </div>
-                {% elif not block.deleted and can_upload and team_upload and block.block_has_only_personal_results %}
-                    <div>
-                        <p>
-                            {% trans "В данном блоке предусмотрен только персональный результат." %}
-                            {% if request.user.id in event_members %}
-                                <br>
-                                <a href="{% url 'load-materials' uid=event.uid unti_id=request.user.unti_id %}">{% trans "Загрузить" %}</a>
-                            {% endif %}
-                        </p>
-                    </div>
-                {% endif %}
+                {% include 'includes/result_type_constraint.html' %}
                 {% for result in block.results.all %}
                 {% if result|show_result %}
                 {% if user_upload and result.is_personal or team_upload and result.is_group or result.results %}
