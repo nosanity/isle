@@ -326,14 +326,10 @@ def pull_sso_user(unti_id):
     запрос в sso на пропушивание пользователя с указанным unti id
     """
     try:
-        r = requests.post(
-            '{}/api/push-user-to-uploads/'.format(settings.SSO_UNTI_URL),
-            json={'unti_id': int(unti_id)},
-            headers={'X-SSO-API-KEY': settings.SSO_API_KEY},
-            timeout=settings.CONNECTION_TIMEOUT
-        )
-        assert r.ok, 'SSO status code %s' % r.status_code
-        assert r.json().get('status') is not None, 'SSO push_to_uploads failed'
+        resp = SSOApi().push_user_to_uploads(unti_id)
+        assert resp.get('status') is not None, 'SSO push_to_uploads failed'
+    except ApiError:
+        pass
     except Exception:
         logging.exception('Failed to pull user from sso')
     return User.objects.filter(unti_id=unti_id).first()

@@ -151,6 +151,7 @@ class BaseApi:
     base_url = ''
     app_token = ''
     authorization = {}
+    verify = True
 
     def add_authorization_to_kwargs(self, kwargs):
         for key, item in self.authorization.items():
@@ -167,6 +168,8 @@ class BaseApi:
         page = 1
         total_pages = None
         kwargs.setdefault('timeout', settings.CONNECTION_TIMEOUT)
+        if not self.verify:
+            kwargs.setdefault('verify', False)
         self.add_authorization_to_kwargs(kwargs)
         while total_pages is None or page <= total_pages:
             try:
@@ -194,6 +197,8 @@ class BaseApi:
             url = '{}{}'.format(self.base_url, url)
         kwargs.setdefault('timeout', settings.CONNECTION_TIMEOUT)
         self.add_authorization_to_kwargs(kwargs)
+        if not self.verify:
+            kwargs.setdefault('verify', False)
         try:
             resp = requests.request(method, url, **kwargs)
             assert resp.ok, 'status_code %s' % resp.status_code
@@ -221,6 +226,7 @@ class LabsApi(BaseApi):
     name = 'labs'
     base_url = settings.LABS_URL.rstrip('/')
     authorization = {'params': {'app_token': getattr(settings, 'LABS_TOKEN', '')}}
+    verify = False
 
     def get_activities(self):
         return self.make_request('/api/v2/activity')
@@ -236,6 +242,7 @@ class XLEApi(BaseApi):
     name = 'xle'
     base_url = settings.XLE_URL.rstrip('/')
     authorization = {'params': {'app_token': getattr(settings, 'XLE_TOKEN', '')}}
+    verify = False
 
     def get_attendance(self):
         return self.make_request('/api/v1/checkin')
@@ -248,6 +255,7 @@ class DpApi(BaseApi):
     name = 'dp'
     base_url = settings.DP_URL.rstrip('/')
     authorization = {'params': {'app_token': getattr(settings, 'DP_TOKEN', '')}}
+    verify = False
 
     def get_metamodel(self, uuid):
         return self.make_request_no_pagination('/api/v1/model/{}'.format(uuid))
@@ -257,6 +265,7 @@ class SSOApi(BaseApi):
     name = 'sso'
     base_url = settings.SSO_UNTI_URL.rstrip('/')
     authorization = {'headers': {'x-sso-api-key': getattr(settings, 'SSO_API_KEY', '')}}
+    verify = False
 
     def push_user_to_uploads(self, user_id):
         return self.make_request_no_pagination('/api/push-user-to-uploads/', method='POST', json={'unti_id': user_id})
@@ -269,6 +278,7 @@ class PTApi(BaseApi):
     name = 'pt'
     base_url = settings.PT_URL.rstrip('/')
     authorization = {'params': {'app_token': getattr(settings, 'PT_TOKEN', '')}}
+    verify = False
 
     def fetch_teams(self):
         return self.make_request('/api/v1/team')
