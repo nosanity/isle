@@ -23,7 +23,7 @@ from isle.cache import UserAvailableContexts
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
                          Team, Author, DpCompetence, CasbinData, Run, RunEnrollment, DTraceStatistics,
-                         DTraceStatisticsHistory, CircleItem, LabsTeamResult)
+                         DTraceStatisticsHistory, CircleItem, LabsTeamResult, UpdateTimes)
 
 
 DEFAULT_CACHE = caches['default']
@@ -34,10 +34,11 @@ def get_allowed_event_type_ids():
     return list(EventType.objects.filter(visible=True).values_list('id', flat=True))
 
 
-def refresh_events_data():
+def refresh_events_data(fast=True):
     """
     Обновление списка эвентов и активностей. Предполагается, что этот список меняется редко (или не меняется вообще).
     В процессе обновления эвент может быть удален, но только если он запланирован как минимум на следующий день.
+    Если fast==True, обновляется список событий за вчера, сегодня и завтра.
     """
     def _parse_dt(val):
         try:
@@ -55,8 +56,31 @@ def refresh_events_data():
         ACTIVITY_EXCLUDE_KEYS = ['runs', 'activity_type']
         RUN_EXCLUDE_KEYS = ['events']
         EVENT_EXCLUDE_KEYS = ['time_slot', 'blocks']
-        for data in LabsApi().get_activities():
+        contexts = {}
+        date_min, date_max = None, None
+        if fast:
+            today = timezone.datetime.now().date()
+            date_min = (today - timezone.timedelta(days=1)).strftime('%Y-%m-%d')
+            date_max = (today + timezone.timedelta(days=1)).strftime('%Y-%m-%d')
+        for data in LabsApi().get_activities(date_min=date_min, date_max=date_max):
             for activity in data:
+                for ctx in activity['contexts']:
+                    if ctx.get('uuid') in contexts:
+                        continue
+                    ctx_timezone = ctx.get('timezone')
+                    uuid = ctx.get('uuid')
+                    if not ctx_timezone:
+                        logging.error('context has no timezone')
+                        continue
+                    try:
+                        pytz.timezone(ctx_timezone)
+                    except pytz.UnknownTimeZoneError:
+                        logging.error('unknown timezone %s' % ctx_timezone)
+                        continue
+                    c = Context.objects.update_or_create(uuid=uuid, defaults={'timezone': ctx_timezone,
+                                                                              'title': ctx.get('title') or '',
+                                                                              'guid': ctx.get('guid') or ''})[0]
+                    contexts[c.uuid] = c.id
                 title = activity.get('title', '')
                 runs = activity.get('runs') or []
                 event_type = None
@@ -114,10 +138,13 @@ def refresh_events_data():
                         if timeslot:
                             dt_start = _parse_dt(timeslot['start'])
                             dt_end = _parse_dt(timeslot['end'])
+                        event_contexts = event.get('contexts') or []
+                        event_context_id = contexts.get(event_contexts[0]) if event_contexts else None
                         e, e_created = Event.objects.update_or_create(uid=uid, defaults={
                             'is_active': is_active,
                             'activity': current_activity,
                             'run': current_run,
+                            'context_id': event_context_id,
                             'data': {'event': event_json, 'run': run_json, 'activity': activity_json},
                             'dt_start': dt_start, 'dt_end': dt_end, 'title': title, 'event_type': event_type})
                         update_event_structure(
@@ -128,15 +155,16 @@ def refresh_events_data():
                             competences,
                         )
                         fetched_events.add(e.uid)
-        delete_events = existing_uids - fetched_events - {getattr(settings, 'API_DATA_EVENT', '')}
-        Event.objects.filter(uid__in=delete_events).update(is_active=False)
-        # если произошли изменения в списке будущих эвентов
-        dt = timezone.now() + timezone.timedelta(days=1)
-        delete_qs = Event.objects.filter(uid__in=delete_events, dt_start__gt=dt)
-        delete_events = delete_qs.values_list('uid', flat=True)
-        if delete_events:
-            logging.warning('Event(s) with uuid: {} were deleted'.format(', '.join(delete_events)))
-            delete_qs.delete()
+        if not fast:
+            delete_events = existing_uids - fetched_events - {getattr(settings, 'API_DATA_EVENT', '')}
+            Event.objects.filter(uid__in=delete_events).update(is_active=False)
+            # если произошли изменения в списке будущих эвентов
+            dt = timezone.now() + timezone.timedelta(days=1)
+            delete_qs = Event.objects.filter(uid__in=delete_events, dt_start__gt=dt)
+            delete_events = delete_qs.values_list('uid', flat=True)
+            if delete_events:
+                logging.warning('Event(s) with uuid: {} were deleted'.format(', '.join(delete_events)))
+                delete_qs.delete()
         return True
     except ApiError:
         return
@@ -291,6 +319,7 @@ def update_event_entries():
     """
     добавление EventEntry по данным из xle
     """
+    update_time = timezone.now()
     try:
         by_event = defaultdict(list)
         unti_id_to_id = dict(User.objects.filter(unti_id__isnull=False).values_list('unti_id', 'id'))
@@ -298,7 +327,8 @@ def update_event_entries():
         # список пользователей, которых не удалось найти по unti id, и для которых запрос на пропушивание в sso
         # не удался, чтобы не пытаться их пропушивать еще раз
         failed_unti_ids = set()
-        for data in XLEApi().get_attendance():
+        updated_at = UpdateTimes.get_last_update_for_event(UpdateTimes.CHECKINS)
+        for data in XLEApi().get_attendance(updated_at=updated_at):
             for item in data:
                 if (item.get('attendance') or item.get('checkin')) and item.get('event_uuid') and item.get('unti_id'):
                     by_event[item['event_uuid']].append(item['unti_id'])
@@ -325,6 +355,8 @@ def update_event_entries():
             create = set(users) - set(existing)
             for user_id in create:
                 EventEntry.all_objects.update_or_create(event_id=event_id, user_id=user_id, defaults={'deleted': False})
+        # обновление времени последнего обновления чекинов, если все прошло удачно
+        UpdateTimes.set_last_update_for_event(UpdateTimes.CHECKINS, update_time)
         return True
     except ApiError:
         return False
@@ -336,9 +368,10 @@ def update_run_enrollments():
     run_uuid_to_id = dict(Run.objects.values_list('uuid', 'id'))
     unti_id_to_id = dict(User.objects.filter(unti_id__isnull=False).values_list('unti_id', 'id'))
     failed_unti_ids = set()
-    ids = []
+    update_time = timezone.now()
+    updated_at = UpdateTimes.get_last_update_for_event(UpdateTimes.RUN_ENROLLMENTS)
     try:
-        for data in XLEApi().get_timetable():
+        for data in XLEApi().get_timetable(updated_at=updated_at):
             for item in data:
                 run_id = run_uuid_to_id.get(item['run_uuid'])
                 if not run_id:
@@ -355,13 +388,44 @@ def update_run_enrollments():
                         continue
                     user_id = user.id
                     unti_id_to_id[int(item['unti_id'])] = user_id
-                enr = RunEnrollment.all_objects.update_or_create(
+                RunEnrollment.all_objects.update_or_create(
                     user_id=user_id, run_id=run_id, defaults={'deleted': False}
-                )[0]
-                ids.append(enr.id)
-        RunEnrollment.objects.exclude(id__in=ids).update(deleted=True)
+                )
+        UpdateTimes.set_last_update_for_event(UpdateTimes.RUN_ENROLLMENTS, update_time)
     except ApiError:
-        return False
+        pass
+    except Exception:
+        logging.exception('Failed to get timetable')
+
+
+def clear_run_enrollments():
+    """
+    "удаление" записей на прогон
+    """
+    now = timezone.now()
+    updated_at = now - timezone.timedelta(hours=settings.XLE_RUN_ENROLLMENT_DELETE_CHECK_TIME)
+    qs = RunEnrollment.objects.exclude(created__isnull=True).filter(created__gte=updated_at, created__lt=now)
+    created_enrollments = {(i[0], i[1]): i[2] for i in qs.values_list('user_id', 'run_id', 'id').iterator()}
+    run_uuid_to_id = dict(Run.objects.values_list('uuid', 'id'))
+    unti_id_to_id = dict(User.objects.filter(unti_id__isnull=False).values_list('unti_id', 'id'))
+    # актуальный список RunEnrollment.id, которые есть в xle
+    ids = set()
+    try:
+        for data in XLEApi().get_timetable(updated_at=updated_at.isoformat()):
+            for item in data:
+                run_id = run_uuid_to_id.get(item['run_uuid'])
+                if not run_id:
+                    continue
+                user_id = unti_id_to_id.get(int(item['unti_id']))
+                if not user_id:
+                    continue
+                run_enrollment_id = created_enrollments.get((user_id, run_id))
+                if run_enrollment_id:
+                    ids.add(run_enrollment_id)
+        res = qs.exclude(id__in=ids).update(deleted=True)
+        logging.info('%s RunEnrollment entries marked as deleted', res)
+    except ApiError:
+        pass
     except Exception:
         logging.exception('Failed to get timetable')
 

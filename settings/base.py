@@ -207,6 +207,8 @@ HEADER_FULL_SCHEDULE_URL = 'https://xle.u2035test.ru/island1022/timetable/all'
 HEADER_MY_SCHEDULE_URL = 'https://xle.u2035test.ru/island1022/timetable'
 # время, которое статистика пользователя валидна, в секундах
 STATISTICS_VALID_FOR = 60 * 30
+# периодичность "очистки" удаленных из xle записей на прогоны в часах
+XLE_RUN_ENROLLMENT_DELETE_CHECK_TIME = 24
 
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}

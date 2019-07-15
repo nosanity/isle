@@ -8,7 +8,6 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         refresh_events_data()
-        update_contexts()
         update_event_entries()
         update_run_enrollments()
         update_teams()

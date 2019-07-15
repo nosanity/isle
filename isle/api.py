@@ -22,8 +22,14 @@ class BaseApi:
     authorization = {}
     verify = True
 
-    def add_authorization_to_kwargs(self, kwargs):
-        for key, item in self.authorization.items():
+    def update_kwargs(self, kwargs):
+        """
+        добавление параметров авторизации в запрос
+        """
+        self._populate_kwargs(kwargs, self.authorization)
+
+    def _populate_kwargs(self, kwargs, upd_dict):
+        for key, item in upd_dict.items():
             if key in kwargs and isinstance(kwargs[key], dict):
                 kwargs[key].update(item)
             else:
@@ -37,9 +43,9 @@ class BaseApi:
         page = 1
         total_pages = None
         kwargs.setdefault('timeout', settings.CONNECTION_TIMEOUT)
+        self.update_kwargs(kwargs)
         if not self.verify:
             kwargs.setdefault('verify', False)
-        self.add_authorization_to_kwargs(kwargs)
         while total_pages is None or page <= total_pages:
             try:
                 kwargs['params']['page'] = page
@@ -65,7 +71,7 @@ class BaseApi:
         if not url.startswith(('http://', 'https://')):
             url = '{}{}'.format(self.base_url, url)
         kwargs.setdefault('timeout', settings.CONNECTION_TIMEOUT)
-        self.add_authorization_to_kwargs(kwargs)
+        self.update_kwargs(kwargs)
         if not self.verify:
             kwargs.setdefault('verify', False)
         try:
@@ -97,8 +103,13 @@ class LabsApi(BaseApi):
     authorization = {'params': {'app_token': getattr(settings, 'LABS_TOKEN', '')}}
     verify = False
 
-    def get_activities(self):
-        return self.make_request('/api/v2/activity')
+    def get_activities(self, date_min=None, date_max=None):
+        params = {}
+        if date_min:
+            params['date_min'] = date_min
+        if date_max:
+            params['date_max'] = date_max
+        return self.make_request('/api/v2/activity', params=params)
 
     def get_types(self):
         return self.make_request('/api/v2/type')
@@ -113,11 +124,24 @@ class XLEApi(BaseApi):
     authorization = {'params': {'app_token': getattr(settings, 'XLE_TOKEN', '')}}
     verify = False
 
-    def get_attendance(self):
-        return self.make_request('/api/v1/checkin')
+    def update_kwargs(self, kwargs):
+        super().update_kwargs(kwargs)
+        if getattr(settings, 'XLE_PER_PAGE', None):
+            self._populate_kwargs(kwargs, {'params': {'per-page': settings.XLE_PER_PAGE}})
 
-    def get_timetable(self):
-        return self.make_request('/api/v1/timetable')
+    def get_attendance(self, updated_at=None):
+        params = {}
+        if updated_at:
+            params['updated_at'] = updated_at
+        return self.make_request('/api/v1/checkin', params=params)
+
+    def get_timetable(self, context=None, updated_at=None):
+        params = {}
+        if updated_at:
+            params['updated_at'] = updated_at
+        if context:
+            params['context'] = context
+        return self.make_request('/api/v1/timetable', params=params)
 
 
 class DpApi(BaseApi):

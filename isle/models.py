@@ -112,6 +112,7 @@ class RunEnrollment(models.Model):
     run = models.ForeignKey(Run, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     deleted = models.BooleanField(default=False)
+    created = models.DateTimeField(null=True, auto_now_add=True)
 
     objects = NotDeletedEntries()
     all_objects = models.Manager()
@@ -1136,3 +1137,20 @@ class CircleItem(models.Model):
             'model': self.model.uuid,
             'tool': self.tool,
         }
+
+
+class UpdateTimes(models.Model):
+    CHECKINS = 'checkins'
+    RUN_ENROLLMENTS = 'run_enrollments'
+
+    event_type = models.CharField(max_length=255, unique=True, primary_key=True)
+    dt = models.DateTimeField()
+
+    @classmethod
+    def get_last_update_for_event(cls, event_type):
+        item = cls.objects.filter(event_type=event_type).first()
+        return item and item.dt and item.dt.isoformat()
+
+    @classmethod
+    def set_last_update_for_event(cls, event_type, dt):
+        cls.objects.update_or_create(event_type=event_type, defaults={'dt': dt})
