@@ -128,7 +128,7 @@ def handle_ple_user_result(data):
         logging.exception('Handling of PLE user result failed')
     finally:
         try:
-            r = requests.post(callback_url, json=result, timeout=settings.CONNECTION_TIMEOUT)
+            r = requests.post(callback_url, json=result, timeout=settings.CONNECTION_TIMEOUT, verify=False)
             assert r.ok, 'ple responded with %s' % r.status_code
         except (AssertionError, requests.RequestException):
             logging.exception('Failed to send user result report to PLE. Result: {}. Initial data: {}'.
