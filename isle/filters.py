@@ -18,3 +18,8 @@ class LabsTeamResultFilter(django_filters.FilterSet):
     class Meta:
         model = LabsTeamResult
         fields = []
+
+
+class StatisticsFilter(django_filters.FilterSet):
+    unti_id = django_filters.NumberFilter(required=False, field_name='user__unti_id')
+    leader_id = django_filters.CharFilter(required=False, field_name='user__leader_id')
