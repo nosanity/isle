@@ -384,7 +384,7 @@ nav.navbar {
 }
 
 .context-switching-select {
-    margin-bottom: -5px;
+    margin-bottom: 5px;
     margin-left: 0px;
     max-width: 300px;
     text-overflow: ellipsis;
@@ -436,12 +436,15 @@ nav.navbar {
     float: left;
 }
 
+.context-switcher-wrapper {
+    margin-bottom: 5px;
+}
+
 @media (max-width: 768px) {
     .navbar-user {
         display: none;
     }
     .context-switching-select {
-        margin-bottom: -5px;
         margin-left: 0;
         max-width: 300px;
         text-overflow: ellipsis;
