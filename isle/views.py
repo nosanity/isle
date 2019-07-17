@@ -39,20 +39,20 @@ from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
 from isle.api import LabsApi, XLEApi, DpApi, SSOApi
 from isle.cache import UserAvailableContexts
-from isle.filters import LabsUserResultFilter, LabsTeamResultFilter
+from isle.filters import LabsUserResultFilter, LabsTeamResultFilter, StatisticsFilter
 from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset, \
     EventMaterialForm, EditTeamForm
 from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
-    LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, PLEUserResult, RunEnrollment
+    LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, PLEUserResult, RunEnrollment, DTraceStatistics
 from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer, \
-    UserFileSerializer, UserResultSerializer, EventOnlyMaterialSerializer
+    UserFileSerializer, UserResultSerializer, EventOnlyMaterialSerializer, DTraceStatisticsSerializer
 from isle.tasks import generate_events_csv, team_members_set_changed, handle_ple_user_result
 from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
     recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
     EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request, XLSWriter, \
-    check_celery_active
+    check_celery_active, calculate_user_context_statistics
 
 
 VIEW_MODE_COOKIE_NAME = 'index-view-mode'
@@ -306,13 +306,6 @@ class GetEventMixinWithAccessCheck(GetEventMixin):
         })
 
 
-def get_event_participants(event):
-    q = Q(id__in=EventEntry.objects.filter(event=event).values_list('user_id'))
-    if event.run_id:
-        q |= Q(id__in=RunEnrollment.objects.filter(run_id=event.run_id).values_list('user_id', flat=True))
-    return User.objects.filter(q).order_by('last_name', 'first_name', 'second_name')
-
-
 @method_decorator(context_setter, name='get')
 class EventView(GetEventMixin, TemplateView):
     """
@@ -322,7 +315,7 @@ class EventView(GetEventMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
-        users = list(get_event_participants(self.event))
+        users = list(self.event.get_participants())
         user_entry = [i for i in users if i.id == self.request.user.id]
         if user_entry:
             users = user_entry + [i for i in users if i.id != self.request.user.id]
@@ -1037,8 +1030,7 @@ class LoadTeamMaterials(BaseLoadMaterialsWithAccessCheck):
         for u in users:
             u.materials_num = num.get(u.id, 0)
         data.update({'students': users, 'event': self.event, 'team_name': getattr(self.team, 'name', ''),
-                     'event_participants': list(get_event_participants(self.event).order_by()
-                                                .values_list('id', flat=True)),
+                     'event_participants': list(self.event.get_participant_ids()),
                      'team': self.team, 'other_materials': self.team.connected_materials.order_by('id')})
         return data
 
@@ -1209,7 +1201,7 @@ class LoadEventMaterials(GetEventMixin, BaseLoadMaterials):
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
         data.update({
-            'event_users': get_event_participants(self.event),
+            'event_users': self.event.get_participants(),
             'event_teams': Team.objects.filter(event=self.event).order_by('name'),
             'blocks_form': EventMaterialForm(event=self.event),
         })
@@ -1284,7 +1276,7 @@ class BaseTeamView(GetEventMixin):
         return data
 
     def get_available_users(self):
-        return get_event_participants(self.event)
+        return self.event.get_participants()
 
     def post(self, request, **kwargs):
         form = self.form_class(data=request.POST, event=self.event, users_qs=self.get_available_users(),
@@ -3047,3 +3039,69 @@ class EventMaterialsApi(ListAPIView):
             raise exceptions.ValidationError({'event_id': 'event with uuid {} not found'.
                                              format(self.request.query_params.get('event_id'))})
         return EventOnlyMaterial.all_objects.filter(event=event).select_related('event', 'trace', 'trace__event_type')
+
+
+class StatisticsPaginator(PageNumberPagination):
+    page_size = 100
+
+
+class ContextUserStatistics(ListAPIView):
+    """
+    **Описание**
+
+        Получение статистики по пользователям, у которых есть цс в контексте
+
+    **Пример запроса**
+
+        GET /api/context-user-statistics/{context_uuid}/?unti_id=1&force_update=1
+
+    **Параметры запроса**
+
+        * unti_id - unti_id пользователя, необязательный параметр
+        * leader_id - leader_id пользователя, необязательный параметр
+        * force_update - если присутствует в запросе, будет произведен пересчет статистики по пользователю. Работает
+                         только в случае запроса статистики по конкретному пользователю
+
+    **Пример ответа**
+
+        * 200 успешно
+            {
+                "count": 1, // количество объектов
+                "next": null, // полный url следующей страницы (если есть)
+                "previous": null, // полный url предыдущей страницы (если есть)
+                "results": [
+                    {
+                        "context": "2fa173c5-6a0b-4d76-b670-be49004ac7c6",
+                        "unti_id": 1,
+                        "leader_id": "123",
+                        "n_entry": 2,  // количество материалов мероприятия, загруженных пользователем
+                        "n_run_entry": 0,  // количество записей на прогоны котекста
+                        "n_personal": 0,  // колчество персональных файлов
+                        "n_team": 2018,  // количество командных файлов
+                        "n_event": 4,  // количество записей на мероприятия контекста
+                        "updated_at": "2019-07-17T02:35:32.685916+10:00"
+                    }
+                ]
+            }
+
+        * 400 если unti_id не является числом
+        * 403 если не указан хедер X-API-KEY или ключ неверен
+    """
+
+    permission_classes = (ApiPermission, )
+    serializer_class = DTraceStatisticsSerializer
+    pagination_class = StatisticsPaginator
+    filter_backends = (django_filters.rest_framework.DjangoFilterBackend,)
+    filterset_class = StatisticsFilter
+
+    def get_queryset(self):
+        return DTraceStatistics.objects.filter(context__uuid=self.kwargs['context_uuid'])\
+            .select_related('user', 'context')
+
+    def list(self, request, *args, **kwargs):
+        if any(i in request.query_params for i in ('leader_id', 'unti_id')):
+            item = self.filter_queryset(self.get_queryset()).first()
+            if item and (item.updated_at < timezone.now() - timezone.timedelta(seconds=settings.STATISTICS_VALID_FOR)
+                         or 'force_update' in request.query_params):
+                calculate_user_context_statistics(item.user, item.context)
+        return super().list(request, *args, **kwargs)

@@ -215,6 +215,8 @@ NOW_URL = '/'
 HEADER_CABINET_URL = 'https://now.2035.university'
 HEADER_FULL_SCHEDULE_URL = 'https://xle.u2035test.ru/island1022/timetable/all'
 HEADER_MY_SCHEDULE_URL = 'https://xle.u2035test.ru/island1022/timetable'
+# время, которое статистика пользователя валидна, в секундах
+STATISTICS_VALID_FOR = 60 * 30
 
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}

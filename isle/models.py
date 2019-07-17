@@ -240,6 +240,16 @@ class Event(models.Model):
             return qs.filter(**filter_dict).distinct().prefetch_related('users')
         return Team.objects.none()
 
+    def get_participant_ids(self):
+        ids = set(EventEntry.objects.filter(event=self).values_list('user_id', flat=True))
+        if self.run_id:
+            ids |= set(RunEnrollment.objects.filter(run_id=self.run_id).values_list('user_id', flat=True))
+        return ids
+
+    def get_participants(self):
+        return User.objects.filter(id__in=self.get_participant_ids())\
+            .order_by('last_name', 'first_name', 'second_name')
+
 
 class BlockType:
     type_choices = (
@@ -669,7 +679,7 @@ class Team(models.Model):
     def get_members_for_event(self, event, user_ids=None):
         if self.system == self.SYSTEM_UPLOADS:
             return self.users.all() if event.id == self.event_id else Team.objects.none()
-        user_ids = user_ids or list(EventEntry.objects.filter(event=event).values_list('user_id', flat=True))
+        user_ids = user_ids or list(event.get_participant_ids())
         if hasattr(self, '_prefetched_objects_cache') and self._prefetched_objects_cache.get('users'):
             return [i for i in self._prefetched_objects_cache['users'] if i.id in user_ids]
         return self.users.filter(id__in=user_ids)
@@ -1031,3 +1041,42 @@ class ZendeskData(models.Model):
     class Meta:
         verbose_name = _('Виджет zendesk')
         verbose_name_plural = _('Виджет zendesk')
+
+
+class DTraceStatisticsBase(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    context = models.ForeignKey(Context, on_delete=models.CASCADE)
+    n_entry = models.IntegerField(default=0, verbose_name=_('Количество записей на мероприятия контекста'))
+    n_run_entry = models.IntegerField(default=0, verbose_name=_('Количество записей на прогоны контекста'))
+    n_personal = models.IntegerField(default=0, verbose_name=_('Количество персонального цс'))
+    n_team = models.IntegerField(default=0, verbose_name=_('Количество командного цс'))
+    n_event = models.IntegerField(default=0, verbose_name=_('Загруженные пользователем материалы мероприятия'))
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        abstract = True
+
+
+class DTraceStatistics(DTraceStatisticsBase):
+    class Meta:
+        unique_together = ('user', 'context')
+
+    @classmethod
+    def update_entry(cls, entry):
+        # запись в статистике создается, если у пользователя есть цс или уже есть статистика по этому контексту
+        if cls.objects.filter(user_id=entry.id, context_id=entry.context_id).exists() or \
+                any(getattr(entry, key) for key in ('n_personal', 'n_team', 'n_event')):
+            cls.objects.update_or_create(user_id=entry.user_id, context_id=entry.context_id, defaults={
+                f.name: getattr(entry, f.name) for f in cls._meta.fields
+                if not f.auto_created and f.name not in ('user', 'context')
+            })
+            return True
+        return False
+
+
+class DTraceStatisticsHistory(DTraceStatisticsBase):
+    @classmethod
+    def copy_from_statistics(cls, entry):
+        return cls(**{
+            f.attname: getattr(entry, f.attname) for f in cls._meta.fields if not f.auto_created
+        })

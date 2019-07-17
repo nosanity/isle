@@ -23,7 +23,8 @@ from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi, SSOApi,
 from isle.cache import UserAvailableContexts
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
-                         Team, Author, DpCompetence, CasbinData, Run, RunEnrollment)
+                         Team, Author, DpCompetence, CasbinData, Run, RunEnrollment, DTraceStatistics,
+                         DTraceStatisticsHistory)
 
 
 DEFAULT_CACHE = caches['default']
@@ -938,3 +939,108 @@ def create_traces_for_event_type(obj):
             if item not in added_traces:
                 Trace.objects.filter(id=trace_id).update(deleted=True)
                 logging.warning('Trace #%s %s was deleted' % (trace_id, item))
+
+
+def calculate_user_context_statistics(user, context):
+    """
+    Пересчет статистики для пользователя в контексте
+    """
+    stat = DTraceStatistics(user_id=user.id, context_id=context.id, updated_at=timezone.now())
+    context_event_ids = list(Event.objects.filter(context=context).values_list('id', flat=True))
+    event_entries = set(
+        EventEntry.objects.filter(user=user, event_id__in=context_event_ids).values_list('event_id', flat=True)
+    )
+    stat.n_entry = len(event_entries)
+    stat.n_run_entry = RunEnrollment.objects.filter(
+        user=user,
+        run_id__in=Event.objects.filter(context=context, run__isnull=False).values('run_id')
+    ).count()
+    stat.n_personal = EventMaterial.objects.filter(user=user, event_id__in=context_event_ids).count()
+    user_context_events = set(Event.objects.filter(
+        run_id__in=RunEnrollment.objects.filter(user=user).values_list('run_id'), context=context
+    ).values_list('id', flat=True)) | event_entries
+    uploads_team_files = EventTeamMaterial.objects.filter(
+        team__system=Team.SYSTEM_UPLOADS, team__users=user, event_id__in=context_event_ids
+    ).count()
+    pt_team_files = EventTeamMaterial.objects.filter(
+        team__system=Team.SYSTEM_PT, team__users=user, event_id__in=user_context_events
+    ).count()
+    stat.n_team = uploads_team_files + pt_team_files
+    if user.unti_id:
+        stat.n_event = EventOnlyMaterial.objects.filter(initiator=user.unti_id, event_id__in=context_event_ids).count()
+    else:
+        stat.n_event = 0
+    if DTraceStatistics.update_entry(stat):
+        DTraceStatisticsHistory.copy_from_statistics(stat).save()
+
+
+def calculate_context_statistics(context):
+    """
+    Пересчет статистики по всем пользователям контекста
+    """
+    now = timezone.now()
+    by_user = defaultdict(DTraceStatistics)
+
+    # сбор статистики по записям на мероприятия контекста и пополнение словаря участников мероприятий
+    event_participants = defaultdict(set)
+    qs = EventEntry.objects.filter(event__context=context).values_list('user_id', 'event_id')
+    for user_id, event_id in qs.iterator():
+        by_user[user_id].n_entry += 1
+        event_participants[event_id].add(user_id)
+
+    # пополнение словаря мероприятий прогона
+    run_events = defaultdict(list)
+    for event_id, run_id in Event.objects.filter(context=context, run__isnull=False).values_list('id', 'run_id'):
+        run_events[run_id].append(event_id)
+
+    # сбор статистики по записям на прогоны контекста и пополнение словаря участников мероприятий
+    qs = RunEnrollment.objects.filter(run_id__in=run_events.keys()).values_list('user_id', 'run_id')
+    for user_id, run_id in qs.iterator():
+        by_user[user_id].n_run_entry += 1
+        for event_id in run_events.get(run_id, []):
+            event_participants[event_id].add(user_id)
+
+    # сбор статистики по персональному цс
+    qs = EventMaterial.objects.filter(event__context=context).values_list('user_id', flat=True).iterator()
+    for user_id in qs:
+        by_user[user_id].n_personal += 1
+
+    # сбор статистики по командному цс
+    team_users = defaultdict(set)
+    TeamUser = Team._meta.get_field('users').remote_field.through
+    qs = TeamUser.objects.filter(
+        models.Q(team__system=Team.SYSTEM_UPLOADS, team__event__context=context) |
+        models.Q(team__system=Team.SYSTEM_PT, team__contexts=context)
+    ).values_list('team_id', 'user_id')
+    for team_id, user_id in qs.iterator():
+        team_users[team_id].add(user_id)
+    qs = EventTeamMaterial.objects.filter(team_id__in=team_users.keys())\
+        .values_list('team_id', 'event_id', 'team__system')
+    for team_id, event_id, system in qs.iterator():
+        for user_id in team_users.get(team_id, []):
+            if system == Team.SYSTEM_UPLOADS:
+                by_user[user_id].n_team += 1
+            # если это команда, полученная из pt, командный материал засчитывается для пользователя только
+            # в том случае, если он записан на мероприятие или его прогон
+            elif system == Team.SYSTEM_PT and user_id in event_participants[event_id]:
+                by_user[user_id].n_team += 1
+
+    # сбор статистики по загрузкам материалов мероприятия
+    unti_id_to_user_id = dict(User.objects.filter(unti_id__isnull=False).values_list('unti_id', 'id'))
+    qs = EventOnlyMaterial.objects.filter(event__context=context, initiator__isnull=False)\
+        .values_list('initiator', flat=True)
+    for unti_id in qs.iterator():
+        user_id = unti_id_to_user_id.get(unti_id)
+        if user_id:
+            by_user[user_id].n_event += 1
+
+    bulk = []
+    for user_id, stat in by_user.items():
+        stat.updated_at = now
+        stat.user_id = user_id
+        stat.context_id = context.id
+        if DTraceStatistics.update_entry(stat):
+            bulk.append(DTraceStatisticsHistory.copy_from_statistics(stat))
+    bulk_size = 100
+    for i in range(0, len(bulk), bulk_size):
+        DTraceStatisticsHistory.objects.bulk_create(bulk[i:(i+bulk_size)])

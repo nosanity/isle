@@ -2,7 +2,7 @@ from django.utils.translation import ugettext_lazy as _
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from isle.api import SSOApi, ApiError
-from isle.models import User, Team, UserFile, PLEUserResult, EventOnlyMaterial, Trace
+from isle.models import User, Team, UserFile, PLEUserResult, EventOnlyMaterial, Trace, DTraceStatistics
 from .utils import pull_sso_user
 
 
@@ -184,3 +184,14 @@ class EventOnlyMaterialSerializer(serializers.ModelSerializer):
         model = EventOnlyMaterial
         fields = ['id', 'url', 'file', 'file_type', 'file_size', 'created_at', 'initiator', 'deleted',
                   'comment', 'event', 'trace']
+
+
+class DTraceStatisticsSerializer(serializers.ModelSerializer):
+    context = serializers.CharField(source='context.uuid')
+    unti_id = serializers.IntegerField(source='user.unti_id')
+    leader_id = serializers.CharField(source='user.leader_id')
+
+    class Meta:
+        model = DTraceStatistics
+        fields = ['context', 'unti_id', 'leader_id', 'n_entry', 'n_run_entry', 'n_personal', 'n_team',
+                  'n_event', 'updated_at']

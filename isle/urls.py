@@ -58,6 +58,7 @@ urlpatterns = [
     path('api/get-ple-user-result/<int:result_id>/', views.GetPLEUserResultApi.as_view(), name='api-ple-result'),
     path('api/check-user-trace/', views.CheckUserTraceApi.as_view()),
     path('api/event-materials/', views.EventMaterialsApi.as_view()),
+    path('api/context-user-statistics/<uuid:context_uuid>/', views.ContextUserStatistics.as_view()),
     path('<str:uid>/<int:unti_id>/<str:result_type>/<int:result_id>', views.ResultPage.as_view(), name='result-page'),
 ]
 
