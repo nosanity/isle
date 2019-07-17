@@ -96,6 +96,10 @@ nav.navbar {
     overflow: scroll;
 }
 
+.overflow-scroll .table {
+    margin-bottom: 0;
+}
+
 .full-width {
     width: 100%;
 }
@@ -149,13 +153,19 @@ nav.navbar {
 .activity-badge {
     background-color: #e52127;
     color: #ffffff;
-    padding: 5px;
+    padding: 2px 5px 5px 8px;
     border-radius: 10px;
     cursor: default;
+    display: inline-block;
+    hyphens: auto;
+    -moz-hyphens: auto;
+    -webkit-hyphens: auto;
+    -ms-hyphens: auto;
 }
 
 .cancel-activity {
     cursor: pointer;
+    margin: 0 0 0 5px;
 }
 
 /* activities */
@@ -324,13 +334,26 @@ nav.navbar {
     justify-content: space-between;
 }
 
+.event-sign-user {
+    text-align: right;
+}
+
+@media screen and (max-width: 768px) {
+    .inline-divs-wrapper {
+        flex-direction: column;
+    }
+    .event-sign-user {
+        text-align: left;
+    }
+}
+
 .mr-10 {
     margin-right: 10px;
 }
 
-.create-team-btn {
+/* .create-team-btn {
     margin-top: -7px;
-}
+} */
 
 .alert-default {
     text-align: center;
@@ -537,14 +560,14 @@ img.user-img {
     background-color: #ddd;
 }
 
-.events-date-choser {
+/* .events-date-choser {
     width: 190px !important;
     height: 38px;
 }
 
 .events-filter-btn {
     height: 38px;
-}
+} */
 
 .events-filter-cancel-btn {
     background: rgba(0, 0, 0, 0);
@@ -555,10 +578,43 @@ img.user-img {
     max-width: 250px;
 }
 
-.activity-filter-wrapper {
-    min-width: 750px;
+.activity-filter-form {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+}
+
+.activity-filter-form .form-control {
+    width: calc((100% - 105px)/3);
+    margin-right: 5px;
+}
+
+.activity-filter-form .form-control,
+.activity-filter-form .events-filter-btn {
+    height: 38px;
 }
 
 .btn-red-border {
     border: 2px solid #dc3545;
+}
+
+.export-link {
+    line-height: 38px;
+}
+
+@media screen and (max-width: 992px) {
+    
+    .activity-filter-form {
+        flex-direction: column;
+    }
+
+    .activity-filter-form .form-control {
+        width: 100%;
+    }
+}
+
+@media screen and (max-width: 768px) {
+    .export-link {
+        float: none;
+    }
 }

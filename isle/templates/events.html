@@ -25,11 +25,9 @@
     </div>
     {% if activity_filter %}
         <div class="row" class="mb-20">
-            <div class="col">
+            <div class="col mb-10">
                 <span>Активность:</span>
-                <!-- TODO replace &nbsp; -->
-                <span class="activity-badge">{{ activity_filter.title }}&nbsp;
-                    <span class="cancel-activity">&times;</span>
+                <span class="activity-badge">{{ activity_filter.title }}<span class="cancel-activity">&times;</span>
                 </span>
             </div>
         </div>
