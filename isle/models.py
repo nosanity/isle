@@ -862,7 +862,8 @@ class AbstractResult(models.Model):
     """
     result = models.ForeignKey(LabsEventResult, on_delete=models.CASCADE)
     comment = models.TextField(default='')
-    approved = models.BooleanField(default=False)
+    approved = models.NullBooleanField(default=None)
+    approve_text = models.CharField(max_length=255, default='')
 
     class Meta:
         abstract = True

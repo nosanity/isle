@@ -375,6 +375,47 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
     $('.add-event-materials-wrapper').removeClass('hidden');
 }).delegate('.hide-add-event-materials-form-btn', 'click', (e) => {
     $('.add-event-materials-wrapper').addClass('hidden');
+}).delegate('.do-approve-result', 'click', (e) => {
+    e.preventDefault();
+    let comment_container = $(e.target).parents('.approve-result-block').find('.current-approve-text')
+    let post_data = {
+        csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
+        action: 'approve_result',
+        labs_result_id: $(e.target).data('labs-result-id'),
+        result_item_id: $(e.target).data('result-id'),
+        approve_text: $(e.target).parents('.approve-text-edit').find('.approve-text-edit-input').val(),
+        approved: $(e.target).parents('.approve-result-block').find('.approve-radio-btn:checked').val()
+    }
+    $.ajax({
+        type: 'POST',
+        data: post_data,
+        url: '',
+        success: (data) => {
+            comment_container.text(data.approve_text);
+            comment_container.parents('.approve-text').show();
+            comment_container.parents('.approve-result-block').find('.approve-text-edit').data('approved', data.approved ? 'True' : 'False');
+            comment_container.parents('.approve-result-block').find('.approve-text-edit').hide();
+        },
+        error: (xhr, err) => {
+            alert(get_error_msg(xhr));
+        },
+    })
+}).delegate('.approve-radio-btn', 'change', (e) => {
+    let target = $(e.target);
+    target.parents('.approve-result-block').find('.approve-text').hide();
+    target.parents('.approve-result-block').find('.approve-text-edit').show();
+}).delegate('.cancel-approve-btn', 'click', (e) => {
+    e.preventDefault();
+    let target = $(e.target);
+    target.parents('.approve-result-block').find('.approve-text').show();
+    target.parents('.approve-result-block').find('.approve-text-edit').hide();
+    target.parents('.approve-result-block').find('.approve-radio-btn').each((i, el) => { $(el).prop('checked', false); });
+    if (target.parents('.approve-result-block').find('.approve-text-edit').data('approved') == 'True') {
+        target.parents('.approve-result-block').find('.approve-radio-btn[value=true]').prop('checked', true);
+    }
+    if (target.parents('.approve-result-block').find('.approve-text-edit').data('approved') == 'False') {
+        target.parents('.approve-result-block').find('.approve-radio-btn[value=false]').prop('checked', true);
+    }
 });
 
 if (pageType == 'loadMaterials') {
@@ -624,10 +665,40 @@ function successProcessFile(data, $form, result_item_id) {
     if (pageType == 'loadMaterials_v2') {
         if (!$form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]').length) {
 
-            if (isAssistant)
+            if (isAssistant) {
                 additional_btns = `<span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>`;
-            else
+                let labs_result_id = $($form).parents('.material-result-div').data('result');
+                approve_block = `
+                    <div class="clearfix"></div>
+                    <div class="approve-result-block">
+                        <div class="pull-right">
+                            <div class="approve-input-container">
+                                <input type="radio" class="approve-radio-btn" name="approved-${result_item_id}" id="${result_item_id}-approved-true" value="true">
+                                <label for="${result_item_id}-approved-true">Валидный</label>
+                            </div>
+                            <div class="approve-input-container">
+                                <input type="radio" class="approve-radio-btn" name="approved-${result_item_id}" id="${result_item_id}-approved-false" value="false">
+                                <label for="${result_item_id}-approved-false">Невалидный</label>
+                            </div>
+                        </div>
+                        <div class="clearfix"></div>
+                        <div class="approve-text pull-right">
+                            <p class="current-approve-text text-muted"></p>
+                        </div>
+                        <div class="clearfix"></div>
+                        <div class="approve-text-edit" style="display: none;" data-approved="None">
+                            <input type="text" maxlength="255" class="approve-text-edit-input" placeholder="Комментарий (опционально)">
+                            <div class="clearfix"></div>
+                            <button class="btn btn-success do-approve-result pull-left" data-labs-result-id="${labs_result_id}" data-result-id="${result_item_id}">Сохранить</button>
+                            <button class="btn btn-danger cancel-approve-btn pull-right">Отменить</button>
+                        </div>
+                    </div>
+                `;
+            }
+            else {
                 additional_btns = '';
+                approve_block = ``;
+            }
             let html_wrapper = `
                 <li class="list-group-item no-left-padding result-item-li">
                     <div class="row">
@@ -643,6 +714,7 @@ function successProcessFile(data, $form, result_item_id) {
                                 <span data-url="${page_url}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
                                 ${additional_btns}
                             </div>
+                            ${approve_block}
                         </div>
                     </div>
                 </li>

@@ -592,7 +592,7 @@ class BaseLoadMaterialsLabsResults:
         if resp is not None:
             return resp
         result_id_error, result_deleted, type_ok = self._check_labs_result_id(request)
-        allowed_actions = ['delete_all', 'init_result', 'move', 'move_unattached']
+        allowed_actions = ['delete_all', 'init_result', 'move', 'move_unattached', 'approve_result']
         if 'add_btn' in request.POST:
             if result_id_error is not None or result_deleted or not type_ok:
                 return result_id_error
@@ -610,7 +610,30 @@ class BaseLoadMaterialsLabsResults:
                 return self.action_move(request)
             elif request.POST['action'] == 'move_unattached':
                 return self.action_move_unattached(request)
+            elif request.POST['action'] == 'approve_result':
+                return self.action_approve_result(request)
         return self.delete_item(request)
+
+    def action_approve_result(self, request):
+        if not self.current_user_is_assistant:
+            raise PermissionDenied
+        result_id = request.POST.get('labs_result_id') or ''
+        result_item_id = request.POST.get('result_item_id') or ''
+        approve_text = request.POST.get('approve_text') or ''
+        approved = {'true': True, 'false': False}.get(request.POST.get('approved'))
+        if result_id.isdigit() and result_item_id.isdigit() and isinstance(approved, bool):
+            result = self.get_result_for_request(request)
+            if not result or result.result.block.event_id != self.event.id:
+                return JsonResponse({}, status=404)
+            result.approve_text = approve_text
+            result.approved = approved
+            result.save(update_fields=['approve_text', 'approved'])
+            if self.should_send_to_kafka(result):
+                send_object_info(result, result.id, KafkaActions.UPDATE)
+            logging.info('User %s set approved to %s, comment: %s for result #%s' %
+                         (request.user.username, result.approved, result.approve_text, result_id))
+            return JsonResponse({'approved': result.approved, 'approve_text': result.approve_text, 'id': result.id})
+        return JsonResponse({}, status=400)
 
     def action_edit_comment(self, request):
         result_id = request.POST.get('labs_result_id') or ''
@@ -807,8 +830,6 @@ class BaseLoadMaterialsLabsResults:
 
     def _delete_item(self, trace, material_id):
         result_id = trace.id
-        if trace.approved:
-            return JsonResponse({'error': 'result was approved'}, status=400)
         material = self.material_model.objects.filter(**self._update_query_dict({
             'event': self.event,
             'id': material_id,
