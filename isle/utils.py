@@ -16,10 +16,9 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext as _
-import requests
 import xlsxwriter
 from celery.task.control import inspect
-from isle.api import Api, ApiError, ApiNotFound, LabsApi, XLEApi, DpApi, SSOApi, PTApi
+from isle.api import ApiError, LabsApi, XLEApi, DpApi, SSOApi, PTApi
 from isle.cache import UserAvailableContexts
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
@@ -334,40 +333,6 @@ def pull_sso_user(unti_id):
     except Exception:
         logging.exception('Failed to pull user from sso')
     return User.objects.filter(unti_id=unti_id).first()
-
-
-def update_events_traces():
-    """
-    обновление трейсов по всем эвентам
-    """
-    return
-    events = {e.uid: e for e in Event.objects.all()}
-    try:
-        resp = requests.get(settings.LABS_TRACES_API_URL, timeout=settings.CONNECTION_TIMEOUT)
-        assert resp.ok, 'status_code %s' % resp.status_code
-        for trace in resp.json():
-            t = Trace.objects.update_or_create(
-                ext_id=trace['id'], defaults={'trace_type': trace['title'], 'name': trace['description']}
-            )[0]
-            trace_events = list(filter(None, [events.get(uid) for uid in trace.get('events', [])]))
-            # test_e = Event.objects.get(uid='b94f4320-8111-4f37-95cb-a7d4f10a1ae6')
-            # if not trace_events:
-            #     trace_events = [test_e]
-            t.events.set(trace_events)
-    except Exception:
-        logging.exception('failed to update traces')
-
-
-def update_check_ins_for_event(event):
-    return False
-
-
-def set_check_in(event, user, confirmed):
-    try:
-        Api().set_check_in(event.ext_id, user.unti_id, confirmed)
-        return True
-    except ApiError:
-        return False
 
 
 def recalculate_user_chart_data(user):

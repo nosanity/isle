@@ -1,22 +1,19 @@
 import csv
-import codecs
 import io
 import functools
 import json
 import logging
 import os
 from functools import wraps
-from itertools import permutations, combinations
 from collections import defaultdict, Counter
 from urllib.parse import quote
 from django.conf import settings
-from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import logout as base_logout
 from django.core.files.storage import default_storage
-from django.core.exceptions import PermissionDenied, SuspiciousOperation
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Count, Q, F
+from django.db.models import Count, Q
 from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404, FileResponse, \
     StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -40,16 +37,15 @@ from social_django.models import UserSocialAuth
 from isle.api import LabsApi, XLEApi, DpApi, SSOApi
 from isle.cache import UserAvailableContexts
 from isle.filters import LabsUserResultFilter, LabsTeamResultFilter, StatisticsFilter
-from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResultForm, TeamResultForm, UserRoleFormset, \
-    EventMaterialForm, EditTeamForm
+from isle.forms import CreateTeamForm, AddUserForm, EventMaterialForm, EditTeamForm
 from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
-    Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
+    Attendance, Activity, ActivityEnrollment, UserResult, TeamResult, ApiUserChart, \
     LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, PLEUserResult, RunEnrollment, DTraceStatistics
 from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer, \
     UserFileSerializer, UserResultSerializer, EventOnlyMaterialSerializer, DTraceStatisticsSerializer
 from isle.tasks import generate_events_csv, team_members_set_changed, handle_ple_user_result
-from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_check_ins_for_event, set_check_in, \
+from isle.utils import get_allowed_event_type_ids, \
     recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
     EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request, XLSWriter, \
     check_celery_active, calculate_user_context_statistics
@@ -868,54 +864,6 @@ class BaseLoadMaterialsLabsResults:
         return bool(result.result.meta)
 
 
-class BaseLoadMaterialsResults(object):
-    """
-    для загрузки "результатоориентированных" файлов
-    """
-    def get_context_data(self, **kwargs):
-        data = super().get_context_data(**kwargs)
-        traces = data['traces']
-        # складываем все старые файлы (привязанные к трейсам) в один список, т.к. на странице в
-        # разделе отдельных файлов для них нет никакого разделения
-        links = functools.reduce(lambda x, y: x + y, [i.get('links', []) for i in traces], [])
-        data.update({
-            'results': self.get_results(),
-            'links': links,
-        })
-        return data
-
-    def post(self, request, *args, **kwargs):
-        resp = self.check_post_allowed(request)
-        if resp is not None:
-            return resp
-        if not self.current_user_is_assistant:
-            raise PermissionDenied
-        if 'add_btn' not in request.POST:
-            return self.delete_item(request)
-        try:
-            result_id = int(request.POST.get('result_id'))
-        except (ValueError, TypeError):
-            return JsonResponse({}, status=400)
-        if not result_id or not self.check_event_has_result(result_id):
-            return JsonResponse({}, status=400)
-        return self.add_item(request, block_upload=True)
-
-    def _get_result_key(self):
-        return 'result'
-
-    def _get_result_value(self, request):
-        return self.get_result_for_request(request)
-
-    def check_event_has_result(self, result_id):
-        pass
-
-    def delete_item(self, request):
-        material_id = request.POST.get('material_id')
-        if not material_id or not material_id.isdigit():
-            return JsonResponse({}, status=400)
-        return self._delete_item(material_id)
-
-
 class LoadMaterials(BaseLoadMaterialsWithAccessCheck):
     """
     Просмотр/загрузка материалов по эвенту
@@ -990,50 +938,6 @@ class LoadUserMaterialsResult(BaseLoadMaterialsLabsResults, LoadMaterials):
 
     def block_has_available_results(self, block):
         return not block.block_has_only_group_results()
-
-
-class LoadMaterialsAssistant(BaseLoadMaterialsResults, LoadMaterials):
-    template_name = 'load_user_materials.html'
-
-    def get_context_data(self, **kwargs):
-        data = super().get_context_data(**kwargs)
-        data.update({
-            'user': self.user,
-            'result_form': UserResultForm(initial={'event': self.event, 'user': self.user}),
-        })
-        return data
-
-    def get_result_for_request(self, request):
-        return UserResult.objects.filter(id=request.POST.get('result_id')).first()
-
-    def get_result_objects(self):
-        qs = self.material_model.objects.filter(user=self.user, trace__isnull=True)
-        self.set_initiator_users_to_qs(qs)
-        return qs
-
-    def get_results(self):
-        results = UserResult.objects.filter(event=self.event, user=self.user).order_by('id')
-        data = defaultdict(list)
-        for item in self.get_result_objects():
-            data[item.result_id].append(item)
-        res = []
-        for result in results:
-            res.append({'result': result, 'links': data.get(result.id, [])})
-        return res
-
-    def check_event_has_result(self, result_id):
-        return UserResult.objects.filter(event=self.event, user=self.user, id=result_id).exists()
-
-    def _delete_item(self, material_id):
-        material = EventMaterial.objects.filter(
-            event=self.event, user=self.user, id=material_id
-        ).first()
-        if not material:
-            return JsonResponse({}, status=400)
-        material.delete()
-        logging.warning('User %s has deleted file %s for user %s' %
-                        (self.request.user.username, material.get_url(), self.user.username))
-        return JsonResponse({})
 
 
 class LoadTeamMaterials(BaseLoadMaterialsWithAccessCheck):
@@ -1136,52 +1040,6 @@ class LoadTeamMaterialsResult(BaseLoadMaterialsLabsResults, LoadTeamMaterials):
 
     def block_has_available_results(self, block):
         return not block.block_has_only_personal_results()
-
-
-class LoadTeamMaterialsAssistant(BaseLoadMaterialsResults, LoadTeamMaterials):
-    template_name = 'load_team_materials.html'
-
-    def get_context_data(self, **kwargs):
-        data = super().get_context_data(**kwargs)
-        roles_formset = UserRoleFormset(initial=UserRole.get_initial_data_for_team_result(self.team, serializable=False))
-        data.update({
-            'team': self.team,
-            'result_form': TeamResultForm(initial={'event': self.event, 'team': self.team}),
-            'roles_formset': roles_formset,
-        })
-        return data
-
-    def get_result_for_request(self, request):
-        return TeamResult.objects.filter(id=request.POST.get('result_id')).first()
-
-    def get_result_objects(self):
-        qs = self.material_model.objects.filter(team=self.team, trace__isnull=True)
-        self.set_initiator_users_to_qs(qs)
-        return qs
-
-    def get_results(self):
-        results = TeamResult.objects.filter(event=self.event, team=self.team).order_by('id')
-        data = defaultdict(list)
-        for item in self.get_result_objects():
-            data[item.result_id].append(item)
-        res = []
-        for result in results:
-            res.append({'result': result, 'links': data.get(result.id, [])})
-        return res
-
-    def check_event_has_result(self, result_id):
-        return TeamResult.objects.filter(event=self.event, team=self.team, id=result_id).exists()
-
-    def _delete_item(self, material_id):
-        material = EventTeamMaterial.objects.filter(
-            event=self.event, team=self.team, id=material_id
-        ).first()
-        if not material:
-            return JsonResponse({}, status=400)
-        material.delete()
-        logging.warning('User %s has deleted file %s for team %s' %
-                        (self.request.user.username, material.get_url(), self.team.id))
-        return JsonResponse({})
 
 
 class LoadEventMaterials(GetEventMixin, BaseLoadMaterials):
@@ -1447,26 +1305,6 @@ class UserAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, result):
         full_name = ' '.join(filter(None, [result.last_name, result.first_name, result.second_name]))
         return '%s, (%s)' % (full_name, result.leader_id)
-
-
-class ResultTypeAutocomplete(autocomplete.Select2QuerySetView):
-    def get_queryset(self):
-        if not self.request.user.is_authenticated:
-            return []
-        try:
-            event = Event.objects.get(id=self.forwarded.get('event'))
-        except (TypeError, ValueError, Event.DoesNotExist):
-            logging.warning("User %s hasn't provided event parameter for ResultTypeAutocomplete")
-            raise SuspiciousOperation
-        if not self.request.user.is_assistant_for_context(event.context):
-            return []
-        return BlockType.result_types_for_event(event)
-
-    def get_result_label(self, result):
-        return result[1]
-
-    def get_result_value(self, result):
-        return result[0]
 
 
 class EventItemAutocompleteBase(autocomplete.Select2QuerySetView):
@@ -1804,6 +1642,8 @@ class Statistics(TemplateView):
 
 class TransferView(GetEventMixin, View):
     def dispatch(self, request, *args, **kwargs):
+        # not used
+        return HttpResponseForbidden()
         if request.user.is_authenticated and not self.current_user_is_assistant:
             return HttpResponseForbidden()
         return super().dispatch(request, *args, **kwargs)
@@ -1947,223 +1787,6 @@ class ActivitiesView(ActivitiesFilter, ListView):
             a.event_count = events_cnt.get(a.id, 0)
         data.update({'objects': activities, 'only_my': self.only_my_activities()})
         return data
-
-
-class CreateEventBlocks(GetEventMixin, TemplateView):
-    template_name = 'create_blocks.html'
-
-    def dispatch(self, request, *args, **kwargs):
-        if not request.user.is_authenticated:
-            return HttpResponseRedirect('{}?next={}'.format(reverse('login'), request.get_full_path()))
-        if not request.user.is_authenticated:
-            raise PermissionDenied
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_context_data(self, **kwargs):
-        data = super().get_context_data(**kwargs)
-        trace = self.event.get_event_structure_trace()
-        materials = []
-        if trace:
-            materials = EventOnlyMaterial.objects.filter(event=self.event, trace=trace)
-        data.update({
-            'formset': EventBlockFormset(queryset=EventBlock.objects.none()),
-            'event': self.event,
-            'blocks': EventBlock.objects.filter(event=self.event).order_by('id'),
-            'import_events': Event.objects.filter(activity_id=self.event.activity_id).exclude(id=self.event.id).
-                order_by('ext_id').annotate(num_blocks=Count('eventblock')),
-            'trace': trace,
-            'materials': materials,
-            'max_size': settings.MAXIMUM_ALLOWED_FILE_SIZE,
-            'max_uploads': settings.MAX_PARALLEL_UPLOADS,
-        })
-        return data
-
-    def post(self, request, **kwargs):
-        formset = EventBlockFormset(request.POST)
-        if formset.is_valid():
-            # если происходит импорт блоков из другого мероприятия, все ранее созданные блоки удаляются
-            if any(form.save(commit=False).id for form in formset.forms):
-                EventBlock.objects.filter(event=self.event).delete()
-            for form in formset.forms:
-                b = form.save(commit=False)
-                b.event = self.event
-                # всегда создается новый блок
-                b.id = None
-                b.save()
-        return redirect('create-blocks', uid=self.event.uid)
-
-
-class ImportEventBlocks(GetEventMixin, TemplateView):
-    template_name = 'includes/_blocks_form.html'
-
-    def get_context_data(self, **kwargs):
-        if not self.current_user_is_assistant:
-            raise PermissionDenied
-        try:
-            event = Event.objects.get(id=self.request.GET.get('id'), activity_id=self.event.activity_id)
-        except (Event.DoesNotExist, TypeError, ValueError):
-            raise Http404
-        return {'formset': EventBlockFormset(queryset=EventBlock.objects.filter(event=event).order_by('id'))}
-
-
-class CheckEventBlocks(GetEventMixin, View):
-    """
-    проверка того, что для текущей структуры мероприятия нет файлов мероприятия, привязанных к блокам
-    """
-    def get(self, request, **kwargs):
-        if self.current_user_is_assistant:
-            return JsonResponse({
-                'blocks_with_materials': EventOnlyMaterial.objects.filter(event_block__event=self.event).exists(),
-            })
-        raise PermissionDenied
-
-
-class DeleteEventBlock(GetEventMixin, View):
-    def get(self, request, **kwargs):
-        if request.user.is_authenticated and self.current_user_is_assistant:
-            block = EventBlock.objects.filter(id=kwargs['block_id']).first()
-            if not block:
-                raise Http404
-            return JsonResponse({'has_materials': EventOnlyMaterial.objects.filter(event_block=block).exists()})
-        raise PermissionDenied
-
-    def post(self, request, **kwargs):
-        if request.user.is_authenticated and self.current_user_is_assistant:
-            EventBlock.objects.filter(id=kwargs['block_id']).delete()
-            return JsonResponse({'redirect': reverse('create-blocks', kwargs={'uid': self.event.uid})})
-        raise PermissionDenied
-
-
-class BaseCreateResult(GetEventMixin, View):
-    form_class = UserResultForm
-    result_model = UserResult
-
-    def post(self, request, **kwargs):
-        if not self.current_user_is_assistant:
-            raise PermissionDenied
-        instance = None
-        if request.POST.get('result_id'):
-            try:
-                result = self.result_model.objects.get(id=request.POST.get('result_id'))
-                assert result.event == self.event
-                self.additional_assertion(result)
-                instance = result
-            except (ValueError, TypeError, self.result_model.DoesNotExist, AssertionError):
-                return JsonResponse({}, status=400)
-        form = self.get_form(request, instance)
-        if form.is_valid():
-            item = form.save()
-            res = item.to_json(as_object=True)
-            res['created'] = not instance
-            logging.info('User {} {} {} #{} with data: {}'.format(
-                request.user.username,
-                'created' if not instance else 'changed',
-                self.result_model._meta.model_name,
-                item.id,
-                item.to_json()
-            ))
-            return JsonResponse(res)
-        return JsonResponse({}, status=400)
-
-    def additional_assertion(self, result):
-        pass
-
-    def get_form(self, request, instance):
-        return self.form_class(data=request.POST, instance=instance)
-
-
-class CreateUserResult(BaseCreateResult):
-    def additional_assertion(self, result):
-        assert result.user.unti_id == self.kwargs['unti_id']
-
-
-class CreateTeamResult(BaseCreateResult):
-    form_class = TeamResultForm
-    result_model = TeamResult
-
-    def additional_assertion(self, result):
-        assert result.team_id == self.kwargs['team_id']
-
-    def get_form(self, request, instance):
-        team = get_object_or_404(Team, id=self.kwargs['team_id'])
-        return self.form_class(data=request.POST, instance=instance, initial={'team': team})
-
-
-class RolesFormsetRender(GetEventMixin, TemplateView):
-    """
-    отрисовка формсета с ролями пользователей, нужно для того чтобы без проблем менять
-    формсеты на форме редактирования результата при нажатии кнопки редактирования
-    """
-    template_name = 'includes/_user_roles_formset.html'
-
-    def get_context_data(self, **kwargs):
-        if not self.current_user_is_assistant:
-            raise PermissionDenied
-        try:
-            result = TeamResult.objects.get(id=self.request.GET.get('id'))
-        except (TeamResult.DoesNotExist, ValueError, TypeError):
-            raise Http404
-        formset = UserRoleFormset(
-            initial=UserRole.get_initial_data_for_team_result(result.team, result.id, serializable=False)
-        )
-        return {
-            'roles_formset': formset,
-        }
-
-
-class AddEventBlockToMaterial(GetEventMixin, View):
-    def post(self, request, **kwargs):
-        """
-        изменение блока, пользователей и команд у файла мероприятия ассистентом
-        """
-        pref = request.POST.get('custom_form_prefix')
-        if not self.current_user_is_assistant or not pref:
-            raise PermissionDenied
-        try:
-            material = EventOnlyMaterial.objects.get(id=EventBlockEditRenderer.parse_material_id_from_prefix(pref))
-        except (TypeError, EventOnlyMaterial.DoesNotExist):
-            return JsonResponse({}, status=400)
-        form = EventMaterialForm(instance=material, data=request.POST, prefix=pref, event=self.event)
-        if not form.is_valid():
-            return JsonResponse({}, status=400)
-        instance = form.save()
-        info_str = instance.get_info_string()
-        logging.info('User %s changed block info for material %s: %s' %
-                     (self.request.user.username, material.id, info_str))
-        return JsonResponse({'info_string': info_str})
-
-
-class EventBlockEditRenderer(GetEventMixin, TemplateView):
-    """
-    форма редактирования блоков, пользователей и команд для файла мероприятия
-    """
-    template_name = 'includes/_material_event_block.html'
-
-    def get_context_data(self, **kwargs):
-        if not self.current_user_is_assistant:
-            raise PermissionDenied
-        try:
-            material = EventOnlyMaterial.objects.get(id=self.request.GET.get('id'))
-        except (EventOnlyMaterial, TypeError, ValueError):
-            raise Http404
-        data = super().get_context_data(**kwargs)
-        prefix = self.make_prefix(material.id)
-        data.update({
-            'blocks_form': EventMaterialForm(instance=material, event=self.event, prefix=prefix),
-            'custom_form_prefix': prefix,
-        })
-        return data
-
-    @staticmethod
-    def make_prefix(material_id):
-        return 'edit-{}'.format(material_id)
-
-    @staticmethod
-    def parse_material_id_from_prefix(prefix):
-        try:
-            return int(prefix.split('-')[1])
-        except:
-            pass
 
 
 class UserChartApiView(APIView):

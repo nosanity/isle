@@ -153,8 +153,6 @@
         const canUpload = eval("{{ can_upload|lower }}");
         const csrfmiddlewaretoken = $('[name=csrfmiddlewaretoken]').val();
         const transferUrl = "{% url 'transfer' uid=event.uid %}";
-        const addEventBlockUrl = "{% url 'add-event-block' uid=event.uid %}";
-        const eventBlockEditRendererUrl = "{% url 'event-block-edit-renderer' uid=event.uid %}";
         const tracesDict = {
             {% for trace in traces %}
                 {{ trace.trace.id }}: "{{ trace.trace.name }}",
