@@ -76,7 +76,7 @@
                 {% if event_entry %}
                     <a class="btn btn-danger mb-2" href="{% url 'load-materials' uid=event.uid unti_id=request.user.unti_id %}">{% trans "Загрузить свой след" %}</a>
                 {% else %}
-                    <button class="btn btn-success self-enroll-btn mb-2">{% trans "Записаться на мероприятие" %}</button>
+                    <button class="btn btn-success self-enroll-btn mb-2">{% trans "Загрузить цифровой след" %}</button>
                 {% endif %}
                 {% if is_assistant %}
                     <a class="nav-item btn btn-warning mb-2" href="{% url 'add-user' uid=event.uid %}">
