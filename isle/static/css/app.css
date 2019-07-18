@@ -621,3 +621,19 @@ img.user-img {
         float: none;
     }
 }
+
+.approve-result-block {
+    margin-top: 10px;
+}
+
+.approve-result-block .approve-input-container label {
+    margin-bottom: 0;
+}
+
+.approve-text-edit-input {
+    min-width: 100%;
+}
+
+.approve-text-edit .btn {
+    margin-top: 5px;
+}

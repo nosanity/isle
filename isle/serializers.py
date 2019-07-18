@@ -52,7 +52,7 @@ class TeamNestedserializer(serializers.BaseSerializer):
 class LabsBaseResultSerializer(serializers.Serializer):
     event_uuid = serializers.CharField(source='result.block.event.uid')
     comment = serializers.CharField()
-    approved = serializers.BooleanField()
+    approved = serializers.NullBooleanField()
     levels = serializers.JSONField(allow_null=True, source='result.meta')
     url = serializers.CharField(source='get_page_url')
 
