@@ -2,7 +2,7 @@
 {% if result.available_circle_items %}
     <div class="row upload-circle-items-wrapper">
         <div class="col-md-12">
-            <b>{% trans "Выберите к чему имеет отношение ваш результат" %}</b>
+            <b class="circle-label">{% trans "Выберите к чему имеет отношение ваш результат" %}</b>
             {% for circle_item in result.available_circle_items %}
                 <div class="form-check">
                     <input type="checkbox" class="result-circle-items" value="{{ circle_item.id }}" id="circle_item_{{ circle_item.id }}">
