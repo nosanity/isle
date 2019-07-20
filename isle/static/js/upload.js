@@ -416,7 +416,49 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
     if (target.parents('.approve-result-block').find('.approve-text-edit').data('approved') == 'False') {
         target.parents('.approve-result-block').find('.approve-radio-btn[value=false]').prop('checked', true);
     }
+}).delegate('.start-change-circle-items', 'click', (e) => {
+    e.preventDefault();
+    $(e.target).parents('.result-selected-circle-items-div').find('.change-circle-items, .cancel-change-circle-items').show();
+    $(e.target).hide();
+    $(e.target).parents('.result-selected-circle-items-div').find('.result-circle-items').prop('disabled', false);
+}).delegate('.cancel-change-circle-items', 'click', (e) => {
+    e.preventDefault();
+    disable_circle_items_btns($(e.target).parents('.result-selected-circle-items-div'));
+}).delegate('.change-circle-items', 'click', (e) => {
+    e.preventDefault();
+    let wrapper = $(e.target).parents('.result-selected-circle-items-div');
+    let selected_ids = [];
+    wrapper.find('.result-circle-items:checked').each((i, el) => { selected_ids.push($(el).val()) });
+    let post_data = {
+        csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
+        action: 'change_circle_items',
+        labs_result_id: $(e.target).data('labs-result-id'),
+        result_item_id: $(e.target).data('result-id'),
+        circle_items: selected_ids.join(',')
+    };
+    $.ajax({
+        method: 'POST',
+        data: post_data,
+        success: (data) => {
+            let selected_ids = data['selected_items'].join(',');
+            wrapper.data('selected-circle-items', selected_ids);
+            disable_circle_items_btns(wrapper);
+        },
+        error: (xhr, err) => {
+            alert(get_error_msg(xhr));
+        }
+    })
 });
+
+function disable_circle_items_btns(wrapper) {
+    wrapper.find('.change-circle-items, .cancel-change-circle-items').hide();
+    wrapper.find('.start-change-circle-items').show();
+    let selected_ids = wrapper.data('selected-circle-items').toString().split(',');
+    wrapper.find('.result-circle-items').each((i, el) => {
+        $(el).prop('checked', selected_ids.indexOf($(el).val()) != -1);
+        $(el).prop('disabled', true);
+    });
+}
 
 if (pageType == 'loadMaterials') {
     $('body').delegate('form.trace-form select[name=trace_name]', 'change', (e) => {
@@ -663,11 +705,11 @@ function successProcessFile(data, $form, result_item_id) {
     const page_url = data.result_url;
     let items, item;
     if (pageType == 'loadMaterials_v2') {
+        let labs_result_id = $($form).parents('.material-result-div').data('result');
         if (!$form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]').length) {
 
             if (isAssistant) {
                 additional_btns = `<span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>`;
-                let labs_result_id = $($form).parents('.material-result-div').data('result');
                 approve_block = `
                     <div class="clearfix"></div>
                     <div class="approve-result-block">
@@ -699,6 +741,32 @@ function successProcessFile(data, $form, result_item_id) {
                 additional_btns = '';
                 approve_block = ``;
             }
+            let circle_items_div = ``;
+            if (data['circle_items'].length) {
+                    let ids = [];
+                    let checkboxes = ``;
+                    for (let i = 0; i < data['circle_items'].length; i++) {
+                        let cid = data['circle_items'][i]['id'];
+                        let title = data['circle_items'][i]['tool'];
+                        ids.push(cid);
+                        let checked = data['selected_circle_items'].indexOf(cid) != -1 ? `checked="checked"` : ``;
+                        checkboxes += `
+                            <div class="form-check">
+                                <input type="checkbox" class="result-circle-items" value="${cid}" id="circle_item_${cid}_${result_item_id}" ${checked} disabled>
+                                <label class="result-circle-items-label" for="circle_item_${cid}_${result_item_id}">${title}</label>
+                            </div>
+                        `;
+                    }
+                    let selected_ids = data['selected_circle_items'].join(',');
+                circle_items_div = `
+                    <div class="row result-selected-circle-items-div" data-selected-circle-items="${selected_ids}">
+                        ${checkboxes}
+                        <span class="start-change-circle-items">Изменить</span>
+                        <span class="change-circle-items" data-labs-result-id="${labs_result_id}" data-result-id="${result_item_id}">Сохранить</span>
+                        <span class="cancel-change-circle-items">Отменить</span>
+                    </div>
+                `;
+            }
             let html_wrapper = `
                 <li class="list-group-item no-left-padding result-item-li">
                     <div class="row">
@@ -717,6 +785,7 @@ function successProcessFile(data, $form, result_item_id) {
                             ${approve_block}
                         </div>
                     </div>
+                    ${circle_items_div}
                 </li>
             `;
             $form.parents('div.material-result-div').find('ul.list-group').prepend($(html_wrapper));
@@ -928,10 +997,13 @@ function formSubmitHadler(form, resultId = null) {
         $form.find('.add-material-btn').prop('disabled', true);
     if (isFormValid($form)) {
         if (pageType == 'loadMaterials_v2') {
+        let tools = [];
+        $form.parents('.material-result-div').find('.upload-circle-items-wrapper .result-circle-items:checked').each((i, e) => { tools.push($(e).val()) });
             let data = {
                 csrfmiddlewaretoken: csrfmiddlewaretoken,
                 action: 'init_result',
                 labs_result_id: $form.find('[name=labs_result_id]').val(),
+                circle_items: tools.join(','),
                 comment: $form.find('[name=comment]').val()
             };
             $.ajax({
