@@ -657,7 +657,9 @@ img.user-img {
 }
 
 .form-check {
-    display: inline;
+    display: inline-block;
+    padding-left: 0;
+    margin-right: 15px;
 }
 
 .result-circle-items {
@@ -671,4 +673,21 @@ img.user-img {
 
 .result-circle-items-label {
     vertical-align: middle;
+}
+
+.upload-circle-items-wrapper {
+    margin-bottom: 10px;
+}
+
+.result-selected-circle-items-div, .upload-circle-items-wrapper {
+    line-height: 1;
+}
+
+.result-selected-circle-items-div {
+    margin-left: 5px;
+}
+
+.circle-label {
+    margin-right: 15px;
+    vertical-align: top;
 }
