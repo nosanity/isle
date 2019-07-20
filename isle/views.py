@@ -45,7 +45,8 @@ from isle.forms import CreateTeamForm, AddUserForm, EventBlockFormset, UserResul
 from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
-    LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, PLEUserResult, RunEnrollment, DTraceStatistics
+    LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, PLEUserResult, RunEnrollment, DTraceStatistics, \
+    CircleItem
 from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer, \
     UserFileSerializer, UserResultSerializer, EventOnlyMaterialSerializer, DTraceStatisticsSerializer
 from isle.tasks import generate_events_csv, team_members_set_changed, handle_ple_user_result
@@ -505,7 +506,7 @@ class BaseLoadMaterialsLabsResults:
 
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
-        blocks = self.event.blocks.prefetch_related('results')
+        blocks = self.event.blocks.prefetch_related('results', 'results__circle_items')
         structure = [
             {
                 'title': block.title,
@@ -592,7 +593,8 @@ class BaseLoadMaterialsLabsResults:
         if resp is not None:
             return resp
         result_id_error, result_deleted, type_ok = self._check_labs_result_id(request)
-        allowed_actions = ['delete_all', 'init_result', 'move', 'move_unattached', 'approve_result']
+        allowed_actions = ['delete_all', 'init_result', 'move', 'move_unattached', 'approve_result',
+                           'change_circle_items']
         if 'add_btn' in request.POST:
             if result_id_error is not None or result_deleted or not type_ok:
                 return result_id_error
@@ -612,6 +614,8 @@ class BaseLoadMaterialsLabsResults:
                 return self.action_move_unattached(request)
             elif request.POST['action'] == 'approve_result':
                 return self.action_approve_result(request)
+            elif request.POST['action'] == 'change_circle_items':
+                return self.action_change_circle_items(request)
         return self.delete_item(request)
 
     def action_approve_result(self, request):
@@ -633,6 +637,26 @@ class BaseLoadMaterialsLabsResults:
             logging.info('User %s set approved to %s, comment: %s for result #%s' %
                          (request.user.username, result.approved, result.approve_text, result_id))
             return JsonResponse({'approved': result.approved, 'approve_text': result.approve_text, 'id': result.id})
+        return JsonResponse({}, status=400)
+
+    def action_change_circle_items(self, request):
+        result_id = request.POST.get('labs_result_id') or ''
+        result_item_id = request.POST.get('result_item_id') or ''
+        selected_circle_items = request.POST.get('circle_items') or ''
+        try:
+            selected_circle_items = [int(i) for i in selected_circle_items.split(',')] if selected_circle_items else []
+        except (ValueError, TypeError, AttributeError):
+            return JsonResponse({}, status=400)
+        if result_id.isdigit() and result_item_id.isdigit():
+            result = self.get_result_for_request(request)
+            if not result or result.result.block.event_id != self.event.id:
+                return JsonResponse({}, status=404)
+            result.circle_items.set([i for i in result.result.available_circle_items if i.id in selected_circle_items])
+            if self.should_send_to_kafka(result):
+                send_object_info(result, result.id, KafkaActions.UPDATE)
+            logging.info('User %s updated circle items for result #%s, circle items ids: %s' %
+                         (request.user.username, result_id, [i.id for i in result.circle_items.all()]))
+            return JsonResponse({'selected_items': [i.id for i in result.circle_items.all()]})
         return JsonResponse({}, status=400)
 
     def action_edit_comment(self, request):
@@ -737,6 +761,15 @@ class BaseLoadMaterialsLabsResults:
             'result_id': request.POST.get('labs_result_id'),
             'comment': request.POST.get('comment') or '',
         }))
+        circle_items = request.POST.get('circle_items') or ''
+        circle_items = circle_items.split(',')
+        circle_items_ids = []
+        for cid in circle_items:
+            try:
+                circle_items_ids.append(int(cid))
+            except (ValueError, TypeError):
+                pass
+        item.circle_items.set(CircleItem.objects.filter(id__in=circle_items_ids, result_id=item.result_id))
         if self.should_send_to_kafka(item):
             send_object_info(item, item.id, KafkaActions.CREATE)
         return JsonResponse({'result_id': item.id})
@@ -824,6 +857,8 @@ class BaseLoadMaterialsLabsResults:
     def update_add_item_response(self, resp, material, trace):
         resp['comment'] = trace.comment
         resp['result_url'] = trace.get_page_url()
+        resp['circle_items'] = [{'id': i.id, 'tool': i.tool} for i in trace.result.available_circle_items]
+        resp['selected_circle_items'] = list(trace.circle_items.values_list('id', flat=True))
         # отправка сообщения об изменении результата
         if self.should_send_to_kafka(trace):
             send_object_info(trace, trace.id, KafkaActions.UPDATE)
@@ -865,7 +900,7 @@ class BaseLoadMaterialsLabsResults:
         """
         проверка того, что для соответствующего результата блока заданы ячейки
         """
-        return bool(result.result.meta)
+        return bool(result.result.circle_items.exists())
 
 
 class BaseLoadMaterialsResults(object):
@@ -2208,7 +2243,7 @@ class FileInfoMixin:
             'file_url': m.get_url(),
             'file_name': m.get_file_name(),
             'comment': m.result_v2.comment,
-            'levels': m.result_v2.result.meta or [],
+            'levels': m.result_v2.get_meta(),
             'url': m.get_page_url(),
         }
 
@@ -2265,9 +2300,11 @@ class UserMaterialsListView(FileInfoMixin, APIView):
         if not user:
             return Response(status=status.HTTP_404_NOT_FOUND)
         materials = EventMaterial.objects.filter(user_id=user.id, result_v2__isnull=False).\
-            select_related('event', 'user', 'result_v2', 'result_v2__result')
+            select_related('event', 'user', 'result_v2', 'result_v2__result').\
+            prefetch_related('result_v2__circle_items')
         team_materials = EventTeamMaterial.objects.filter(team__users__id=user.id, result_v2__isnull=False).\
-            select_related('event', 'team', 'result_v2', 'result_v2__result').prefetch_related('team__users')
+            select_related('event', 'team', 'result_v2', 'result_v2__result').\
+            prefetch_related('team__users', 'result_v2__circle_items')
         resp = [self.get_file_info(m) for m in materials.iterator()]
         for m in team_materials:
             data = self.get_file_info(m)
@@ -2290,7 +2327,7 @@ class BaseResultInfoView(APIView):
         if not result_id or not result_id.isdigit():
             return Response(status=status.HTTP_400_BAD_REQUEST)
         result = self.result_model.objects.filter(id=result_id).\
-            select_related('result', 'result__block__event').first()
+            select_related('result', 'result__block__event').prefetch_related('circle_items').first()
         if not result:
             return Response(status=status.HTTP_404_NOT_FOUND)
         materials = self.materials_model.objects.filter(result_v2=result)
@@ -2298,7 +2335,7 @@ class BaseResultInfoView(APIView):
             'event_uuid': result.result.block.event.uid,
             'comment': result.comment,
             'approved': result.approved,
-            'levels': result.result.meta,
+            'levels': result.get_meta(),
             'url': result.get_page_url(),
             'files': [{
                 'file_url': f.get_url(),
@@ -2462,7 +2499,7 @@ class AllUserResultsView(ListAPIView):
 
     def get_queryset(self):
         return LabsUserResult.objects.select_related('user', 'result__block__event')\
-            .prefetch_related('eventmaterial_set').distinct()
+            .prefetch_related('eventmaterial_set', 'circle_items').distinct()
 
 
 class AllTeamResultsView(ListAPIView):
@@ -2523,7 +2560,7 @@ class AllTeamResultsView(ListAPIView):
 
     def get_queryset(self):
         return LabsTeamResult.objects.select_related('team', 'result__block__event')\
-            .prefetch_related('eventteammaterial_set', 'team__users').distinct()
+            .prefetch_related('eventteammaterial_set', 'team__users', 'circle_items').distinct()
 
 
 class GetDpData(APIView):

@@ -58,6 +58,21 @@
                         {% endif %}
                     </div>
                 </div>
+                <div class="row result-selected-circle-items-div" data-selected-circle-items="{{ result_item.selected_circle_items|join:',' }}">
+                    {% if result.available_circle_items %}
+                        {% for circle_item in result.available_circle_items %}
+                        <div class="form-check">
+                            <input type="checkbox" class="result-circle-items" value="{{ circle_item.id }}" id="circle_item_{{ circle_item.id }}_{{ result_item.id }}" {% if circle_item.id in result_item.selected_circle_items %}checked="checked"{% endif %} disabled>
+                            <label class="result-circle-items-label" for="circle_item_{{ circle_item.id }}_{{ result_item.id }}">{{ circle_item.tool }}</label>
+                        </div>
+                        {% endfor %}
+                        {% if can_upload %}
+                            <span class="start-change-circle-items">{% trans "Изменить" %}</span>
+                            <span class="change-circle-items" data-labs-result-id="{{ result.id }}" data-result-id="{{ result_item.id }}">{% trans "Сохранить" %}</span>
+                            <span class="cancel-change-circle-items">{% trans "Отменить" %}</span>
+                        {% endif %}
+                    {% endif %}
+                </div>
             </li>
         {% endfor %}
     </ul>

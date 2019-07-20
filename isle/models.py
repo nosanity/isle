@@ -3,6 +3,7 @@ import os
 import pytz
 import re
 import urllib
+from collections import defaultdict
 from functools import reduce
 from uuid import uuid4
 from django.conf import settings
@@ -855,6 +856,13 @@ class LabsEventResult(models.Model):
         """
         return not self.result_format or self.result_format == 'group'
 
+    @cached_property
+    def available_circle_items(self):
+        """
+        доступные для разметки элементы колеса
+        """
+        return [i for i in self.circle_items.all() if i.tool]
+
 
 class AbstractResult(models.Model):
     """
@@ -864,6 +872,7 @@ class AbstractResult(models.Model):
     comment = models.TextField(default='')
     approved = models.NullBooleanField(default=None)
     approve_text = models.CharField(max_length=255, default='')
+    circle_items = models.ManyToManyField('CircleItem')
 
     class Meta:
         abstract = True
@@ -881,6 +890,31 @@ class AbstractResult(models.Model):
         result = meta_models[:]
         for item in result:
             item['title'] = model_names.get(item.get('model')) or ''
+        return result
+
+    @cached_property
+    def selected_circle_items(self):
+        return [i.id for i in self.circle_items.all() if i.tool]
+
+    def get_meta(self):
+        """
+        приведение метаинформации к стандартному виду со схлопыванием инструментов в список для выдачи апи
+        """
+        data = defaultdict(list)
+        for item in self.circle_items.all():
+            i = item.get_json()
+            key = tuple([i[key] for key in ('level', 'sublevel', 'competence', 'model')])
+            data[key].append(i['tool'])
+        result = [
+            {
+                'level': key[0],
+                'sublevel': key[1],
+                'competence': key[2],
+                'model': key[3],
+                'tools': list(filter(None, tools)) or None,
+            }
+            for key, tools in data.items()
+        ]
         return result
 
 
@@ -1081,3 +1115,24 @@ class DTraceStatisticsHistory(DTraceStatisticsBase):
         return cls(**{
             f.attname: getattr(entry, f.attname) for f in cls._meta.fields if not f.auto_created
         })
+
+
+class CircleItem(models.Model):
+    """
+    элемент колеса
+    """
+    level = models.IntegerField(null=True, default=None)
+    sublevel = models.IntegerField(null=True, default=None)
+    competence = models.ForeignKey(DpCompetence, null=True, default=None, on_delete=models.CASCADE)
+    tool = models.TextField(default=None, null=True)
+    model = models.ForeignKey(MetaModel, null=True, default=None, on_delete=models.CASCADE)
+    result = models.ForeignKey(LabsEventResult, on_delete=models.CASCADE, related_name='circle_items')
+
+    def get_json(self):
+        return {
+            'level': self.level,
+            'sublevel': self.sublevel,
+            'competence': self.competence.uuid,
+            'model': self.model.uuid,
+            'tool': self.tool,
+        }

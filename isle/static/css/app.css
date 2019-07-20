@@ -637,3 +637,38 @@ img.user-img {
 .approve-text-edit .btn {
     margin-top: 5px;
 }
+
+.start-change-circle-items, .change-circle-items, .cancel-change-circle-items {
+    margin-left: 10px;
+}
+
+.change-circle-items, .cancel-change-circle-items, .upload-circle-items-wrapper {
+    display: none;
+}
+
+.start-change-circle-items, .change-circle-items {
+    color: #e52127;
+    font-weight: bold;
+}
+
+.cancel-change-circle-items {
+    color: grey;
+    font-weight: bold;
+}
+
+.form-check {
+    display: inline;
+}
+
+.result-circle-items {
+   -ms-transform: scale(1.3); /* IE */
+  -moz-transform: scale(1.3); /* FF */
+  -webkit-transform: scale(1.3); /* Safari and Chrome */
+  -o-transform: scale(1.3); /* Opera */
+  transform: scale(1.3);
+  padding: 10px;
+}
+
+.result-circle-items-label {
+    vertical-align: middle;
+}
