@@ -23,7 +23,7 @@ from isle.cache import UserAvailableContexts
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
                          Team, Author, DpCompetence, CasbinData, Run, RunEnrollment, DTraceStatistics,
-                         DTraceStatisticsHistory)
+                         DTraceStatisticsHistory, CircleItem, LabsTeamResult)
 
 
 DEFAULT_CACHE = caches['default']
@@ -48,8 +48,9 @@ def refresh_events_data():
     try:
         event_types = {}
         existing_uids = set(Event.objects.values_list('uid', flat=True))
+        competences = {}
         fetched_events = set()
-        metamodels = set()
+        metamodels = {}
         filter_dict = lambda d, excl: {k: d.get(k) for k in d if k not in excl}
         ACTIVITY_EXCLUDE_KEYS = ['runs', 'activity_type']
         RUN_EXCLUDE_KEYS = ['events']
@@ -123,7 +124,8 @@ def refresh_events_data():
                             event.get('blocks', []),
                             e,
                             e.blocks.values_list('uuid', flat=True) if not e_created else [],
-                            metamodels
+                            metamodels,
+                            competences,
                         )
                         fetched_events.add(e.uid)
         delete_events = existing_uids - fetched_events - {getattr(settings, 'API_DATA_EVENT', '')}
@@ -155,7 +157,7 @@ def update_authors(activity, data):
     activity.authors.set(authors)
 
 
-def update_event_structure(data, event, event_blocks_uuid, metamodels):
+def update_event_structure(data, event, event_blocks_uuid, metamodels, competences):
     """
     Обновление структуры эвента
     :param data json со структурой
@@ -215,13 +217,20 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
                             try:
                                 meta_data = DpApi().get_metamodel(model['model'])
                                 if isinstance(meta_data, dict) and all(i in meta_data for i in ['title', 'guid']):
-                                    MetaModel.objects.update_or_create(uuid=model['model'], defaults={
+                                    metamodel = MetaModel.objects.update_or_create(uuid=model['model'], defaults={
                                         'guid': meta_data['guid'], 'title': meta_data['title']
-                                    })
-                                    parse_competences(meta_data)
-                                    metamodels.add(model['model'])
+                                    })[0]
+                                    parse_competences(meta_data, competences)
+                                    metamodels[model['model']] = metamodel.id
                             except ApiError:
                                 pass
+                    create_circle_items_for_result(
+                        r.id,
+                        [] if r_created else list(r.circle_items.values_list('id', flat=True)),
+                        meta,
+                        metamodels,
+                        competences
+                    )
                 created_results.append(r.uuid)
             if set(block_results) - set(created_results):
                 b.results.exclude(uuid__in=created_results).update(deleted=True)
@@ -231,13 +240,49 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels):
         logging.exception('Failed to parse event structure')
 
 
-def parse_competences(data):
+def create_circle_items_for_result(result_id, current_circle_items_ids, meta, metamodels, competences):
+    from isle.kafka import send_object_info, KafkaActions
+    real_items_ids = []
+    for meta_item in meta:
+        tools = meta_item.get('tools')
+        if not isinstance(tools, list):
+            tools = [None]
+        for tool in tools:
+            circle_item = CircleItem.objects.get_or_create(
+                level=meta_item.get('level'),
+                sublevel=meta_item.get('sublevel'),
+                competence_id=competences.get(meta_item.get('competence')),
+                model_id=metamodels.get(meta_item.get('model')),
+                result_id=result_id,
+                tool=tool,
+            )[0]
+            real_items_ids.append(circle_item.id)
+    deleted_circle_items = set(current_circle_items_ids) - set(real_items_ids)
+    if deleted_circle_items:
+        # удалили какой-то элемент круга из разметки мероприятия, надо обновить связанные с ним
+        # пользовательские и командные результаты
+        results_to_update = []
+        for result_model in (LabsUserResult, LabsTeamResult):
+            results_to_update.extend(
+                list(result_model.objects.filter(circle_items__id__in=deleted_circle_items)
+                     .distinct())
+            )
+        CircleItem.objects.filter(id__in=deleted_circle_items).delete()
+        for _result in results_to_update:
+            send_object_info(_result, _result.id, KafkaActions.UPDATE)
+    return real_items_ids
+
+
+def parse_competences(data, competences):
     if not isinstance(data.get('competences'), list):
         logging.error('Failed to parse competences for meta model %s' % data.get('uuid'))
         return
     for item in data['competences']:
+        if item['uuid'] in competences:
+            continue
         try:
-            DpCompetence.objects.update_or_create(uuid=item['uuid'], defaults={'title': item['title']})
+            comp = DpCompetence.objects.update_or_create(uuid=item['uuid'], defaults={'title': item['title']})[0]
+            competences[comp.uuid] = comp.id
         except KeyError:
             logging.exception('Wrong competence structure')
 
@@ -620,9 +665,11 @@ class EventMaterialsCSV:
 
     def generate_for_event(self):
         personal_materials = EventMaterial.objects.filter(event=self.event).\
-            select_related('result_v2', 'result_v2__result', 'result_v2__result__block', 'user')
+            select_related('result_v2', 'result_v2__result', 'result_v2__result__block', 'user').\
+            prefetch_related('result_v2__result__circle_items')
         team_materials = EventTeamMaterial.objects.filter(event=self.event).\
-            select_related('result_v2', 'result_v2__result', 'result_v2__result__block')
+            select_related('result_v2', 'result_v2__result', 'result_v2__result__block').\
+            prefetch_related('result_v2__result__circle_items')
         event_materials = EventOnlyMaterial.objects.filter(event=self.event)
 
         for m in personal_materials.iterator():
@@ -733,7 +780,7 @@ class EventMaterialsCSV:
     def get_meta(self, m):
         if m.result_v2 and isinstance(m.result_v2.result.meta, list) and \
                 all(isinstance(i, dict) for i in m.result_v2.result.meta):
-            return m.result_v2.result.meta
+            return m.result_v2.get_meta()
         return []
 
     def get_type(self, m_type):

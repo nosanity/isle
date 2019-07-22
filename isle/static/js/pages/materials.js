@@ -116,12 +116,14 @@ $('.load-results-btn').on('click', (e) => {
     let div = $(e.target).parents('.material-result-div');
     div.find('form').removeClass('hidden');
     $(e.target).hide();
+    $(e.target).parents('.material-result-div').find('.upload-circle-items-wrapper').show();
 });
 
 $('.hide-results-form-btn').on('click', (e) => {
     e.preventDefault();
     $(e.target).parents('.material-result-div').find('form').addClass('hidden');
     $(e.target).parents('.material-result-div').find('.load-results-btn').show();
+    $(e.target).parents('.material-result-div').find('.upload-circle-items-wrapper').hide();
 });
 
 function setOwnership(obj) {

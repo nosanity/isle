@@ -1,4 +1,18 @@
 {% load i18n %}
+{% if result.available_circle_items %}
+    <div class="row upload-circle-items-wrapper">
+        <div class="col-md-12">
+            <b class="circle-label">{% trans "Выберите к чему имеет отношение ваш результат" %}</b>
+            {% for circle_item in result.available_circle_items %}
+                <div class="form-check">
+                    <input type="checkbox" class="result-circle-items" value="{{ circle_item.id }}" id="circle_item_{{ circle_item.id }}">
+                    <label class="result-circle-items-label" for="circle_item_{{ circle_item.id }}">{{ circle_item.tool }}</label>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+{% endif %}
+
 <form method="post" class="form hidden user-materials-form">
     <div class="row">
         {% csrf_token %}
