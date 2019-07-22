@@ -249,13 +249,19 @@ def create_circle_items_for_result(result_id, current_circle_items_ids, meta, me
         if not isinstance(tools, list):
             tools = [None]
         for tool in tools:
-            circle_item = CircleItem.objects.get_or_create(
+            circle_data = dict(
                 level=meta_item.get('level'),
                 sublevel=meta_item.get('sublevel'),
-                competence_id=competences.get(meta_item.get('competence')),
-                model_id=metamodels.get(meta_item.get('model')),
+                competence_uuid=meta_item.get('competence'),
+                model_uuid=meta_item.get('model'),
                 result_id=result_id,
                 tool=tool,
+                competence_id=competences.get(meta_item.get('competence')),
+                model_id = metamodels.get(meta_item.get('model')),
+            )
+            code = CircleItem(**circle_data).get_code()
+            circle_item = CircleItem.objects.update_or_create(
+                code=code, defaults=circle_data
             )[0]
             real_items_ids.append(circle_item.id)
     deleted_circle_items = set(current_circle_items_ids) - set(real_items_ids)
