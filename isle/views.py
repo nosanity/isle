@@ -2987,11 +2987,12 @@ class CheckUserTraceApi(APIView):
     **Параметры запроса**
 
         * event_id - uuid мероприятия, обязательный параметр
-        * leader_id - leader id пользователя, обязательный параметр
+        * leader_id - leader id пользователя, необязательный параметр
 
     **Пример ответа**
 
         * 200 успешно
+            если в запросе указан leader_id:
             {
                 "exists": true,
                 "n_personal": 2,
@@ -3000,6 +3001,25 @@ class CheckUserTraceApi(APIView):
             где n_personal - количество ЦС, который пользователь загрузил для себя,
             n_team - количество ЦС из команд event-а, в которых есть пользователь,
             exists true, если хотя бы одно из значенй n_personal или n_team больше 0
+
+            если в запросе не указан leader_id:
+            {
+                "exists": true,
+                "n_personal": 2,
+                "n_team": 3,
+                "n_event": 1,
+                "personal_users": 1,
+                "team_users": 1,
+                "unique_users": 1,
+            }
+            где n_personal - количество персонального ЦС для мероприятия,
+            n_team - количество командного ЦС,
+            n_event - количество файлов мероприятия,
+            exists true, если хотя бы одно из значенй n_personal или n_team, или n_event больше 0,
+            personal_users - количество пользователей с загруженным персональным ЦС,
+            team_users - количество пользователей, грузивших командный ЦС,
+            unique_users - количество уникальных пользователей из предыдущих двух пунктов
+
         * 400
             {
                 "leader_id": "user with leader_id 1 not found",
@@ -3021,7 +3041,7 @@ class CheckUserTraceApi(APIView):
             except Event.DoesNotExist:
                 errors['event_id'] = 'event with uuid {} not found'.format(event_id)
         if not leader_id:
-            errors['leader_id'] = 'leader_id required'
+            user = None
         else:
             try:
                 user = User.objects.get(leader_id=leader_id)
@@ -3029,13 +3049,31 @@ class CheckUserTraceApi(APIView):
                 errors['leader_id'] = 'user with leader_id {} not found'.format(leader_id)
         if errors:
             return Response(errors, status=status.HTTP_400_BAD_REQUEST)
-        n_personal = EventMaterial.objects.filter(event=event, user=user).count()
-        n_team = EventTeamMaterial.objects.filter(event=event, team__users=user).distinct().count()
-        return Response({
-            'exists': n_personal + n_team > 0,
-            'n_personal': n_personal,
-            'n_team': n_team,
-        })
+        if user:
+            n_personal = EventMaterial.objects.filter(event=event, user=user).count()
+            n_team = EventTeamMaterial.objects.filter(event=event, team__users=user).distinct().count()
+            return Response({
+                'exists': n_personal + n_team > 0,
+                'n_personal': n_personal,
+                'n_team': n_team,
+            })
+        else:
+            n_personal = EventMaterial.objects.filter(event=event).count()
+            n_team = EventTeamMaterial.objects.filter(event=event).count()
+            n_event = EventOnlyMaterial.objects.filter(event=event).count()
+            personal_users = set(EventMaterial.objects.filter(event=event).values_list('user__unti_id', flat=True)
+                                 .distinct())
+            team_users = set(EventTeamMaterial.objects.filter(event=event).values_list('initiator', flat=True)
+                             .distinct())
+            return Response({
+                'exists': n_personal + n_team + n_event > 0,
+                'n_personal': n_personal,
+                'n_team': n_team,
+                'n_event': n_event,
+                'personal_users': len(personal_users),
+                'team_users': len(team_users),
+                'unique_users': len(personal_users.union(team_users)),
+            })
 
 
 class EventMaterialsApi(ListAPIView):
