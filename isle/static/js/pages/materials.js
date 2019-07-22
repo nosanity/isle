@@ -53,7 +53,7 @@ if (isAssistant) {
                     <input type="hidden" name="csrfmiddlewaretoken" value="${csrf}">
                     <input type="hidden" name="material_id" value="${id}">
                     <select name="trace_name" class="material-type-select form-control mb-20">${select_options}</select>
-                    <textarea maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Описание файлов (не обязательно)">${comment}</textarea>
+                    <textarea maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Описание файлов">${comment}</textarea>
                     <button class="btn btn-success save-edited-block">Сохранить</button>
                     <button class="btn btn-danger cancel-block-edit">Отменить</button>
                 </form>

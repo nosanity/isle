@@ -154,20 +154,10 @@ SSO_API_KEY = ''
 # key и secret для oauth авторизации
 SOCIAL_AUTH_UNTI_KEY = ''
 SOCIAL_AUTH_UNTI_SECRET = ''
-# таймаут для запросов в ILE
+# таймаут для запросов
 CONNECTION_TIMEOUT = 20
 # таймаут для head запроса к файлу
 HEAD_REQUEST_CONNECTION_TIMEOUT = 5
-# логин и пароль пользователя в ILE
-ILE_TOKEN_USER = ('user', 'token')
-# базовый урл ILE
-ILE_BASE_URL = 'https://ile2.u2035dev.ru'
-# урл для получения токена в ILE
-ILE_TOKEN_PATH = '/api/token/'
-# путь к апи для получения снэпшота
-ILE_SNAPSHOT_PATH = '/api/snapshot/'
-# нужно ли валидировать сертификат ILE
-ILE_VERIFY_CERTIFICATE = False
 LABS_URL = ''
 LABS_TOKEN = ''
 
