@@ -33,5 +33,6 @@ casbin==0.3
 python3-memcached==1.51
 XlsxWriter==1.1.8
 
+git+https://github.com/adrtdr/python-logstash-ssl/@master
 -e git+https://github.com/EduScaled/carrier-client@master#egg=carrier_client
 -e git+https://github.com/EduScaled/django-carrier-client@master#egg=django_carrier_client
