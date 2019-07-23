@@ -261,53 +261,70 @@ for name in define:
 import djcelery
 djcelery.setup_loader()
 
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'root': {
+        'level': 'INFO',
+        'handlers': ['console'],
+    },
+    'formatters': {
+        'verbose': {
+            'format': '%(levelname)s  %(asctime)s  %(module)s '
+                      '%(process)d  %(thread)d  %(message)s',
+            'datefmt': "%Y-%m-%d %H:%M:%S",
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose'
+        }
+    },
+    'loggers': {
+        'django.db.backends': {
+            'level': 'ERROR',
+            'handlers': ['console'],
+            'propagate': False,
+        },
+        'raven': {
+            'level': 'DEBUG',
+            'handlers': ['console'],
+            'propagate': False,
+        },
+        'sentry.errors': {
+            'level': 'DEBUG',
+            'handlers': ['console'],
+            'propagate': False,
+        },
+    },
+}
+
 if locals().get('RAVEN_CONFIG', None):
     INSTALLED_APPS += ('raven.contrib.django.raven_compat',)
     register_signal(client)
     register_logger_signal(client)
-
-    LOGGING = {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'root': {
-            'level': 'INFO',
-            'handlers': ['sentry', 'console'],
-        },
-        'formatters': {
-            'verbose': {
-                'format': '%(levelname)s  %(asctime)s  %(module)s '
-                          '%(process)d  %(thread)d  %(message)s',
-                'datefmt': "%Y-%m-%d %H:%M:%S",
-            },
-        },
-        'handlers': {
-            'sentry': {
-                'level': 'ERROR',
-                'class': 'raven.contrib.django.raven_compat.handlers.SentryHandler',
-                'tags': {'custom-tag': 'x'},
-            },
-            'console': {
-                'level': 'INFO',
-                'class': 'logging.StreamHandler',
-                'formatter': 'verbose'
-            }
-        },
-        'loggers': {
-            'django.db.backends': {
-                'level': 'ERROR',
-                'handlers': ['console'],
-                'propagate': False,
-            },
-            'raven': {
-                'level': 'DEBUG',
-                'handlers': ['console'],
-                'propagate': False,
-            },
-            'sentry.errors': {
-                'level': 'DEBUG',
-                'handlers': ['console'],
-                'propagate': False,
-            },
-        },
+    LOGGING['root']['handlers'].append('sentry')
+    LOGGING['handlers']['sentry'] = {
+        'level': 'ERROR',
+        'class': 'raven.contrib.django.raven_compat.handlers.SentryHandler',
+        'tags': {'custom-tag': 'x'},
     }
 
+if locals().get('LOGSTASH_HOST') and locals().get('LOGSTASH_PORT'):
+    LOGGING['root']['handlers'].append('logstash')
+    LOGGING['handlers']['logstash'] = {
+        'level': locals().get('LOGSTASH_LEVEL', 'INFO'),
+        'class': 'logstash.TCPLogstashHandler',
+        'host': LOGSTASH_HOST,
+        'port': LOGSTASH_PORT,
+        'version': 1,
+        'ssl': locals().get('LOGSTASH_SSL', False),
+        'keyfile': locals().get('LOGSTASH_KEYFILE', None),
+        'certfile': locals().get('LOGSTASH_CERTFILE', None),
+        'ca_certs': locals().get('LOGSTASH_CA_CERTS', None),
+        'message_type': locals().get('LOGSTASH_MESSAGE_TYPE', 'logstash'),
+        'tags': locals().get('LOGSTASH_TAGS', None),
+        'fqdn': locals().get('LOGSTASH_FQDN', False),
+    }
