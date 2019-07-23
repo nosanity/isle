@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import pytz
@@ -1125,16 +1126,34 @@ class CircleItem(models.Model):
     level = models.IntegerField(null=True, default=None)
     sublevel = models.IntegerField(null=True, default=None)
     competence = models.ForeignKey(DpCompetence, null=True, default=None, on_delete=models.CASCADE)
+    competence_uuid = models.CharField(max_length=36, default=None, null=True)
     tool = models.TextField(default=None, null=True)
     model = models.ForeignKey(MetaModel, null=True, default=None, on_delete=models.CASCADE)
+    model_uuid = models.CharField(max_length=36, default=None, null=True)
     result = models.ForeignKey(LabsEventResult, on_delete=models.CASCADE, related_name='circle_items')
+    code = models.CharField(max_length=32, unique=True)
+
+    def get_code(self):
+        """
+        высчитывает уникальный код для объекта (т.к. длина поля tool неограничена, его нельзя использовать
+        в связке unique_together)
+        """
+        key = ':'.join([
+            str(self.level),
+            str(self.sublevel),
+            str(self.competence_uuid),
+            str(self.model_uuid),
+            str(self.result_id),
+            str(self.tool),
+        ])
+        return hashlib.md5(key.encode('utf8')).hexdigest()
 
     def get_json(self):
         return {
             'level': self.level,
             'sublevel': self.sublevel,
-            'competence': self.competence.uuid,
-            'model': self.model.uuid,
+            'competence': self.competence_uuid,
+            'model': self.model_uuid,
             'tool': self.tool,
         }
 
