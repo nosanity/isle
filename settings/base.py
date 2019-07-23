@@ -314,6 +314,11 @@ if locals().get('RAVEN_CONFIG', None):
 
 if locals().get('LOGSTASH_HOST') and locals().get('LOGSTASH_PORT'):
     LOGGING['root']['handlers'].append('logstash')
+    tags = locals().get('LOGSTASH_TAGS', None)
+    if isinstance(tags, list) and 'uploads' not in tags:
+        tags.append('uploads')
+    else:
+        tags = ['uploads']
     LOGGING['handlers']['logstash'] = {
         'level': locals().get('LOGSTASH_LEVEL', 'INFO'),
         'class': 'logstash.TCPLogstashHandler',
@@ -325,6 +330,6 @@ if locals().get('LOGSTASH_HOST') and locals().get('LOGSTASH_PORT'):
         'certfile': locals().get('LOGSTASH_CERTFILE', None),
         'ca_certs': locals().get('LOGSTASH_CA_CERTS', None),
         'message_type': locals().get('LOGSTASH_MESSAGE_TYPE', 'logstash'),
-        'tags': locals().get('LOGSTASH_TAGS', None),
+        'tags': tags,
         'fqdn': locals().get('LOGSTASH_FQDN', False),
     }
