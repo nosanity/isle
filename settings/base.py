@@ -34,7 +34,7 @@ INSTALLED_APPS = [
     'social_django',
     'rest_framework',
     'django_carrier_client',
-    'djcelery',
+    'django_celery_results',
     'django_user_agents'
 ]
 
@@ -209,6 +209,8 @@ HEADER_MY_SCHEDULE_URL = 'https://xle.u2035test.ru/island1022/timetable'
 STATISTICS_VALID_FOR = 60 * 30
 # периодичность "очистки" удаленных из xle записей на прогоны в часах
 XLE_RUN_ENROLLMENT_DELETE_CHECK_TIME = 24
+CELERY_RESULT_BACKEND = 'django-db'
+DJANGO_CELERY_RESULTS_TASK_ID_MAX_LENGTH = 191
 
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}
@@ -257,9 +259,6 @@ define = [
 for name in define:
     if not locals().get(name):
         raise Exception('"{}" must be defined'.format(name))
-
-import djcelery
-djcelery.setup_loader()
 
 LOGGING = {
     'version': 1,
