@@ -691,3 +691,11 @@ img.user-img {
     margin-right: 15px;
     vertical-align: top;
 }
+
+.mb-05rem {
+    margin-bottom: .5rem;
+}
+
+.display-inline-block {
+    display: inline-block;
+}
