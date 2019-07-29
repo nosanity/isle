@@ -25,13 +25,16 @@ class KafkaActions:
     DELETE = 'delete'
 
 
-def get_payload(obj, obj_id, action):
+def get_payload(obj, obj_id, action, additional_data=None):
     def for_type(payload_type):
+        id_dict = {'id': obj_id}
+        if additional_data:
+            id_dict.update(additional_data)
         return {
             'action': action,
             'type': payload_type,
             'id': {
-                payload_type: {'id': obj_id}
+                payload_type: id_dict
             },
             'timestamp': datetime.isoformat(timezone.now()),
             'title': str(obj),
@@ -46,14 +49,14 @@ def get_payload(obj, obj_id, action):
         return for_type('user_result_ple')
 
 
-def send_object_info(obj, obj_id, action):
+def send_object_info(obj, obj_id, action, additional_data=None):
     """
     отправка в кафку сообщения, составленного исходя из типа объекта obj и действия
     """
     if not getattr(settings, 'KAFKA_HOST'):
         logging.warning('KAFKA_HOST is not defined')
         return
-    payload = get_payload(obj, obj_id, action)
+    payload = get_payload(obj, obj_id, action, additional_data=additional_data)
     if not payload:
         logging.error("Can't get payload for %s action %s" % (obj, action))
         return

@@ -59,6 +59,15 @@ from isle.utils import refresh_events_data, get_allowed_event_type_ids, update_c
 VIEW_MODE_COOKIE_NAME = 'index-view-mode'
 
 
+class ResultUpdateType:
+    SET_VALIDATION = 'set_validation'
+    EDIT_COMMENT = 'edit_comment'
+    ADD_FILE = 'add_file'
+    EDIT_TOOLS = 'edit_tools'
+    BLOCK_CHANGED = 'block_changed'
+    DELETE_FILE = 'delete_file'
+
+
 def login(request):
     return render(request, 'login.html', {'next': request.GET.get('next', reverse('index'))})
 
@@ -633,7 +642,8 @@ class BaseLoadMaterialsLabsResults:
             result.approved = approved
             result.save(update_fields=['approve_text', 'approved'])
             if self.should_send_to_kafka(result):
-                send_object_info(result, result.id, KafkaActions.UPDATE)
+                send_object_info(result, result.id, KafkaActions.UPDATE,
+                                 additional_data={'what': ResultUpdateType.SET_VALIDATION})
             logging.info('User %s set approved to %s, comment: %s for result #%s' %
                          (request.user.username, result.approved, result.approve_text, result_id))
             return JsonResponse({'approved': result.approved, 'approve_text': result.approve_text, 'id': result.id})
@@ -653,7 +663,8 @@ class BaseLoadMaterialsLabsResults:
                 return JsonResponse({}, status=404)
             result.circle_items.set([i for i in result.result.available_circle_items if i.id in selected_circle_items])
             if self.should_send_to_kafka(result):
-                send_object_info(result, result.id, KafkaActions.UPDATE)
+                send_object_info(result, result.id, KafkaActions.UPDATE,
+                                 additional_data={'what': ResultUpdateType.EDIT_TOOLS})
             logging.info('User %s updated circle items for result #%s, circle items ids: %s' %
                          (request.user.username, result_id, [i.id for i in result.circle_items.all()]))
             return JsonResponse({'selected_items': [i.id for i in result.circle_items.all()]})
@@ -670,7 +681,8 @@ class BaseLoadMaterialsLabsResults:
             result.comment = comment
             result.save(update_fields=['comment'])
             if self.should_send_to_kafka(result):
-                send_object_info(result, result.id, KafkaActions.UPDATE)
+                send_object_info(result, result.id, KafkaActions.UPDATE,
+                                 additional_data={'what': ResultUpdateType.EDIT_COMMENT})
             logging.info('User %s has updated comment for result #%s: %s' %
                 (request.user.username, result_id, comment))
             return JsonResponse({})
@@ -701,7 +713,8 @@ class BaseLoadMaterialsLabsResults:
         logging.info('User %s moved result %s from LabsEventResult %s to %s' %
                      (self.request.user.email, item_result.id, old_result_id, move_to.id))
         if self.should_send_to_kafka(item_result):
-            send_object_info(item_result, item_result.id, KafkaActions.UPDATE)
+            send_object_info(item_result, item_result.id, KafkaActions.UPDATE,
+                             additional_data={'what': ResultUpdateType.BLOCK_CHANGED})
         return JsonResponse({'new_result_id': move_to.id})
 
     def action_move_unattached(self, request):
@@ -737,7 +750,8 @@ class BaseLoadMaterialsLabsResults:
         material.result_v2 = item_result
         material.save(update_fields=['result_v2'])
         if self.should_send_to_kafka(item_result):
-            send_object_info(item_result, item_result.id, KafkaActions.UPDATE)
+            send_object_info(item_result, item_result.id, KafkaActions.UPDATE,
+                             additional_data={'what': ResultUpdateType.ADD_FILE})
         logging.info('User %s created result %s from unattached file %s' %
                      (request.user.email, item_result.id, material.id))
         return JsonResponse({
@@ -861,7 +875,8 @@ class BaseLoadMaterialsLabsResults:
         resp['selected_circle_items'] = list(trace.circle_items.values_list('id', flat=True))
         # отправка сообщения об изменении результата
         if self.should_send_to_kafka(trace):
-            send_object_info(trace, trace.id, KafkaActions.UPDATE)
+            send_object_info(trace, trace.id, KafkaActions.UPDATE,
+                             additional_data={'what': ResultUpdateType.ADD_FILE})
 
     def _delete_item(self, trace, material_id):
         result_id = trace.id
@@ -877,14 +892,16 @@ class BaseLoadMaterialsLabsResults:
         # удаление связи пользователя/команды с результатом, если у пользователя/команды больше нет файлов
         # с привязкой к этому результату
         should_send = self.should_send_to_kafka(trace)
+        additional_data = None
         if not self.material_model.objects.filter(
                 **self._update_query_dict({'result_v2': trace, 'event': self.event})).exists():
             trace.delete()
             action = KafkaActions.DELETE
         else:
             action = KafkaActions.UPDATE
+            additional_data = {'what': ResultUpdateType.DELETE_FILE}
         if should_send:
-            send_object_info(trace, result_id, action)
+            send_object_info(trace, result_id, action, additional_data=additional_data)
         return JsonResponse({})
 
     def _log_material_delete(self, material):
