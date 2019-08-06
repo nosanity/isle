@@ -865,6 +865,12 @@ class LabsEventResult(models.Model):
         """
         return [i for i in self.circle_items.all() if i.tool]
 
+    def get_result_format_display(self):
+        if self.result_format == 'personal':
+            return _('персональный')
+        elif self.result_format == 'group':
+            return _('групповой')
+
 
 class AbstractResult(models.Model):
     """
@@ -883,16 +889,12 @@ class AbstractResult(models.Model):
         """
         мета информация результата с дополнительными полем title - названием соответствующей метамодели
         """
-        meta = self.result.meta
-        meta_models = []
-        if meta and isinstance(meta, list):
-            meta_models = list(filter(lambda x: isinstance(x, dict), meta))
-        uuids = filter(None, [i.get('model') for i in meta_models])
-        model_names = dict(MetaModel.objects.filter(uuid__in=uuids).values_list('uuid', 'title'))
-        result = meta_models[:]
-        for item in result:
-            item['title'] = model_names.get(item.get('model')) or ''
-        return result
+        meta = self.get_meta()
+        model_names = dict(MetaModel.objects.filter(uuid__in=filter(None, (i.get('model') for i in meta)))
+                           .values_list('uuid', 'title'))
+        for item in meta:
+            item['title'] = model_names.get(item.get('model'))
+        return meta
 
     @cached_property
     def selected_circle_items(self):

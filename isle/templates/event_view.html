@@ -71,7 +71,7 @@
     <div class="row">
         <div class="col">
             <div class="inline-divs-wrapper mt-40">
-                <div><h3>Цифровой след участников</h3></div>
+                <div><h3 class="display-inline-block">Цифровой след участников</h3> <a class="btn btn-light font-red mb-05rem display-inline-block" href="#teams">{% trans "к командам" %}</a></div>
                 <div class="event-sign-user">
                 {% if event_entry %}
                     <a class="btn btn-danger mb-2" href="{% url 'load-materials' uid=event.uid unti_id=request.user.unti_id %}">{% trans "Загрузить свой след" %}</a>
@@ -179,14 +179,14 @@
                         <td>
                             {% for u in team.users.all %}
                                 {% item_not_in_container u students as half_transparent %}
-                                <span {% if half_transparent %}class="color-grey"{%endif %}>{{ u.fio }}</span><br>
+                                <span {% if half_transparent %}class="color-grey"{%endif %}>{{ u.fio }}{% if u.id == request.user.id %} {% trans "(это вы)" %}{% endif %}</span><br>
                             {% endfor %}
                         </td>
                         <td>{{ team.traces_number }}</td>
                         <td>
                             {% if event.is_active %}
                                 {% if is_assistant or team.id in user_teams %}
-                                    <a class="btn btn-primary btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
+                                    <a class="btn btn-danger btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
                                 {% endif %}
                             {% endif %}
                             {% if team|user_can_edit_team:request.user %}
