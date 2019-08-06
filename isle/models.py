@@ -1173,3 +1173,19 @@ class UpdateTimes(models.Model):
     @classmethod
     def set_last_update_for_event(cls, event_type, dt):
         cls.objects.update_or_create(event_type=event_type, defaults={'dt': dt})
+
+
+class EventAuthor(models.Model):
+    SOURCE_EVENT = 'event'
+    SOURCE_ACTIVITY = 'activity'
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    source = models.CharField(max_length=15, choices=(
+        (SOURCE_EVENT, SOURCE_EVENT),
+        (SOURCE_ACTIVITY, SOURCE_ACTIVITY),
+    ))
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('user', 'event')

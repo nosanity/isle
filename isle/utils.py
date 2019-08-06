@@ -23,7 +23,7 @@ from isle.cache import UserAvailableContexts
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
                          Team, Author, DpCompetence, CasbinData, Run, RunEnrollment, DTraceStatistics,
-                         DTraceStatisticsHistory, CircleItem, LabsTeamResult, UpdateTimes)
+                         DTraceStatisticsHistory, CircleItem, LabsTeamResult, UpdateTimes, EventAuthor)
 
 
 DEFAULT_CACHE = caches['default']
@@ -32,6 +32,12 @@ EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
 
 def get_allowed_event_type_ids():
     return list(EventType.objects.filter(visible=True).values_list('id', flat=True))
+
+
+def get_authors_unti_ids(authors):
+    if authors:
+        return set(filter(None, map(lambda x: (x.get('user') or {}).get('unti_id'), authors)))
+    return set()
 
 
 def refresh_events_data(fast=True):
@@ -49,6 +55,8 @@ def refresh_events_data(fast=True):
     try:
         event_types = {}
         existing_uids = set(Event.objects.values_list('uid', flat=True))
+        unti_id_to_user_id = dict(User.objects.filter(unti_id__isnull=False).values_list('unti_id', 'id'))
+        failed_users = set()
         competences = {}
         fetched_events = set()
         metamodels = {}
@@ -104,6 +112,7 @@ def refresh_events_data(fast=True):
                         }
                     )[0]
                     update_authors(current_activity, authors)
+                    activity_authors = get_authors_unti_ids(authors)
                 else:
                     continue
                 if activity_type and activity_type.get('uuid'):
@@ -130,6 +139,7 @@ def refresh_events_data(fast=True):
                     )[0]
                     events = run.get('events') or []
                     for event in events:
+                        event_authors = get_authors_unti_ids(event.get('authors'))
                         event_json = filter_dict(event, EVENT_EXCLUDE_KEYS)
                         uid = event['uuid']
                         timeslot = event.get('timeslot')
@@ -147,6 +157,7 @@ def refresh_events_data(fast=True):
                             'context_id': event_context_id,
                             'data': {'event': event_json, 'run': run_json, 'activity': activity_json},
                             'dt_start': dt_start, 'dt_end': dt_end, 'title': title, 'event_type': event_type})
+                        assign_event_authors(e, activity_authors, event_authors, unti_id_to_user_id, failed_users)
                         update_event_structure(
                             event.get('blocks', []),
                             e,
@@ -170,6 +181,33 @@ def refresh_events_data(fast=True):
         return
     except Exception:
         logging.exception('Failed to handle events data')
+
+
+def assign_event_authors(event, activity_authors, event_authors, user_map, failed_users):
+    all_authors = activity_authors | event_authors
+    current_authors = set(EventAuthor.objects.filter(event=event).values_list('user_id', flat=True))
+    real_authors = set()
+    for unti_id in all_authors:
+        user_id = user_map.get(unti_id)
+        if not user_id and unti_id in failed_users:
+            continue
+        if not user_id:
+            user = pull_sso_user(unti_id)
+            if not user:
+                failed_users.add(unti_id)
+                continue
+            user_id = user.id
+            user_map[unti_id] = user_id
+        real_authors.add(user_id)
+        if user_id in current_authors:
+            continue
+        else:
+            EventAuthor.objects.update_or_create(event=event, user_id=user_id, defaults={
+                'is_active': True,
+                'source': EventAuthor.SOURCE_EVENT if unti_id in event_authors else EventAuthor.SOURCE_ACTIVITY,
+            })
+    if current_authors - real_authors:
+        EventAuthor.objects.filter(event=event).exclude(user_id__in=real_authors).update(is_active=False)
 
 
 def update_authors(activity, data):
@@ -1126,3 +1164,13 @@ def calculate_context_statistics(context):
     bulk_size = 100
     for i in range(0, len(bulk), bulk_size):
         DTraceStatisticsHistory.objects.bulk_create(bulk[i:(i+bulk_size)])
+
+
+def event_has_author_materials(event_id):
+    """
+    проверка того, что кто-то из авторов загружал материалы мероприятия
+    :param event_id: id мероприятия
+    :return: bool
+    """
+    author_ids = EventAuthor.objects.filter(event_id=event_id, is_active=True).values_list('user__unti_id', flat=True)
+    return EventOnlyMaterial.objects.filter(event_id=event_id, initiator__in=author_ids).exists()
