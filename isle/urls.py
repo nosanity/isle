@@ -1,11 +1,14 @@
 from django.conf import settings
+from django.conf.urls import url
 from django.urls import path, include
+from drf_swagger_docs.views import get_schema_view
 from rest_framework.documentation import include_docs_urls
 from isle import views
 
 urlpatterns = [
     path('carrier-django/', include('django_carrier_client.urls')),
     path('api/docs/', include_docs_urls()),
+    url(r'^api/swagger(?P<format>\.json)$', get_schema_view().without_ui(cache_timeout=0)),
     path('', views.ActivitiesView.as_view(), name='index'),
     path('events/', views.Events.as_view(), name='events'),
     path('login/', views.login, name='login'),

@@ -25,6 +25,9 @@ from django.views.generic import TemplateView, View, ListView
 import django_filters
 import requests
 from dal import autocomplete
+from drf_swagger_docs.permissions import SwaggerBasePermission
+from drf_yasg.openapi import Parameter, Schema
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status, exceptions
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView, CreateAPIView
@@ -1387,7 +1390,14 @@ class Paginator(PageNumberPagination):
     page_size = 20
 
 
-class ApiPermission(BasePermission):
+class ApiPermission(SwaggerBasePermission, BasePermission):
+    _swagger_security_definition = {
+        'type': 'apiKey',
+        'name': 'x-api-key',
+        'in': 'header',
+    }
+    _swagger_definition_name = 'api_key'
+
     def has_permission(self, request, view):
         if request.method == 'OPTIONS':
             return True
@@ -1400,9 +1410,10 @@ class ApiPermission(BasePermission):
 
 class AttendanceApi(ListAPIView):
     """
+    get:
     **Описание**
 
-        Получение списка присутствовавших на мероприятии или добавление/обновление объекта присутствия.
+        Получение списка присутствовавших на мероприятии.
         В запросе должен присутствовать хедер X-API-KEY
 
     **Пример get-запроса**
@@ -1427,6 +1438,13 @@ class AttendanceApi(ListAPIView):
                 },
                 ...
           }
+
+    post:
+
+    **Описание**
+
+        Добавление/обновление объекта присутствия.
+        В запросе должен присутствовать хедер X-API-KEY
 
     **Пример post-запроса**
 
@@ -1458,6 +1476,12 @@ class AttendanceApi(ListAPIView):
     pagination_class = Paginator
     permission_classes = (ApiPermission, )
 
+    @swagger_auto_schema(manual_parameters=[
+        Parameter('unti_id', 'query', type='number', required=False)
+    ])
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
     def get_queryset(self):
         qs = Attendance.objects.order_by('id')
         unti_id = self.request.query_params.get('unti_id')
@@ -1465,13 +1489,19 @@ class AttendanceApi(ListAPIView):
             qs = qs.filter(user__unti_id=unti_id)
         return qs
 
+    @swagger_auto_schema(
+        request_body=Schema(properties={
+            'is_confirmed': Schema(type='boolean'),
+            'user_id': Schema(type='number'),
+            'event_uuid': Schema(type='string')
+        }, type='object'))
     def post(self, request):
         is_confirmed = request.data.get('is_confirmed')
         user_id = request.data.get('user_id')
         event_id = request.data.get('event_uuid')
         confirmed_by = request.data.get('confirmed_by_user')
         if is_confirmed is None or not user_id or not event_id:
-            return Response({'error': 'request should contain is_confirmed, user_id and event_id parameters'},
+            return Response({'error': 'request should contain is_confirmed, user_id and event_uuid parameters'},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
             user = User.objects.get(unti_id=user_id)
@@ -1848,6 +1878,9 @@ class UserChartApiView(APIView):
 
     permission_classes = ()
 
+    @swagger_auto_schema(manual_parameters=[
+        Parameter('user_id', 'query', type='number', required=True),
+    ])
     def get(self, request):
         user_id = request.GET.get('user_id')
         if not user_id:
@@ -1915,6 +1948,9 @@ class UserMaterialsListView(FileInfoMixin, APIView):
 
     permission_classes = (ApiPermission, )
 
+    @swagger_auto_schema(manual_parameters=[
+        Parameter('unti_id', 'query', type='number', required=True),
+    ])
     def get(self, request):
         unti_id = request.query_params.get('unti_id')
         if not unti_id or not unti_id.isdigit():
@@ -1945,6 +1981,9 @@ class BaseResultInfoView(APIView):
     result_model = LabsUserResult
     materials_model = EventMaterial
 
+    @swagger_auto_schema(manual_parameters=[
+        Parameter('id', 'query', type='number', required=True),
+    ])
     def get(self, request):
         result_id = request.query_params.get('id')
         if not result_id or not result_id.isdigit():
@@ -2491,7 +2530,7 @@ class UploadUserFile(CreateAPIView):
     parser_classes = (MultiPartParser, )
 
 
-class CreateUserResultAPI(APIView):
+class CreateUserResultAPI(CreateAPIView):
     """
     **Описание**
 
@@ -2527,7 +2566,7 @@ class CreateUserResultAPI(APIView):
     permission_classes = (ApiPermission,)
     serializer_class = UserResultSerializer
 
-    def post(self, request):
+    def create(self, request, *args, **kwargs):
         if not check_celery_active():
             return Response(status=status.HTTP_417_EXPECTATION_FAILED)
         serializer = self.serializer_class(data=request.data)
@@ -2571,6 +2610,9 @@ class GetPLEUserResultApi(APIView):
 
     permission_classes = (ApiPermission,)
 
+    @swagger_auto_schema(manual_parameters=[
+        Parameter('result_id', 'query', type='number', required=True),
+    ])
     def get(self, request, *args, **kwargs):
         try:
             user_result = PLEUserResult.objects.get(id=kwargs['result_id'])
@@ -2652,6 +2694,10 @@ class CheckUserTraceApi(APIView):
     """
     permission_classes = ()
 
+    @swagger_auto_schema(manual_parameters=[
+        Parameter('leader_id', 'query', type='number', required=False),
+        Parameter('event_id', 'query', type='string', required=True),
+    ])
     def get(self, request):
         event_id = request.query_params.get('event_id')
         leader_id = request.query_params.get('leader_id')
@@ -2750,6 +2796,12 @@ class EventMaterialsApi(ListAPIView):
     serializer_class = EventOnlyMaterialSerializer
     pagination_class = Paginator
 
+    @swagger_auto_schema(manual_parameters=[
+        Parameter('event_id', 'query', type='string', required=True),
+    ])
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
     def get_queryset(self):
         if not self.request.query_params.get('event_id'):
             raise exceptions.ValidationError({'event_id': 'required parameter'})
@@ -2814,8 +2866,10 @@ class ContextUserStatistics(ListAPIView):
     filterset_class = StatisticsFilter
 
     def get_queryset(self):
-        return DTraceStatistics.objects.filter(context__uuid=self.kwargs['context_uuid'])\
-            .select_related('user', 'context')
+        if self.kwargs.get('context_uuid'):
+            return DTraceStatistics.objects.filter(context__uuid=self.kwargs['context_uuid'])\
+                .select_related('user', 'context')
+        return DTraceStatistics.objects.none()
 
     def list(self, request, *args, **kwargs):
         if any(i in request.query_params for i in ('leader_id', 'unti_id')):
