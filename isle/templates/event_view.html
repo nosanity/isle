@@ -70,8 +70,13 @@
 
     <div class="row">
         <div class="col">
-            <div class="inline-divs-wrapper mt-40">
-                <div><h3 class="display-inline-block">Цифровой след участников</h3> <a class="btn btn-light font-red mb-05rem display-inline-block" href="#teams">{% trans "к командам" %}</a></div>
+            <div class="inline-divs-wrapper mt-40" id="students">
+                <div>
+                    <h3 class="display-inline-block">Цифровой след участников</h3>
+                    {% if teams %}
+                        <a class="btn btn-light font-red mb-05rem display-inline-block" href="#teams">{% trans "к командам" %}</a>
+                    {% endif %}
+                </div>
                 <div class="event-sign-user">
                 {% if event_entry %}
                     <a class="btn btn-danger mb-2" href="{% url 'load-materials' uid=event.uid unti_id=request.user.unti_id %}">{% trans "Загрузить свой след" %}</a>
@@ -143,7 +148,10 @@
 
     <div class="mt-40 inline-divs-wrapper" id="teams">
         <div>
-            <h3>Цифровой след команд</h3>
+            <h3 class="display-inline-block">Цифровой след команд</h3>
+            {% if students %}
+                <a class="btn btn-light font-red mb-05rem display-inline-block" href="#students">{% trans "к участникам" %}</a>
+            {% endif %}
         </div>
         <div>
             <a class="nav-item btn btn-warning create-team-btn mb-2" href="{% url 'create-team' uid=event.uid %}">
