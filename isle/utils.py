@@ -126,14 +126,18 @@ def refresh_events_data(fast=True):
                         continue
                     current_run = Run.objects.update_or_create(
                         uuid=run['uuid'],
-                        defaults={'activity': current_activity, 'deleted': run.get('is_deleted')}
+                        defaults={
+                            'activity': current_activity,
+                            'deleted': run.get('is_deleted') or current_activity.is_deleted,
+                        }
                     )[0]
                     events = run.get('events') or []
                     for event in events:
                         event_json = filter_dict(event, EVENT_EXCLUDE_KEYS)
                         uid = event['uuid']
                         timeslot = event.get('timeslot')
-                        is_active = False if event.get('is_deleted') else True
+                        is_active = not (event.get('is_deleted') or current_run.deleted or
+                                         current_activity.is_deleted)
                         dt_start, dt_end = datetime.now(), datetime.now()
                         if timeslot:
                             dt_start = _parse_dt(timeslot['start'])
