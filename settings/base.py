@@ -258,6 +258,13 @@ for name in define:
     if not locals().get(name):
         raise Exception('"{}" must be defined'.format(name))
 
+DWH_DATABASES = {
+    'labs': locals().get('DWH_LABS_DB_NAME', 'labs'),
+    'xle': locals().get('DWH_XLE_DB_NAME', 'xle'),
+    'dp': locals().get('DWH_DP_DB_NAME', 'dp'),
+    'pt': locals().get('DWH_PT_DB_NAME', 'people'),
+}
+
 import djcelery
 djcelery.setup_loader()
 

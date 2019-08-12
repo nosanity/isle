@@ -43,7 +43,7 @@
                     {% endlocaltime %}
                 {% endif %}
                 {% if event.get_authors %}<strong>Автор:</strong> {{ event.get_authors|join:', '|safe }}<br>{% endif %}
-                {% if event.data.event.place.title %}<strong>Место:</strong> {{ event.data.event.place.title }}<br>{% endif %}
+                {% if event.data.place_title %}<strong>Место:</strong> {{ event.data.place_title }}<br>{% endif %}
 
                 <h6 class="font-weight-bold mt-20">Структура мероприятия</h6>
                 {% for block in structure %}
