@@ -1912,6 +1912,8 @@ class UserChartApiView(APIView):
 class FileInfoMixin:
     def get_file_info(self, m):
         return {
+            'activity_uuid': m.event.activity.uid,
+            'title': m.result_v2.result.title,
             'event_uuid': m.event.uid,
             'file_url': m.get_url(),
             'file_name': m.get_file_name(),
@@ -1940,6 +1942,8 @@ class UserMaterialsListView(FileInfoMixin, APIView):
         * 200 успешно
             [
                 {
+                    "activity_uuid": "12341234-1234-1234-1234123412341234",
+                    "title": "title",
                     "event_uuid": "11111111-1111-1111-11111111",
                     "file_url": "http://example.com/file.pdf"
                     "file_name": "file.pdf",
@@ -1948,6 +1952,8 @@ class UserMaterialsListView(FileInfoMixin, APIView):
                     "url": "https://uploads.2035.university/11111111-1111-1111-11111111/123/"
                 },
                 {
+                    "activity_uuid": "12341234-1234-1234-1234123412341234",
+                    "title": "title",
                     "event_uuid": "11111111-1111-1111-11111111",
                     "file_url": "http://example.com/file.pdf"
                     "file_name": "file.pdf",
@@ -2011,6 +2017,8 @@ class BaseResultInfoView(APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
         materials = self.materials_model.objects.filter(result_v2=result)
         resp = {
+            'activity_uuid': result.result.block.event.activity.uid,
+            'title': result.result.title,
             'event_uuid': result.result.block.event.uid,
             'comment': result.comment,
             'approved': result.approved,
@@ -2047,6 +2055,8 @@ class UserResultInfoView(BaseResultInfoView):
 
         * 200 успешно
             {
+                "activity_uuid": "12341234-1234-1234-1234123412341234",
+                "title": "title",
                 "event_uuid": "11111111-1111-1111-11111111",
                 "comment": "",
                 "approved": false,
@@ -2088,6 +2098,8 @@ class TeamResultInfoView(BaseResultInfoView):
 
         * 200 успешно
             {
+                "activity_uuid": "12341234-1234-1234-1234123412341234",
+                "title": "title",
                 "event_uuid": "11111111-1111-1111-11111111",
                 "comment": "",
                 "approved": false,
@@ -2149,6 +2161,8 @@ class AllUserResultsView(ListAPIView):
                 "previous": null,
                 "results": [
                     {
+                        "activity_uuid": "12341234-1234-1234-1234123412341234",
+                        "title": "title",
                         "event_uuid": "63284c8e-4f4a-4b54-9ef9-92f1cfb13d98",
                         "comment": "",
                         "approved": false,
@@ -2208,6 +2222,8 @@ class AllTeamResultsView(ListAPIView):
                 "previous": null,
                 "results": [
                     {
+                        "activity_uuid": "12341234-1234-1234-1234123412341234",
+                        "title": "title",
                         "event_uuid": "63284c8e-4f4a-4b54-9ef9-92f1cfb13d98",
                         "comment": "",
                         "approved": false,
