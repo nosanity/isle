@@ -2653,7 +2653,12 @@ class EventSelfEnroll(GetEventMixin, View):
         EventEntry.all_objects.update_or_create(
             user=request.user, event=self.event, defaults={'self_enrolled': True, 'deleted': False}
         )
-        return JsonResponse({'status': 0})
+        if LabsEventResult.objects.filter(block__event=self.event, deleted=False, block__deleted=False).\
+                exclude(result_format='group').exists():
+            redirect_url = reverse('load-materials', kwargs={'uid': self.event.uid, 'unti_id': request.user.unti_id})
+        else:
+            redirect_url = reverse('event-view', kwargs={'uid': self.event.uid})
+        return JsonResponse({'status': 0, 'redirect': redirect_url})
 
 
 class CheckUserTraceApi(APIView):

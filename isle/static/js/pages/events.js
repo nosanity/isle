@@ -81,7 +81,7 @@ $('.self-enroll-btn').on('click', (e) => {
         method: 'POST',
         url: enrollUrl,
         data: {csrfmiddlewaretoken: csrfmiddlewaretoken},
-        success: (data) => { window.location.reload(); },
+        success: (data) => { window.location.href = data['redirect']; },
         error: () => { alert('Произошла ошибка'); }
     })
 });
