@@ -50,6 +50,8 @@ class TeamNestedserializer(serializers.BaseSerializer):
 
 
 class LabsBaseResultSerializer(serializers.Serializer):
+    activity_uuid = serializers.CharField(source='result.block.event.activity.uid')
+    title = serializers.CharField(source='result.title')
     event_uuid = serializers.CharField(source='result.block.event.uid')
     comment = serializers.CharField()
     approved = serializers.NullBooleanField()
