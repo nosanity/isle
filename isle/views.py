@@ -189,10 +189,13 @@ class IndexPageEventsFilterMixin(SearchHelperMixin):
                 Q(run_id__in=RunEnrollment.objects.filter(user=self.request.user).values_list('run_id', flat=True)))
         events = events.filter(Q(event_type_id__in=get_allowed_event_type_ids()) | Q(event_type__isnull=True))
         min_dt, max_dt = self.get_datetimes()
+        dt_filter = {}
         if min_dt:
-            events = events.filter(dt_start__gte=min_dt)
+            dt_filter['dt_start__gte'] = min_dt
         if max_dt:
-            events = events.filter(dt_start__lt=max_dt)
+            dt_filter['dt_start__lt'] = max_dt
+        if dt_filter:
+            events = events.filter(**dt_filter)
         if self.activity_filter:
             events = events.filter(activity=self.activity_filter)
         events = self.filter_search(events)
@@ -1811,10 +1814,13 @@ class ActivitiesFilter(SearchHelperMixin):
                 is_deleted=False,
                 id__in=ActivityEnrollment.objects.filter(user=self.request.user).values_list('activity_id', flat=True))
         min_dt, max_dt = self.get_datetimes()
+        dt_filter = {}
         if min_dt:
-            qs = qs.filter(event__dt_start__gte=min_dt)
+            dt_filter['event__dt_start__gte'] = min_dt
         if max_dt:
-            qs = qs.filter(event__dt_start__lt=max_dt)
+            dt_filter['event__dt_start__lt'] = max_dt
+        if dt_filter:
+            qs = qs.filter(**dt_filter)
         qs = self.filter_search(qs)
         return qs.distinct().order_by('title', 'id')
 
