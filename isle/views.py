@@ -2191,7 +2191,7 @@ class AllUserResultsView(ListAPIView):
     permission_classes = (ApiPermission,)
 
     def get_queryset(self):
-        return LabsUserResult.objects.select_related('user', 'result__block__event')\
+        return LabsUserResult.objects.select_related('user')\
             .prefetch_related('eventmaterial_set', 'circle_items').distinct()
 
 
@@ -2254,7 +2254,7 @@ class AllTeamResultsView(ListAPIView):
     permission_classes = (ApiPermission,)
 
     def get_queryset(self):
-        return LabsTeamResult.objects.select_related('team', 'result__block__event')\
+        return LabsTeamResult.objects.select_related('team')\
             .prefetch_related('eventteammaterial_set', 'team__users', 'circle_items').distinct()
 
 
