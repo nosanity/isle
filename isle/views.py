@@ -1920,6 +1920,7 @@ class FileInfoMixin:
             'comment': m.result_v2.comment,
             'levels': m.result_v2.get_meta(),
             'url': m.get_page_url(),
+            'approved': m.result_v2.approved,
         }
 
 
@@ -1949,7 +1950,8 @@ class UserMaterialsListView(FileInfoMixin, APIView):
                     "file_name": "file.pdf",
                     "comment": "",
                     "levels": [{"level": 1, "sublevel": 1, "competence": "11111111-1111-1111-11111111}],
-                    "url": "https://uploads.2035.university/11111111-1111-1111-11111111/123/"
+                    "url": "https://uploads.2035.university/11111111-1111-1111-11111111/123/",
+                    "approved": null,
                 },
                 {
                     "activity_uuid": "12341234-1234-1234-1234123412341234",
@@ -1960,7 +1962,8 @@ class UserMaterialsListView(FileInfoMixin, APIView):
                     "comment": "",
                     "levels": [{"level": 1, "sublevel": 1, "competence": "11111111-1111-1111-11111111}],
                     "url": "https://uploads.2035.university/load-team/11111111-1111-1111-11111111/123/",
-                    "team": {"id": 1, "name": "name", "members": [1, 2]}
+                    "team": {"id": 1, "name": "name", "members": [1, 2]},
+                    "approved": true,
                 },
                 ...
             ]
