@@ -661,6 +661,7 @@ class Team(models.Model):
     class Meta:
         verbose_name = 'Команда'
         verbose_name_plural = 'Команды'
+        unique_together = ('system', 'uuid')
 
     def __str__(self):
         return self.name
