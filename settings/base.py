@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'social_core',
     'social_django',
     'rest_framework',
+    'rest_framework.authtoken',
     'django_carrier_client',
     'djcelery',
     'django_user_agents'
@@ -170,6 +171,9 @@ DP_TOKEN = ''
 PT_URL = ''
 PT_TOKEN = ''
 
+OPENAPI_URL = ''
+OPENAPI_KEY = ''
+
 # базовый урл uploads
 BASE_URL = ''
 
@@ -183,6 +187,7 @@ KAFKA_PORT = 80
 KAFKA_TOKEN = ''
 KAFKA_PROTOCOL = 'http'
 KAFKA_TOPIC_SSO = 'sso'
+KAFKA_TOPIC_OPENAPI = 'openapi'
 
 # количество всех материалов в выбранных материалов, более которого генерация выгрузки должна идти асинхронно
 MAX_MATERIALS_FOR_SYNC_GENERATION = 500
@@ -251,7 +256,7 @@ except IOError as e:
 
 define = [
     'SSO_UNTI_URL', 'SSO_API_KEY', 'SSO_API_KEY', 'SOCIAL_AUTH_UNTI_SECRET', 'LABS_URL', 'LABS_TOKEN',
-    'XLE_URL', 'XLE_TOKEN', 'DP_URL', 'DP_TOKEN', 'BASE_URL', 'PT_URL', 'PT_TOKEN',
+    'XLE_URL', 'XLE_TOKEN', 'DP_URL', 'DP_TOKEN', 'BASE_URL', 'PT_URL', 'PT_TOKEN', 'OPENAPI_URL', 'OPENAPI_KEY',
 ]
 
 for name in define:

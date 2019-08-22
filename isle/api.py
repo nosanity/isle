@@ -85,6 +85,12 @@ class BaseApi:
             logging.exception('%s connection error' % self.name)
             raise ApiError
 
+    def django_paginated_request(self, url, method='GET', **kwargs):
+        while url:
+            resp = self.make_request_no_pagination(url, method=method, **kwargs)
+            yield resp
+            url = resp['next']
+
     def health_check(self):
         try:
             resp = requests.head(self.base_url)
@@ -175,3 +181,15 @@ class PTApi(BaseApi):
 
     def fetch_teams(self):
         return self.make_request('/api/v1/team')
+
+
+class Openapi(BaseApi):
+    name = 'openapi'
+    base_url = settings.OPENAPI_URL.rstrip('/')
+    authorization = {'headers': {'x-api-key': settings.OPENAPI_KEY}}
+
+    def get_token(self, token_id):
+        return self.make_request_no_pagination('/api/user-token/{}/'.format(token_id))
+
+    def get_token_list(self):
+        return self.django_paginated_request('/api/user-token/')

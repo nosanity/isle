@@ -11,14 +11,15 @@ from datetime import datetime
 from django.conf import settings
 from django.core.cache import caches
 from django.core.files.storage import default_storage
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext as _
 import xlsxwriter
 from celery.task.control import inspect
-from isle.api import ApiError, LabsApi, XLEApi, DpApi, SSOApi, PTApi
+from rest_framework.authtoken.models import Token
+from isle.api import ApiError, LabsApi, XLEApi, DpApi, SSOApi, PTApi, Openapi
 from isle.cache import UserAvailableContexts
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
@@ -1130,3 +1131,31 @@ def calculate_context_statistics(context):
     bulk_size = 100
     for i in range(0, len(bulk), bulk_size):
         DTraceStatisticsHistory.objects.bulk_create(bulk[i:(i+bulk_size)])
+
+
+def update_user_token(token_id):
+    try:
+        resp = Openapi().get_token(token_id)
+        user = User.objects.filter(unti_id=resp['user']).first()
+        if not user:
+            user = pull_sso_user(resp['user'])
+        if not user:
+            logging.error('User with unti id %s does not exist', resp['user'])
+            return
+        update_token(user, resp['key'])
+    except ApiError:
+        pass
+    except Exception:
+        logging.exception('Failed to update user token %s', token_id)
+
+
+def update_token(user, key):
+    try:
+        token = user.auth_token
+        if token.key != key:
+            with transaction.atomic():
+                token.delete()
+                Token.objects.create(user=user, key=key)
+                logging.warning('User %s token has changed', user.unti_id)
+    except Token.DoesNotExist:
+        Token.objects.create(user=user, key=key)

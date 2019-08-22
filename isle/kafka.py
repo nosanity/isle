@@ -7,7 +7,7 @@ from carrier_client.message import OutgoingMessage
 from django_carrier_client.helpers import MessageManagerHelper
 from isle.api import SSOApi, ApiError
 from isle.models import LabsUserResult, LabsTeamResult, PLEUserResult
-from isle.utils import update_casbin_data
+from isle.utils import update_casbin_data, update_user_token
 
 
 message_manager = MessageManager(
@@ -127,6 +127,21 @@ class CasbinModelListener(KafkaBaseListener):
         update_casbin_data()
 
 
+class OpenapiTokenListener(KafkaBaseListener):
+    topic = settings.KAFKA_TOPIC_OPENAPI
+    actions = (KafkaActions.CREATE, KafkaActions.UPDATE)
+    msg_type = 'token'
+
+    def _handle_for_id(self, obj_id, action):
+        try:
+            token_id = obj_id.get(self.msg_type, {}).get('id')
+            assert token_id, 'Failed to get token id'
+            update_user_token(token_id)
+        except (AssertionError, AttributeError):
+            logging.error('Got wrong object id from kafka: %s' % obj_id)
+
+
 MessageManagerHelper.set_manager_to_listen(SSOUserChangeListener())
 MessageManagerHelper.set_manager_to_listen(CasbinPolicyListener())
 MessageManagerHelper.set_manager_to_listen(CasbinModelListener())
+MessageManagerHelper.set_manager_to_listen(OpenapiTokenListener())
