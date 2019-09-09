@@ -29,11 +29,11 @@ from drf_swagger_docs.permissions import SwaggerBasePermission
 from drf_yasg.openapi import Parameter, Schema
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status, exceptions
-from rest_framework.authentication import SessionAuthentication
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
 from rest_framework.generics import ListAPIView, CreateAPIView
 from rest_framework.pagination import PageNumberPagination, LimitOffsetPagination
 from rest_framework.parsers import MultiPartParser
-from rest_framework.permissions import BasePermission, IsAdminUser
+from rest_framework.permissions import BasePermission, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
@@ -1425,6 +1425,15 @@ class ApiPermission(SwaggerBasePermission, BasePermission):
         return False
 
 
+class IsAuthenticatedCustomized(SwaggerBasePermission, IsAuthenticated):
+    _require_authentication = True
+
+    def has_permission(self, request, view):
+        if request.method == 'OPTIONS':
+            return True
+        return super().has_permission(request, view)
+
+
 class AttendanceApi(ListAPIView):
     """
     get:
@@ -1889,11 +1898,12 @@ class UserChartApiView(APIView):
 
         * 200 успешно
         * 400 неполный запрос
-        * 403 api key отсутствует или неправильный
+        * 401 если не передан авторизационный токен
         * 404 пользователь не найден
     """
 
-    permission_classes = ()
+    authentication_classes = (TokenAuthentication, )
+    permission_classes = (IsAuthenticatedCustomized, )
 
     @swagger_auto_schema(manual_parameters=[
         Parameter('user_id', 'query', type='number', required=True),
@@ -2727,8 +2737,11 @@ class CheckUserTraceApi(APIView):
                 "event_id": "event with uuid cd602dd7-4fef-440b-82bf-013b5817e3dd not found"
             }
             если не указан какой-то параметр или не найден пользователь/мероприятие с описанием ошибок по параметрам
+
+        * 401 если не передан авторизационный токен
     """
-    permission_classes = ()
+    authentication_classes = (TokenAuthentication, )
+    permission_classes = (IsAuthenticatedCustomized, )
 
     @swagger_auto_schema(manual_parameters=[
         Parameter('leader_id', 'query', type='number', required=False),
