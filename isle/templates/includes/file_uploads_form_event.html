@@ -1,0 +1,8 @@
+{% extends 'includes/file_uploads_form.html' %}
+{% load helpers %}
+
+{% block additional %}
+    {% if is_assistant or result.result_format != 'personal' %}
+        {% user_or_team_autocomplete event result %}
+    {% endif %}
+{% endblock %}

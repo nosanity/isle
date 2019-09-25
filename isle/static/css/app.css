@@ -699,3 +699,7 @@ img.user-img {
 .display-inline-block {
     display: inline-block;
 }
+
+.inline-user-item {
+    display: inline-block;
+}

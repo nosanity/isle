@@ -1,0 +1,84 @@
+{% load i18n %}
+<div class="result-items-wrapper">
+    {% for result_dict in result.results %}
+        <div class="item-result-wrapper" data-id="{{ result_dict.type }}-{% if result_dict.type == 'user' %}{{ result_dict.obj.unti_id }}{% else %}{{ result_dict.obj.id }}{% endif %}">
+            {% if result_dict.type == 'user' %}
+                <div>{% include 'includes/user_image.html' with u=result_dict.obj %}<strong>{{ result_dict.obj.fio }}</strong></div>
+            {% else %}
+                <div>
+                    <div class="inline-user-item"><strong>
+                        {% blocktrans with name=result_dict.obj.name %}Группа "{{ name }}"{% endblocktrans %}
+                    </strong></div>
+                    {% for u in result_dict.obj.users.all %}
+                        <div class="inline-user-item">{% include 'includes/user_image.html' %}<strong {% if u.id not in participant_ids %}class="color-grey"{% endif %}>{{ u.fio }}</strong></div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            <ul class="list-group list-group-flush">
+                {% for result_item in result_dict.items %}
+                <li class="list-group-item no-left-padding result-item-li">
+                    <div class="row">
+                        <div class="col-md-9">
+                            <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="{{ result_item.id }}">
+                                {% for link in result_item.links %}
+                                    <li>
+                                        <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                            <p class="result-comment">{{ result_item.comment }}</p>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="result-helper-block">
+                                <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
+                                <span data-url="{{ result_item.get_page_url }}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
+                            </div>
+                            {% if is_assistant %}
+                            <div class="clearfix"></div>
+                            <div class="approve-result-block">
+                                <div class="pull-right">
+                                    <div class="approve-input-container">
+                                        <input type="radio" class="approve-radio-btn" name="approved-{{ result_item.id }}" id="{{ result_item.id }}-approved-true" value="true" {% if result_item.approved == True %}checked="checked"{% endif %}>
+                                        <label for="{{ result_item.id }}-approved-true">{% trans "Валидный" %}</label>
+                                    </div>
+                                    <div class="approve-input-container">
+                                        <input type="radio" class="approve-radio-btn" name="approved-{{ result_item.id }}" id="{{ result_item.id }}-approved-false" value="false" {% if result_item.approved == False %}checked="checked"{% endif %}>
+                                        <label for="{{ result_item.id }}-approved-false">{% trans "Невалидный" %}</label>
+                                    </div>
+                                </div>
+                                <div class="clearfix"></div>
+                                <div class="approve-text pull-right">
+                                    <p class="current-approve-text text-muted">{% if result_item.approved != None and result_item.approve_text %}{{ result_item.approve_text }}{% endif %}</p>
+                                </div>
+                                <div class="clearfix"></div>
+                                <div class="approve-text-edit" style="display: none;" data-approved="{{ result_item.approved }}">
+                                    <input type="text" maxlength="255" class="approve-text-edit-input pull-right" placeholder="{% trans 'Комментарий (опционально)' %}">
+                                    <div class="clearfix"></div>
+                                    <button class="btn btn-success do-approve-result pull-left" data-labs-result-id="{{ result.id }}" data-result-id="{{ result_item.id }}">{% trans "Сохранить" %}</button>
+                                    <button class="btn btn-danger cancel-approve-btn pull-right">{% trans "Отменить" %}</button>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="row result-selected-circle-items-div" data-selected-circle-items="{{ result_item.selected_circle_items|join:',' }}">
+                        {% if result.available_circle_items %}
+                            {% for circle_item in result.available_circle_items %}
+                            <div class="form-check">
+                                <input type="checkbox" class="result-circle-items" value="{{ circle_item.id }}" id="circle_item_{{ circle_item.id }}_{{ result_item.id }}" {% if circle_item.id in result_item.selected_circle_items %}checked="checked"{% endif %} disabled>
+                                <label class="result-circle-items-label" for="circle_item_{{ circle_item.id }}_{{ result_item.id }}">{{ circle_item.tool }}</label>
+                            </div>
+                            {% endfor %}
+                            {% if is_assistant or result_item.user == request.user or result_item.team_id in user_teams %}
+                                <span class="start-change-circle-items">{% trans "Изменить" %}</span>
+                                <span class="change-circle-items" data-labs-result-id="{{ result.id }}" data-result-id="{{ result_item.id }}">{% trans "Сохранить" %}</span>
+                                <span class="cancel-change-circle-items">{% trans "Отменить" %}</span>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endfor %}
+</div>

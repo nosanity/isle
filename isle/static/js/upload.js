@@ -47,7 +47,7 @@ if (pageType == 'loadMaterials' || pageType == 'eventStructure') {
         })
     });
 }
-else if (pageType == 'loadMaterials_v2') {
+else if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace') {
     maxSizeSelector = 'form.user-materials-form input[type=file]';
 
     const $forms = $('form.user-materials-form');
@@ -125,6 +125,12 @@ function addUploadProgress($form, fileField) {
     return rowNum;
 }
 
+function get_url_from_item_wrapper(obj) {
+    let id = obj.data('id').split('-');
+    let pattern = id[0] == 'user' ? userUploadPattern : teamUploadPattern;
+    return pattern.replace('{REPLACE}', id[1]);
+}
+
 function isFormValid($form) {
     const $urlField = $form.find('input[name=url_field]');
     const $fileField = $form.find('input[name=file_field]');
@@ -135,12 +141,17 @@ function isFormValid($form) {
         return !!$form.find('select[name=trace_name]').val() && !(urlFilled == fileFilled);
     }
 
+    if (pageType == 'event_dtrace' && $form.find('.user-or-team-autocomplete-selector').length) {
+        let user_or_team_filled = !!$form.find('.user-or-team-autocomplete-selector').val();
+        return !(urlFilled == fileFilled) && user_or_team_filled;
+    }
+
     return !(urlFilled == fileFilled);
 }
 
 function setActivateButton($form) {
     let selector = null;
-    if (pageType == 'loadMaterials' || pageType == 'eventStructure' || pageType == 'loadMaterials_v2') {
+    if (pageType == 'loadMaterials' || pageType == 'eventStructure' || pageType == 'loadMaterials_v2' || pageType == 'event_dtrace') {
         selector = '.add-material-btn';
     } else if (pageType == 'loadUserMaterials') {
         selector = '.save-result-btn';
@@ -166,6 +177,9 @@ function clearFileForm($form) {
     }
     catch (e) {
         // do nothing
+    }
+    if (pageType == 'event_dtrace') {
+        yl.jQuery($form.find('select.user-or-team-autocomplete-selector')[0]).val(null).trigger('change');
     }
 }
 
@@ -224,7 +238,7 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
                 trace_name: trace_id,
                 material_id: $obj.val() || $obj.attr('value')
             }
-            if (pageType == 'loadMaterials_v2') {
+            if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace') {
                 data['labs_result_id'] = $obj.parents('.material-result-div').data('result');
                 data['result_item_id'] = $obj.parents('.result-materials-wrapper').data('result-id');
             }
@@ -290,10 +304,14 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
         labs_result_id: $obj.parents('.material-result-div').data('result'),
         comment: $obj.parents('.result-comment-edit-form').find('.result-comment-edit-input').val()
     };
+    let url = '';
+    if (pageType == 'event_dtrace') {
+        url = get_url_from_item_wrapper($obj.parents('.item-result-wrapper'));
+    }
     $.ajax({
         type: 'POST',
         data: data,
-        url: '',
+        url: url,
         error: (xhr, err) => {
             // TODO show appropriate message
             let t = $obj.parents('.result-item-li').find('.old_comment_value').val().trim();
@@ -386,10 +404,14 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
         approve_text: $(e.target).parents('.approve-text-edit').find('.approve-text-edit-input').val(),
         approved: $(e.target).parents('.approve-result-block').find('.approve-radio-btn:checked').val()
     }
+    let url = '';
+    if (pageType == 'event_dtrace') {
+        url = get_url_from_item_wrapper($(e.target).parents('.item-result-wrapper'));
+    }
     $.ajax({
         type: 'POST',
         data: post_data,
-        url: '',
+        url: url,
         success: (data) => {
             comment_container.text(data.approve_text);
             comment_container.parents('.approve-text').show();
@@ -439,6 +461,7 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
     $.ajax({
         method: 'POST',
         data: post_data,
+        url: pageType == 'event_dtrace'? get_url_from_item_wrapper(wrapper.parents('.item-result-wrapper')) : '',
         success: (data) => {
             let selected_ids = data['selected_items'].join(',');
             wrapper.data('selected-circle-items', selected_ids);
@@ -541,7 +564,7 @@ $('body').delegate('input[name=file_field]', 'change', (e) => {
         $button = $obj.parents('form.trace-form');
         parentSelector = 'div.tab-content';
     }
-    else if (pageType == 'loadMaterials_v2') {
+    else if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace') {
         $button = $obj.parents('div.material-result-div').find('form.user-materials-form');
         parentSelector = 'form';
     } else if (pageType == 'loadUserMaterials') {
@@ -561,11 +584,18 @@ $('body').delegate('input[name=file_field]', 'change', (e) => {
 
 });
 
+if (pageType == 'event_dtrace') {
+    yl.jQuery('select.user-or-team-autocomplete-selector').on('change', (e) => {
+        let form = $(e.target).parents('form.user-materials-form')
+        form.length ? setActivateButton(form) : null;
+    })
+}
+
 $('body').delegate('input[name=url_field]', 'keyup change', (e) => {
     if (pageType == 'loadMaterials') {
         setActivateButton($(e.target).parents('form.trace-form'));
     }
-    else if (pageType == 'loadMaterials_v2') {
+    else if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace') {
         setActivateButton($(e.target).parents('form.user-materials-form'));
     } else if (pageType == 'loadUserMaterials') {
         setActivateButton($('#result_form'));
@@ -642,7 +672,7 @@ function resultFormHandler(e) {
         const data = $form.serialize();
         $('.save-result-btn').prop('disabled', true);
         $.ajax({
-            url: $form.attr('action'),
+            url: get_requestUrl($form),
             method: 'POST',
             data: data,
             success: function(data) {
@@ -704,12 +734,49 @@ function successProcessFile(data, $form, result_item_id) {
     const comment = data.comment;
     const page_url = data.result_url;
     let items, item;
-    if (pageType == 'loadMaterials_v2') {
+    if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace') {
+        let data_item_id = data['target_item_info']['type'] + '-' + data['target_item_info']['id']
         let labs_result_id = $($form).parents('.material-result-div').data('result');
+        if (pageType == 'event_dtrace' && $form.parents('.material-result-div').find('.item-result-wrapper[data-id="' + data_item_id + '"]').length == 0) {
+            let item_info_html = '';
+            if  (data['target_item_info']['type'] == 'user') {
+                item_info_html = `
+                <div>
+                    <img class="user-img" src="${data['target_item_info']['image'] && data['target_item_info']['image']['Small'] || DEFAULT_USER_IMAGE}" />
+                    <strong>${data['target_item_info']['name']}</strong>
+                </div>
+                `;
+            }
+            else {
+                let users = data['target_item_info']['users'];
+                users_html = '';
+                for (let i = 0; i < users.length; i++) {
+                    users_html += `
+                        <div class="inline-user-item">
+                            <img class="user-img ${users[i]['enrolled'] ? '': 'opacity-50'}" src="${users[i]['image'] && users[i]['image']['Small'] || DEFAULT_USER_IMAGE}" />
+                            <strong class="${users[i]['enrolled']? '' : 'color-grey'}">${users[i]['name']}</strong>
+                        </div>
+                    `;
+                }
+                item_info_html = `
+                    <div>
+                        <div class="inline-user-item"><strong>Группа "${data['target_item_info']['name']}"</strong></div>
+                        ${users_html}
+                    </div>
+                `;
+            }
+            item_wrapper_html = `
+                <div class="item-result-wrapper" data-id="${data_item_id}">
+                    ${item_info_html}
+                    <ul class="list-group list-group-flush"></ul>
+                </div>
+            `;
+            $($form).parents('.material-result-div').find('.result-items-wrapper').append($(item_wrapper_html));
+        }
         if (!$form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]').length) {
 
             if (isAssistant) {
-                additional_btns = `<span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>`;
+                additional_btns = pageType == 'event_dtrace' ? '' : `<span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>`;
                 approve_block = `
                     <div class="clearfix"></div>
                     <div class="approve-result-block">
@@ -777,7 +844,7 @@ function successProcessFile(data, $form, result_item_id) {
                         </div>
                         <div class="col-md-3">
                             <div class="result-helper-block">
-                                <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
+                                ${pageType == 'event_dtrace' ? `` : `<span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>`}
                                 <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
                                 <span data-url="${page_url}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
                                 ${additional_btns}
@@ -788,22 +855,38 @@ function successProcessFile(data, $form, result_item_id) {
                     ${circle_items_div}
                 </li>
             `;
-            $form.parents('div.material-result-div').find('ul.list-group').prepend($(html_wrapper));
+            if (pageType == 'event_dtrace') {
+                $form.parents('.material-result-div')
+                .find('.item-result-wrapper[data-id="' + data_item_id + '"]')
+                .find('ul.list-group').prepend($(html_wrapper));
+            }
+            else {
+                $form.parents('div.material-result-div').find('ul.list-group').prepend($(html_wrapper));
+            }
         }
-        item = $form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]');
+        if (pageType == 'event_dtrace') {
+            item = $form.parents('.material-result-div')
+            .find('.item-result-wrapper[data-id="' + data_item_id + '"]')
+            .find('ul.list-group').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]');
+        }
+        else {
+            item = $form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]');
+        }
     }
     else {
         items = $('.event-trace-materials-wrapper[data-trace-id=' + data.trace_id + ']').find('ul.list-group');
     }
     const data_attrs = data.data_attrs;
     let html = null;
-    if (pageType == 'loadMaterials_v2') {
+    if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace') {
         html = `
             <li>
                 <a class="link_preview" href="${url}" ${data_attrs}>${name}</a>&nbsp;
+                ${pageType == 'event_dtrace' ? `` : `
                 <button name="material_id" value="${mId}" class="btn-transparent delete-material-btn pull-right">
                     <span class="glyphicon glyphicon-remove"></span>
                 </button>
+                `}
             </li>
         `
     }
@@ -853,7 +936,7 @@ function successProcessFile(data, $form, result_item_id) {
                 <li class="list-group-item ${data.uploader_name ? 'assistant-team-link' : ''}" data-comment="${data.comment}" data-material-id="${mId}">
                     <a class="link_preview" href="${url}" ${data_attrs}>${name}</a>
                     &nbsp;
-                    <span name="material_id" value="${mId}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
+                    ${pageType == 'event_dtrace' ? `` : `<span name="material_id" value="${mId}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">`}
                     </span>
                     ${edit_btn}
                     <div>
@@ -864,7 +947,7 @@ function successProcessFile(data, $form, result_item_id) {
             `;
         }
     }
-    if (pageType == 'loadMaterials_v2') {
+    if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace') {
         item.prepend($(html));
         item.parent('div').find('.result-comment').html(comment);
         resultFilesNumberHandler(item.parents('div.result-items-wrapper'));
@@ -920,12 +1003,9 @@ function processUrl(form, result_item_id) {
     const $form = $(form);
     const formData = new FormData($(form).get(0));
     formData.append('add_btn', '');
-    if (pageType == 'loadMaterials_v2')
+    if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace')
         formData.append('result_item_id', result_item_id);
-    try {
-        requestUrl = fileBlocksUploadUrl;
-    }
-    catch(e) { requestUrl = ''; }
+    requestUrl = get_requestUrl(form);
     $.ajax({
         type: 'POST',
         data: formData,
@@ -943,6 +1023,29 @@ function processUrl(form, result_item_id) {
 
 // file-upload
 
+function get_requestUrl(form) {
+    if (pageType == 'event_dtrace') {
+        if (!$(form).find('select.user-or-team-autocomplete-selector').length) {
+            return userUploadPattern.replace('{REPLACE}', UNTI_ID);
+        }
+        let val = $(form).find('select.user-or-team-autocomplete-selector').val();
+        if (val) {
+            let pattern = '';
+            switch (val.split('-')[0]) {
+                case userContentId:
+                    pattern = userUploadPattern;
+                    break;
+                case teamContentId:
+                    pattern = teamUploadPattern;
+                    break;
+            }
+            return pattern.replace('{REPLACE}', val.split('-')[1]);
+        }
+        return ''
+    }
+    return form.attr('action')
+}
+
 function processFile(form, file, filesLength, result_item_id) {
     const $form = $(form);
     const formData = new FormData($(form).get(0));
@@ -951,13 +1054,10 @@ function processFile(form, file, filesLength, result_item_id) {
         formData.append('file_field', file, file.name);
     }
     formData.append('add_btn', '');
-    if (pageType == 'loadMaterials_v2')
+    if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace')
         formData.append('result_item_id', result_item_id);
     const num = filesLength ? addUploadProgress($form, file) : null;
-    try {
-        requestUrl = fileBlocksUploadUrl;
-    }
-    catch(e) { requestUrl = ''; }
+    requestUrl = get_requestUrl(form);
     $.ajax({
         type: 'POST',
         data: formData,
@@ -993,10 +1093,10 @@ function formSubmitHadler(form, resultId = null) {
         setActivateButton($form);
         return false;
     }
-    if (pageType == 'loadMaterials_v2')
+    if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace')
         $form.find('.add-material-btn').prop('disabled', true);
     if (isFormValid($form)) {
-        if (pageType == 'loadMaterials_v2') {
+        if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace') {
         let tools = [];
         $form.parents('.material-result-div').find('.upload-circle-items-wrapper .result-circle-items:checked').each((i, e) => { tools.push($(e).val()) });
             let data = {
@@ -1009,6 +1109,7 @@ function formSubmitHadler(form, resultId = null) {
             $.ajax({
                 method: 'POST',
                 data: data,
+                url: get_requestUrl($form),
                 success: function(data) {
                     formSubmitHandler_inner($form, resultId, data.result_id);
                 },

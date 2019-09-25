@@ -59,6 +59,9 @@ urlpatterns = [
     path('api/event-materials/', views.EventMaterialsApi.as_view()),
     path('api/context-user-statistics/<uuid:context_uuid>/', views.ContextUserStatistics.as_view()),
     path('<str:uid>/<int:unti_id>/<str:result_type>/<int:result_id>', views.ResultPage.as_view(), name='result-page'),
+    path('<str:uid>/dtrace/', views.EventDigitalTrace.as_view(), name='event-dtrace'),
+    path('autocomplete/team-and-user/', views.TeamAndUserAutocomplete.as_view(),
+         name='team-and-user-autocomplete'),
 ]
 
 if settings.DEBUG:

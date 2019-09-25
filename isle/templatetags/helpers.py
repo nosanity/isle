@@ -1,5 +1,6 @@
 from urllib import parse
 from django import template
+from isle.forms import UserOrTeamUploadAutocomplete
 
 register = template.Library()
 
@@ -69,3 +70,10 @@ def upload_files_compact_view(context):
                                             result.results):
                     cnt += 1
     return cnt == 1
+
+
+@register.inclusion_tag('includes/user_or_team_autocomplete.html')
+def user_or_team_autocomplete(event, result):
+    return {
+        'autocomplete': UserOrTeamUploadAutocomplete(event=event, result=result, prefix=str(result.id)),
+    }

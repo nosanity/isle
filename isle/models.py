@@ -230,17 +230,20 @@ class Event(models.Model):
         Если соответствующая настройка отключена показываются только те, для которых есть загруженный след
         """
         if self.context:
-            user_ids = user_ids or list(EventEntry.objects.filter(event=self).values_list('user_id', flat=True))
-            qs = Team.objects.all()
+            user_ids = user_ids or self.get_participant_ids()
             filter_dict = {
                 'system': Team.SYSTEM_PT,
                 'contexts': self.context,
                 'users__id__in': user_ids,
             }
+            qs = Team.objects.filter(**filter_dict)
             if not settings.ENABLE_PT_TEAMS:
-                qs = qs.annotate(material_cnt=models.Count('eventteammaterial', filter=models.Q(event_id=self.id)))
-                filter_dict['material_cnt__gt'] = 0
-            return qs.filter(**filter_dict).distinct().prefetch_related('users')
+                qs = qs.annotate(
+                    material_cnt=models.Count('eventteammaterial',
+                                              filter=models.Q(id__in=list(qs.values_list('id', flat=True))))).filter(
+                    material_cnt__gt=0
+                )
+            return qs.distinct().prefetch_related('users')
         return Team.objects.none()
 
     def get_participant_ids(self):
