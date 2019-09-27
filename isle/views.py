@@ -2347,7 +2347,6 @@ class ResultPage(TemplateView):
             'result': result,
             'files': result.get_files(),
             'event': event,
-            'structure': event.blocks.prefetch_related('results'),
             'models': result.models_list(),
         }
 
