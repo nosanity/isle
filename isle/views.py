@@ -352,26 +352,31 @@ class EventView(GetEventMixin, TemplateView):
             u.can_delete = u.id in can_delete
             u.added_by_chat_bot = u.id in chat_bot_added
         event_entry = EventEntry.objects.filter(event=self.event, user=self.request.user).first()
-        teams = list(Team.objects.filter(event=self.event).select_related('creator').prefetch_related('users')) + \
-            list(self.event.get_pt_teams(user_ids=[i.id for i in users]))
-        user_teams = [
-            i.id for i in teams if self.request.user in
-                i.get_members_for_event(self.event, user_ids=[i.id for i in users])
-        ]
-        teams = sorted(list(teams), key=lambda x: (int(x.id not in user_teams), x.name.lower()))
-        for team in teams:
-            team.traces_number = team.get_traces_number_for_event(self.event)
-        teams_allowed_to_delete = [i.id for i in teams if i.user_can_delete_team(self.request.user)]
         data.update({
             'students': users,
             'event': self.event,
-            'teams': teams,
-            'user_teams': user_teams,
             'event_entry': event_entry,
             'event_entry_id': getattr(event_entry, 'id', 0),
-            'teams_allowed_to_delete': teams_allowed_to_delete,
         })
+        data.update(self.get_teams_data(self.event, self.request.user, users))
         return data
+
+    @staticmethod
+    def get_teams_data(event, user, users):
+        teams = list(Team.objects.filter(event=event).select_related('creator').prefetch_related('users')) + \
+                list(event.get_pt_teams(user_ids=[i.id for i in users]))
+        user_teams = [
+            i.id for i in teams if user in
+                                   i.get_members_for_event(event, user_ids=[i.id for i in users])
+        ]
+        teams = sorted(list(teams), key=lambda x: (int(x.id not in user_teams), x.name.lower()))
+        for team in teams:
+            team.traces_number = team.get_traces_number_for_event(event)
+        return {
+            'teams': teams,
+            'user_teams': user_teams,
+            'teams_allowed_to_delete': [i.id for i in teams if i.user_can_delete_team(user)],
+        }
 
 
 @method_decorator(context_setter, name='get')
@@ -1248,7 +1253,11 @@ class BaseTeamView(GetEventMixin):
             return JsonResponse({}, status=400)
         team, members_changed = form.save()
         self.team_saved(team, members_changed)
-        return JsonResponse({'redirect': reverse('event-view', kwargs={'uid': self.event.uid})})
+        if request.GET.get('next'):
+            redirect_url = request.GET['next']
+        else:
+            redirect_url = reverse('event-view', kwargs={'uid': self.event.uid})
+        return JsonResponse({'redirect': redirect_url})
 
     def team_saved(self, team, members_changed):
         pass
@@ -3117,3 +3126,18 @@ class TeamAndUserAutocomplete(Select2QuerySetSequenceView):
     def get_result_value(self, result):
         return '%s-%s' % (ContentType.objects.get_for_model(result).pk,
                           result.unti_id if isinstance(result, User) else result.pk)
+
+
+class EventTeams(GetEventMixinWithAccessCheck, TemplateView):
+    template_name = 'event_teams.html'
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        users = list(self.event.get_participants())
+        data.update({
+            'students': users,
+            'event': self.event,
+            'team_ct': ContentType.objects.get_for_model(Team),
+        })
+        data.update(EventView.get_teams_data(self.event, self.request.user, users))
+        return data

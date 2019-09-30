@@ -62,6 +62,7 @@ urlpatterns = [
     path('<str:uid>/dtrace/', views.EventDigitalTrace.as_view(), name='event-dtrace'),
     path('autocomplete/team-and-user/', views.TeamAndUserAutocomplete.as_view(),
          name='team-and-user-autocomplete'),
+    path('<str:uid>/teams/', views.EventTeams.as_view(), name='event-teams'),
 ]
 
 if settings.DEBUG:
