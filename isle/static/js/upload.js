@@ -242,18 +242,23 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
                 data['labs_result_id'] = $obj.parents('.material-result-div').data('result');
                 data['result_item_id'] = $obj.parents('.result-materials-wrapper').data('result-id');
             }
-            try {
-                requestUrl = fileBlocksUploadUrl;
-            }
-            catch(e) { requestUrl = ''; }
+            requestUrl = pageType == 'event_dtrace' ? get_url_from_item_wrapper($obj.parents('.item-result-wrapper')) : '';
             $.ajax({
                 type: 'POST',
                 data: data,
                 url: requestUrl,
                 success: (data) => {
-                    let el = $obj.parents('div.result-items-wrapper');
-                    $obj.parent('li').remove();
-                    resultFilesNumberHandler(el);
+                    if (pageType == 'event_dtrace') {
+                        if ($obj.parents('.item-result-wrapper').find('li.result-item-li').length == 1)
+                            $obj.parents('.item-result-wrapper').remove()
+                         else
+                            $obj.parents('li.result-item-li').remove();
+                    }
+                    else {
+                        let el = $obj.parents('div.result-items-wrapper');
+                        $obj.parent('li').remove();
+                        resultFilesNumberHandler(el);
+                    }
                     if (pageType == 'loadMaterials') {
                         show_trace_name(trace_id);
                     }
@@ -279,9 +284,12 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
         $.ajax({
             type: 'POST',
             data: data,
-            url: '',
+            url: pageType == 'event_dtrace' ? get_url_from_item_wrapper($obj.parents('.item-result-wrapper')) : '',
             success: (data) => {
-                $obj.parents('.result-item-li').remove();
+                if (pageType == 'event_dtrace' && $obj.parents('.item-result-wrapper').find('.result-item-li').length == 1)
+                    $obj.parents('.item-result-wrapper').remove();
+                else
+                    $obj.parents('.result-item-li').remove();
                 resultFilesNumberHandler($obj.parents('div.result-items-wrapper'));
             },
             error: (xhr, err) => {
@@ -331,11 +339,17 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
     let $obj = $(e.target);
     let result = $obj.parents('.result-item-li').find('.result-materials-wrapper');
     let labs_result = $obj.parents('.material-result-div');
-    build_move_result_modal(result, labs_result.data('result'));
+    requestUrl = pageType == 'event_dtrace' ? get_url_from_item_wrapper($obj.parents('.item-result-wrapper')) : '';
+    let type = '';
+    if (pageType == 'event_dtrace') {
+        type = $obj.parents('.item-result-wrapper').data('id').split('-')[0];
+    }
+    build_move_result_modal(result, labs_result.data('result'), requestUrl, type);
 }).delegate('#btn-move-selected-result', 'click', (e) => {
     let obj = $(e.target);
     obj.prop('disabled', true).attr('disabled', 'disabled');
     let post_data, result, old_result_wrapper;
+    let url = $('#move_results_modal').data('request-url');
     if (obj.data('mv-type') == 'result') {
         post_data = {
             csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
@@ -344,8 +358,15 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
             labs_result_id: $(e.target).data('labs_result_id'),
             move_to: $('input[name="move-result-radiobox"]:checked').val()
         };
-        result = $('.result-materials-wrapper[data-result-id="' + $(e.target).data('user_result') + '"]').parents('li.result-item-li');
-        old_result_wrapper = result.parents('.material-result-div').find('ul.list-group')
+        if (pageType == 'event_dtrace') {
+            result = $('.result-materials-wrapper[data-result-id="' + $(e.target).data('user_result') + '"][data-result-type=' + $(e.target).data('result-type') + ']')
+            .parents('li.result-item-li');
+            old_result_wrapper = result.parents('.item-result-wrapper');
+        }
+        else {
+            result = $('.result-materials-wrapper[data-result-id="' + $(e.target).data('user_result') + '"]').parents('li.result-item-li');
+            old_result_wrapper = result.parents('.material-result-div').find('ul.list-group')
+        }
     }
     else {
         post_data = {
@@ -358,15 +379,35 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
     $.ajax({
         type: 'POST',
         data: post_data,
-        url: '',
+        url: url,
         success: (data) => {
             if (obj.data('mv-type') == 'result') {
-                let destination = data.new_result_id;
-                let result_block = $('.material-result-div[data-result="' + destination + '"]').find('ul.list-group');
-                result.appendTo(result_block);
+                if (pageType == 'event_dtrace') {
+                    let destination = data.new_result_id;
+                    let target_id = result.parents('.item-result-wrapper').data('id');
+                    let result_block = $('.material-result-div[data-result="' + destination + '"]');
+                    if (result_block.find('.item-result-wrapper[data-id=' + target_id + ']').length == 0) {
+                        let description = result.parents('.item-result-wrapper').children('div').html();
+                        let html = `
+                            <div class="item-result-wrapper" data-id="${target_id}">
+                                <div>${description}</div>
+                                <ul class="list-group list-group-flush"></ul>
+                            </div>
+                        `;
+                        result_block.append($(html));
+                    }
+                    target_block = result_block.find('.item-result-wrapper[data-id=' + target_id + ']').find('ul.list-group');
+                    target_block.append(result);
+                    if (old_result_wrapper.find('.result-item-li').length == 0) {old_result_wrapper.remove();}
+                }
+                else {
+                    let destination = data.new_result_id;
+                    let result_block = $('.material-result-div[data-result="' + destination + '"]').find('ul.list-group');
+                    result.appendTo(result_block);
+                    resultFilesNumberHandler(old_result_wrapper);
+                    resultFilesNumberHandler(result_block);
+                }
                 $('#move_results_modal').modal('hide');
-                resultFilesNumberHandler(old_result_wrapper);
-                resultFilesNumberHandler(result_block);
             }
             else {
                 let destination = data.item_result_id;
@@ -489,7 +530,7 @@ if (pageType == 'loadMaterials') {
     })
 }
 
-function build_move_result_modal(result, labs_result_id) {
+function build_move_result_modal(result, labs_result_id, url='', type='') {
     if ($('#move_results_modal').length == 0) {
         let modal = `
             <div id="move_results_modal" class="modal fade" role="dialog" style="max-width: 100vw;">
@@ -511,31 +552,36 @@ function build_move_result_modal(result, labs_result_id) {
         `;
         $('body').append($(modal));
     }
+    $('#move_results_modal').data('request-url', url);
     let items = '';
     let cnt = 0;
     let label;
+    let result_type;
     for (let i = 0; i < blocks_structure.length; i++) {
         let block = blocks_structure[i];
+        let block_items = '';
         for (let j = 0; j < block.results.length; j++) {
             let res = block.results[j];
             if (res.deleted || block.deleted)
                 continue;
             if (labs_result_id && res.id == labs_result_id)
-                items += `
+                block_items += `
                     <li><input type="radio" name="move-result-radiobox" value="${res.id}" id="move_item_${cnt}" disabled="disabled">
                     <label for="move_item_${cnt}">${block.title}, ${res.title} (текущий)</label></li>
                 `;
-            else
-                items += `
+            else if (pageType != 'event_dtrace' || (type == 'user' && res['is_personal'] || type == 'team' && res['is_group']))
+                block_items += `
                     <li><input type="radio" name="move-result-radiobox" value="${res.id}" id="move_item_${cnt}">
                     <label for="move_item_${cnt}">${block.title}, ${res.title}</label></li>
                 `;
             cnt++;
         }
+        if (block_items != '')
+         items += block_items;
     }
     $('#move_results_modal .modal-move-choices').empty().append($(`<ul class="no-bullets">${items}</ul>`));
     if (labs_result_id)
-        $('#btn-move-selected-result').data('labs_result_id', labs_result_id).data('user_result', $(result).data('result-id')).data('mv-type', "result");
+        $('#btn-move-selected-result').data('labs_result_id', labs_result_id).data('user_result', $(result).data('result-id')).data('mv-type', "result").data('result-type', type);
     else
         $('#btn-move-selected-result').data('labs_result_id', labs_result_id).data('material_id', $(result).data('file-id')).data('mv-type', "file");
     $('#move_results_modal').modal('show');
@@ -776,7 +822,7 @@ function successProcessFile(data, $form, result_item_id) {
         if (!$form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]').length) {
 
             if (isAssistant) {
-                additional_btns = pageType == 'event_dtrace' ? '' : `<span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>`;
+                additional_btns = `<span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>`;
                 approve_block = `
                     <div class="clearfix"></div>
                     <div class="approve-result-block">
@@ -838,13 +884,13 @@ function successProcessFile(data, $form, result_item_id) {
                 <li class="list-group-item no-left-padding result-item-li">
                     <div class="row">
                         <div class="col-md-9">
-                            <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="${result_item_id}">
+                            <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="${result_item_id}" data-result-type="${data['target_item_info']['type']}">
                             </ul>
                             <p class="result-comment"></p>
                         </div>
                         <div class="col-md-3">
                             <div class="result-helper-block">
-                                ${pageType == 'event_dtrace' ? `` : `<span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>`}
+                                <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
                                 <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
                                 <span data-url="${page_url}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
                                 ${additional_btns}
@@ -882,11 +928,9 @@ function successProcessFile(data, $form, result_item_id) {
         html = `
             <li>
                 <a class="link_preview" href="${url}" ${data_attrs}>${name}</a>&nbsp;
-                ${pageType == 'event_dtrace' ? `` : `
                 <button name="material_id" value="${mId}" class="btn-transparent delete-material-btn pull-right">
                     <span class="glyphicon glyphicon-remove"></span>
                 </button>
-                `}
             </li>
         `
     }
@@ -936,7 +980,7 @@ function successProcessFile(data, $form, result_item_id) {
                 <li class="list-group-item ${data.uploader_name ? 'assistant-team-link' : ''}" data-comment="${data.comment}" data-material-id="${mId}">
                     <a class="link_preview" href="${url}" ${data_attrs}>${name}</a>
                     &nbsp;
-                    ${pageType == 'event_dtrace' ? `` : `<span name="material_id" value="${mId}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">`}
+                    <span name="material_id" value="${mId}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
                     </span>
                     ${edit_btn}
                     <div>

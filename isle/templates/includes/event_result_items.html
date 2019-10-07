@@ -19,10 +19,15 @@
                 <li class="list-group-item no-left-padding result-item-li">
                     <div class="row">
                         <div class="col-md-9">
-                            <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="{{ result_item.id }}">
+                            <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="{{ result_item.id }}" data-result-type="{% if result_item.user_id %}user{% else %}team{% endif %}">
                                 {% for link in result_item.links %}
                                     <li>
-                                        <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
+                                        <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>
+                                        {% if is_assistant or result_item.user_id and result_item.user_id == request.user.id or result_item.team_id and result_item.team_id in user_teams %}
+                                            <button name="material_id" value="{{ link.id }}" class="btn-transparent delete-material-btn pull-right">
+                                                <span class="glyphicon glyphicon-remove"></span>
+                                            </button>
+                                        {% endif %}&nbsp;
                                     </li>
                                 {% endfor %}
                             </ul>
@@ -30,8 +35,14 @@
                         </div>
                         <div class="col-md-3">
                             <div class="result-helper-block">
+                                {% if is_assistant or result_item.user_id and result_item.user_id == request.user.id or result_item.team_id and result_item.team_id in user_teams %}
+                                <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
+                                {% endif %}
                                 <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
                                 <span data-url="{{ result_item.get_page_url }}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
+                                {% if is_assistant %}
+                                    <span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>
+                                {% endif %}
                             </div>
                             {% if is_assistant %}
                             <div class="clearfix"></div>

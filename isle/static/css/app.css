@@ -703,3 +703,7 @@ img.user-img {
 .inline-user-item {
     display: inline-block;
 }
+
+#event_dtrace_filter_form .user-or-team-autocomplete-selector .select2-selection__rendered {
+    line-height: 100%;
+}

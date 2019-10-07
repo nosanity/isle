@@ -2995,6 +2995,21 @@ class EventDigitalTrace(GetEventMixinWithAccessCheck, TemplateView):
         user_teams = list(Team.objects.filter(system=Team.SYSTEM_UPLOADS, event=self.event, users=self.request.user)
                           .values_list('id', flat=True)) + \
             list(self.event.get_pt_teams().filter(users=self.request.user).values_list('id', flat=True))
+        structure = [
+            {
+                'title': block.title,
+                'deleted': block.deleted,
+                'results': [
+                    {
+                        'id': result.id,
+                        'deleted': result.deleted,
+                        'title': 'Результат {}.{}'.format(i, j),
+                        'is_personal': result.is_personal(),
+                        'is_group': result.is_group(),
+                    } for j, result in enumerate(block.results.all(), 1)
+                ]
+            } for i, block in enumerate(blocks, 1)
+        ]
 
         data.update({
             'event': self.event,
@@ -3010,6 +3025,7 @@ class EventDigitalTrace(GetEventMixinWithAccessCheck, TemplateView):
             'is_assistant': self.current_user_is_assistant,
             'participant_ids': self.event.get_participant_ids(),
             'user_teams': user_teams,
+            'blocks_structure_json': json.dumps(structure, ensure_ascii=False),
         })
 
         return data
@@ -3120,8 +3136,7 @@ class TeamAndUserAutocomplete(Select2QuerySetSequenceView):
                 Q(users__second_name__icontains=self.q)
             teams = teams.filter(teams_q).distinct()
             users = UserAutocomplete.search_user(users, self.q)
-        qs = QuerySetSequence(users, teams)
-        return self.mixup_querysets(qs)
+        return QuerySetSequence(users, teams)
 
     def get_result_value(self, result):
         return '%s-%s' % (ContentType.objects.get_for_model(result).pk,

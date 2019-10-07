@@ -97,6 +97,7 @@
     const teamUploadPattern = "{{ team_upload_url_pattern }}";
     const DEFAULT_USER_IMAGE = "{% static 'img/default.jpeg' %}";
     const UNTI_ID = "{{ request.user.unti_id }}";
+    const blocks_structure = {{ blocks_structure_json|safe }};
 
     let user_or_team_input = yl.jQuery('#id_item');
     let only_my_input =  $('#id_only_my');
