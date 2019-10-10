@@ -18,6 +18,12 @@
 
         <div class="row">
             {% for material in files %}
+                {% if material.summary %}
+                    <div class="col-sm-12">
+                        <strong>Конспект:</strong>
+                        {{ material.summary.content|safe }}
+                    </div>
+                {% else %}
                 <div class="col-sm-4">
                     <div class="artefact-item-wrapper" href="{{ material.get_url }}" {{ material.render_metadata|safe }} data-material-title="{{ material.get_name }}">
                         {% if material.get_metadata.file_type == 'image' %}
@@ -28,6 +34,7 @@
                     </div>
                     <a class="link_preview" href="{{ material.get_url }}" {{ material.render_metadata|safe }}>{{ material.get_name }}</a>&nbsp;
                 </div>
+                {% endif %}
             {% endfor %}
         </div>
 

@@ -12,7 +12,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import logout as base_logout
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.storage import default_storage
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404, FileResponse, \
@@ -49,7 +49,7 @@ from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
     LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, PLEUserResult, RunEnrollment, DTraceStatistics, \
-    CircleItem
+    CircleItem, Summary
 from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer, \
     UserFileSerializer, UserResultSerializer, EventOnlyMaterialSerializer, DTraceStatisticsSerializer
 from isle.tasks import generate_events_csv, team_members_set_changed, handle_ple_user_result
@@ -394,6 +394,7 @@ class BaseLoadMaterials(TemplateView):
             'event': self.event,
             'can_upload': self.can_upload(),
             'can_set_public': self._can_set_public(),
+            'SUMMARY_SAVE_INTERVAL': settings.SUMMARY_SAVE_INTERVAL,
             'unattached_files': self.get_unattached_files()
         })
         return data
@@ -463,7 +464,9 @@ class BaseLoadMaterials(TemplateView):
         data[result_key] = result_value
         url = request.POST.get('url_field')
         file_ = request.FILES.get('file_field')
-        if bool(file_) == bool(url):
+        summary_content = request.POST.get('summary')
+        # в запросе должен быть или файл, или урл, или содержание конспекта
+        if sum(map(lambda x: int(bool(x)), [url, file_, summary_content])) != 1:
             return JsonResponse({}, status=400)
         if url:
             try:
@@ -474,8 +477,16 @@ class BaseLoadMaterials(TemplateView):
             except:
                 file_type, file_size = '', None
             data.update({'url': url, 'file_type': file_type, 'file_size': file_size})
-        else:
+        elif file_:
             data.update({'file_type': file_.content_type, 'file_size': file_.size})
+        else:
+            summary = Summary.publish_summary(
+                request.user,
+                self.event,
+                result_value if isinstance(result_value, Trace) else result_value.result,
+                summary_content
+            )
+            data.update({'summary_id': summary.id})
         data['initiator'] = request.user.unti_id
         material = self.material_model.objects.create(**data)
         if file_:
@@ -487,6 +498,7 @@ class BaseLoadMaterials(TemplateView):
             'comment': getattr(material, 'comment', ''),
             'is_public': getattr(material, 'is_public', True),
             'data_attrs': material.render_metadata(),
+            'summary': material.get_short_summary(),
             'can_set_public': self._can_set_public()
         }
         self.update_add_item_response(resp, material, result_value)
@@ -1965,6 +1977,7 @@ class FileInfoMixin:
             'event_uuid': m.event.uid,
             'file_url': m.get_url(),
             'file_name': m.get_file_name(),
+            'summary_content': m.summary.content if m.summary_id else None,
             'comment': m.result_v2.comment,
             'levels': m.result_v2.get_meta(),
             'url': m.get_page_url(),
@@ -1996,6 +2009,7 @@ class UserMaterialsListView(FileInfoMixin, APIView):
                     "event_uuid": "11111111-1111-1111-11111111",
                     "file_url": "http://example.com/file.pdf"
                     "file_name": "file.pdf",
+                    "summary_content": null,
                     "comment": "",
                     "levels": [{"level": 1, "sublevel": 1, "competence": "11111111-1111-1111-11111111}],
                     "url": "https://uploads.2035.university/11111111-1111-1111-11111111/123/",
@@ -2078,6 +2092,7 @@ class BaseResultInfoView(APIView):
             'files': [{
                 'file_url': f.get_url(),
                 'file_name': f.get_file_name(),
+                'summary_content': f.summary.content if f.summary_id else None,
                 'created_at': f.created_at and f.created_at.isoformat()
             } for f in materials]
         }
@@ -2118,6 +2133,7 @@ class UserResultInfoView(BaseResultInfoView):
                     {
                         "file_url": "http://example.com/file.pdf",
                         "file_name": "file.pdf",
+                        "summary_content": null,
                         "created_at": "2019-04-26T10:33:09.223871+00:00"
                     }
                 ]
@@ -2161,6 +2177,7 @@ class TeamResultInfoView(BaseResultInfoView):
                     {
                         "file_url": "http://example.com/file.pdf",
                         "file_name": "file.pdf",
+                        "summary_content": null,
                         "created_at": "2019-04-26T10:33:09.223871+00:00"
                     }
                 ]
@@ -2223,6 +2240,7 @@ class AllUserResultsView(ListAPIView):
                             {
                                 "file_url": "http://example.com/media/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/22/file.pdf",
                                 "file_name": "file.pdf",
+                                "summary_content": null,
                                 "created_at": "2019-04-26T10:33:09.223871+00:00"
                             }
                         ],
@@ -2284,6 +2302,7 @@ class AllTeamResultsView(ListAPIView):
                             {
                                 "file_url": "http://example.com/media/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/22/file.pdf",
                                 "file_name": "file.pdf",
+                                "summary_content": null,
                                 "created_at": "2019-04-26T10:33:09.223871+00:00"
                             }
                         ],
@@ -3026,6 +3045,7 @@ class EventDigitalTrace(GetEventMixinWithAccessCheck, TemplateView):
             'participant_ids': self.event.get_participant_ids(),
             'user_teams': user_teams,
             'blocks_structure_json': json.dumps(structure, ensure_ascii=False),
+            'SUMMARY_SAVE_INTERVAL': settings.SUMMARY_SAVE_INTERVAL,
         })
 
         return data
@@ -3156,3 +3176,52 @@ class EventTeams(GetEventMixinWithAccessCheck, TemplateView):
         })
         data.update(EventView.get_teams_data(self.event, self.request.user, users))
         return data
+
+
+class SummaryAutosave(GetEventMixinWithAccessCheck, View):
+    """
+    автосохранение черновика конспекта
+    """
+    def post(self, request, **kwargs):
+        if 'id' in request.POST:
+            return self.do_update(request)
+        return self.do_create(request)
+
+    def do_create(self, request):
+        result_type = request.POST.get('result_type')
+        result_id = request.POST.get('result_id')
+        content = request.POST.get('content', '')
+        try:
+            if result_type == 'labseventresult':
+                result = LabsEventResult.objects.select_related('block').get(id=result_id)
+                assert result.block.event_id == self.event.id
+            else:
+                result = None
+        except (AssertionError, ValueError, TypeError, ObjectDoesNotExist):
+            return JsonResponse({}, status=400)
+        summary = Summary.objects.create(author=request.user, result=result, content=content, event=self.event)
+        return JsonResponse({'summary_id': summary.id})
+
+    def do_update(self, request):
+        summary_id = request.POST.get('id')
+        try:
+            summary = Summary.objects.get(id=summary_id)
+            assert summary.is_draft and summary.author_id == request.user.id and summary.event_id == self.event.id
+        except (Summary.DoesNotExist, ValueError, TypeError, AssertionError):
+            return JsonResponse({}, status=400)
+        summary.content = request.POST.get('content', '')
+        summary.save(update_fields=['content'])
+        return JsonResponse({'summary_id': summary.id})
+
+
+class SummaryDelete(GetEventMixinWithAccessCheck, View):
+    """
+    Удаление черновика конспекта
+    """
+    def post(self, request, **kwargs):
+        try:
+            Summary.objects.filter(is_draft=True, author=request.user, event=self.event,
+                                   id=request.POST.get('id')).delete()
+            return JsonResponse({})
+        except (ValueError, TypeError):
+            return JsonResponse({}, status=400)

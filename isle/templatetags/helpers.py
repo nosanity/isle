@@ -1,6 +1,8 @@
 from urllib import parse
 from django import template
+from django.contrib.contenttypes.models import ContentType
 from isle.forms import UserOrTeamUploadAutocomplete
+from isle.models import Summary, User
 
 register = template.Library()
 
@@ -73,7 +75,31 @@ def upload_files_compact_view(context):
 
 
 @register.inclusion_tag('includes/user_or_team_autocomplete.html')
-def user_or_team_autocomplete(event, result):
+def user_or_team_autocomplete(event, result, draft_summary=None):
+    initial = {}
+    if draft_summary:
+        if draft_summary.content_type.model.lower() == 'user':
+            try:
+                unti_id = User.objects.get(id=draft_summary.object_id).unti_id
+                assert unti_id
+                initial['item'] = '{}-{}'.format(draft_summary.content_type_id, unti_id)
+            except (User.DoesNotExist, AssertionError):
+                pass
+        elif draft_summary.content_type.model.lower() == 'team':
+            initial['item'] = '{}-{}'.format(draft_summary.content_type_id, draft_summary.object_id)
     return {
-        'autocomplete': UserOrTeamUploadAutocomplete(event=event, result=result, prefix=str(result.id)),
+        'autocomplete': UserOrTeamUploadAutocomplete(event=event, result=result, prefix=str(result.id), initial=initial),
     }
+
+
+@register.simple_tag(takes_context=True)
+def result_draft_summary(context, result=None):
+    user = context['request'].user
+    filter_dict = {
+        'event': context['event'],
+        'author': user,
+        'content_type': ContentType.objects.get_for_model(result) if result else None,
+        'object_id': result.id if result else None,
+        'is_draft': True,
+    }
+    return Summary.objects.filter(**filter_dict).first()

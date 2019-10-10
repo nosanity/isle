@@ -16,7 +16,9 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.deconstruct import deconstructible
 from django.utils.functional import cached_property
+from django.utils.html import strip_tags
 from django.utils.translation import ugettext_lazy as _
+import bleach
 from jsonfield import JSONField
 from .cache import UserAvailableContexts
 
@@ -522,6 +524,7 @@ class AbstractMaterial(BaseMaterial):
     object_id = models.PositiveIntegerField(null=True, default=None)
     parent = GenericForeignKey()
     deleted = models.BooleanField(default=False)
+    summary = models.ForeignKey('Summary', on_delete=models.CASCADE, null=True, blank=True, default=None)
 
     objects = NotDeletedEntries()
     all_objects = models.Manager()
@@ -592,6 +595,14 @@ class AbstractMaterial(BaseMaterial):
             if 'pdf' in self.file_type:
                 return 'pdf', 'fa-file-pdf-o'
         return 'other', 'fa-file'
+
+    def get_summary(self):
+        if self.summary_id:
+            return self.summary.content
+
+    def get_short_summary(self):
+        if self.summary_id:
+            return self.summary.get_short_content()
 
 
 class EventMaterial(AbstractMaterial):
@@ -1178,3 +1189,48 @@ class UpdateTimes(models.Model):
     @classmethod
     def set_last_update_for_event(cls, event_type, dt):
         cls.objects.update_or_create(event_type=event_type, defaults={'dt': dt})
+
+
+class Summary(models.Model):
+    """
+    Модель для хранения конспектов и их черновиков
+    """
+    result_limit_models = models.Q(app_label='isle', model='Trace') | \
+                          models.Q(app_label='isle', model='LabsEventResult')
+
+    content = models.TextField(blank=True)
+    author = models.ForeignKey(User, on_delete=models.CASCADE)
+    is_draft = models.BooleanField(default=True)
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, related_name='+',
+                                     limit_choices_to=result_limit_models, null=True)
+    object_id = models.PositiveIntegerField(null=True)
+    result = GenericForeignKey()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def get_short_content(self):
+        return '\n'.join(strip_tags(self.content).splitlines()[:2])
+
+    @classmethod
+    def publish_summary(cls, user, event, result, content):
+        """
+        сохранение конспекта с обработкой от потенциально опасных элементов и удаление старых черновиков, относящихся
+        к указанному блоку
+        """
+        content = bleach.clean(
+            content,
+            tags=settings.BLEACH_ALLOWED_TAGS,
+            attributes=settings.BLEACH_ALLOWED_ATTRIBUTES,
+        )
+        summary = cls.objects.create(author=user, event=event, result=result, content=content, is_draft=False)
+        if isinstance(result, Trace):
+            result = None
+        cls.objects.filter(
+            author=user,
+            event=event,
+            content_type=ContentType.objects.get_for_model(result) if result else None,
+            object_id=result.id if result else None,
+            is_draft=True
+        ).delete()
+        return summary

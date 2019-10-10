@@ -3,6 +3,101 @@ const uploads = [];
 
 let maxSizeSelector = null;
 
+const UPLOAD_TYPE_FILE = 'file';
+const UPLOAD_TYPE_URL = 'url';
+const UPLOAD_TYPE_SUMMARY = 'summary';
+
+CKEDITOR.replaceAll('ckedit');
+
+const formClass = pageType == 'loadMaterials' ? '.trace-form' : '.user-materials-form'
+
+
+class SummaryObserver {
+    constructor(instance) {
+        this.instance = instance;
+        this.last_sync = null;
+        this.summary_id = $(instance.element.$).data('draft-id') || null;
+        this.last_change = null;
+        this.content = instance.getData();
+        this.interval_id = window.setInterval(() => {this.loop();}, SUMMARY_SAVE_INTERVAL);
+    }
+
+    destroy() {
+        window.clearInterval(this.interval_id);
+    }
+
+    loop() {
+        let has_contents = !!this.instance.getData();
+        if (has_contents && this.summary_id == null) {
+            this.init();
+        }
+        if (this.summary_id != null && this.last_change > this.last_sync) {
+            this.sync();
+        }
+    }
+
+    dataUpdated() {
+        let data = this.instance.getData();
+        if (data != this.content) {
+            this.last_change = new Date();
+            this.content = data;
+        }
+    }
+
+    init() {
+        let data = {
+            csrfmiddlewaretoken: csrfmiddlewaretoken,
+            result_type: resultType,
+            result_id: $(this.instance.element.$).parents('.material-result-div').data('result'),
+            content: this.instance.getData(),
+        }
+        let self = this;
+        $.ajax({
+            method: 'POST',
+            url: summarySyncUrl,
+            data: data,
+            success: (resp) => {
+                self.summary_id = resp['summary_id'];
+                self.last_sync = new Date();
+                $(self.instance.element.$).data('draft-id', self.summary_id);
+            }
+        })
+    }
+
+    sync() {
+        let self = this;
+        let data = {
+            csrfmiddlewaretoken: csrfmiddlewaretoken,
+            id: this.summary_id,
+            content: this.content,
+        }
+        $.ajax({
+            method: 'POST',
+            url: summarySyncUrl,
+            data: data,
+            success: (resp) => {
+                self.last_sync = new Date();
+            }
+        })
+    }
+}
+
+function ckeditor_changed(e) {
+    let id = $(e.editor.element).attr('id');
+    if (window.summary_observers === undefined)
+        window.summary_observers = {};
+    if (e.editor.getData()) {
+        if (window.summary_observers[id] === undefined)
+            window.summary_observers[id] = new SummaryObserver(e.editor);
+        window.summary_observers[id].dataUpdated();
+    }
+    setActivateButton($(e.editor.element.$).parents(formClass));
+}
+
+for (key in CKEDITOR.instances) {
+    CKEDITOR.instances[key].on( 'change', ckeditor_changed);
+}
+
 function get_error_msg(xhr) {
     try {
         return xhr.responseJSON.error || 'error';
@@ -132,21 +227,29 @@ function get_url_from_item_wrapper(obj) {
 }
 
 function isFormValid($form) {
-    const $urlField = $form.find('input[name=url_field]');
-    const $fileField = $form.find('input[name=file_field]');
-    const urlFilled = !!$urlField.first().val();
-    const fileFilled = !!($fileField && !!$fileField.val());
+    let data_filled = false;
+    switch (get_form_upload_type($form)) {
+        case UPLOAD_TYPE_FILE:
+            data_filled = !!$form.find('input[name=file_field]').val();
+            break;
+        case UPLOAD_TYPE_URL:
+            data_filled = !!$form.find('input[name=url_field]').val();
+            break;
+        case UPLOAD_TYPE_SUMMARY:
+            data_filled = !!CKEDITOR.instances[$form.find('.ckedit').attr('id')].getData();
+            break;
+    }
+    let additional_check = true;
 
     if (pageType  == 'loadMaterials') {
-        return !!$form.find('select[name=trace_name]').val() && !(urlFilled == fileFilled);
+        additional_check = !!$form.find('select[name=trace_name]').val();
     }
 
     if (pageType == 'event_dtrace' && $form.find('.user-or-team-autocomplete-selector').length) {
-        let user_or_team_filled = !!$form.find('.user-or-team-autocomplete-selector').val();
-        return !(urlFilled == fileFilled) && user_or_team_filled;
+        additional_check = !!$form.find('.user-or-team-autocomplete-selector').val();
     }
 
-    return !(urlFilled == fileFilled);
+    return additional_check && data_filled;
 }
 
 function setActivateButton($form) {
@@ -170,6 +273,10 @@ function clearFileForm($form) {
     $form.find('input[name=file_field]').val('');
     $form.find('[name=comment]').val('');
     $form.find('input[name=is_public]').prop('checked', false);
+    let ckeditor_id = $form.find('.ckedit').attr('id');
+    if (ckeditor_id)
+        CKEDITOR.instances[ckeditor_id].setData('');
+        clear_draft_id($form);
     try {
         $form.find('[name$=event_block]').val('');
         clearAutocompleteChoice($form.find('[name$=related_users]'));
@@ -254,13 +361,14 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
                          else
                             $obj.parents('li.result-item-li').remove();
                     }
+                    else if (pageType == 'loadMaterials') {
+                        $obj.parents('li.list-group-item').remove();
+                        show_trace_name(trace_id);
+                    }
                     else {
                         let el = $obj.parents('div.result-items-wrapper');
                         $obj.parent('li').remove();
                         resultFilesNumberHandler(el);
-                    }
-                    if (pageType == 'loadMaterials') {
-                        show_trace_name(trace_id);
                     }
                 },
                 error: (xhr, err) => {
@@ -512,7 +620,44 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
             alert(get_error_msg(xhr));
         }
     })
+}).delegate('.upload-type-btn', 'shown.bs.tab', (e) => {
+    adjust_upload_type($(e.target));
+}).delegate('.hide-results-form-btn, .hide-add-event-materials-form-btn', 'click', (e) => {
+    let form = $(e.target).parents(formClass);
+    if (get_form_upload_type(form) == UPLOAD_TYPE_SUMMARY) {
+        let summary_id = form.find('.ckedit').data('draft-id');
+        if (summary_id) {
+            $.ajax({
+                method: 'POST',
+                url: deleteSummaryUrl,
+                data: {csrfmiddlewaretoken: csrfmiddlewaretoken, id: summary_id},
+                complete: () => {
+                    clear_draft_id(form);
+                }
+            });
+        }
+    }
 });
+
+function clear_draft_id(form) {
+    form.find('.ckedit').data('draft-id', '');
+    let id = form.find('.ckedit').attr('id');
+    if (window.summary_observers[id] !== undefined) {
+        window.summary_observers[id].destroy();
+        delete window.summary_observers[id];
+    }
+}
+
+function adjust_upload_type(chosen_tab) {
+    let hide_comment = chosen_tab.attr('id') == 'v-pills-summary-tab';
+    let comment_div = chosen_tab.parents('.row').find('.materials-form-comment-div');
+    hide_comment ? comment_div.hide() : comment_div.show();
+    setActivateButton(chosen_tab.parents(formClass))
+}
+
+$('.upload-type-btn.active').each((i, el) => {
+    adjust_upload_type($(el));
+})
 
 function disable_circle_items_btns(wrapper) {
     wrapper.find('.change-circle-items, .cancel-change-circle-items').hide();
@@ -779,6 +924,7 @@ function successProcessFile(data, $form, result_item_id) {
     const name = data.name;
     const comment = data.comment;
     const page_url = data.result_url;
+    const summary = data.summary;
     let items, item;
     if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace') {
         let data_item_id = data['target_item_info']['type'] + '-' + data['target_item_info']['id']
@@ -891,7 +1037,7 @@ function successProcessFile(data, $form, result_item_id) {
                         <div class="col-md-3">
                             <div class="result-helper-block">
                                 <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
-                                <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
+                                ${summary ? `` : `<span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>`}
                                 <span data-url="${page_url}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
                                 ${additional_btns}
                             </div>
@@ -927,10 +1073,15 @@ function successProcessFile(data, $form, result_item_id) {
     if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace') {
         html = `
             <li>
-                <a class="link_preview" href="${url}" ${data_attrs}>${name}</a>&nbsp;
-                <button name="material_id" value="${mId}" class="btn-transparent delete-material-btn pull-right">
+                ${summary ?
+                `<p class="summary-content-short"><strong>Конспект:</strong> ${summary}</p>`
+                :
+                `<a class="link_preview" href="${url}" ${data_attrs}>${name}</a>&nbsp;`}
+                ${summary ? `` :
+                `<button name="material_id" value="${mId}" class="btn-transparent delete-material-btn pull-right">
                     <span class="glyphicon glyphicon-remove"></span>
-                </button>
+                </button>`
+                }
             </li>
         `
     }
@@ -973,16 +1124,25 @@ function successProcessFile(data, $form, result_item_id) {
             let edit_btn = ``;
             if (isAssistant) {
                 edit_btn = `
-                    <span value="${mId}" class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
+                    <span value="${mId}" ${summary ? `data-is-summary="true"` : ``} class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
                     </span>`
             }
             html = `
                 <li class="list-group-item ${data.uploader_name ? 'assistant-team-link' : ''}" data-comment="${data.comment}" data-material-id="${mId}">
-                    <a class="link_preview" href="${url}" ${data_attrs}>${name}</a>
-                    &nbsp;
-                    <span name="material_id" value="${mId}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
-                    </span>
-                    ${edit_btn}
+                    <div class="row">
+                        <div class="col-sm-10">
+                            ${summary ?
+                            `<p class="summary-content-short"><strong>Конспект:</strong> ${summary}</p>`
+                            :
+                            `<a class="link_preview" href="${url}" ${data_attrs}>${name}</a>`
+                            }
+                        </div>
+                        <div class="col-sm-2">
+                            <span name="material_id" value="${mId}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
+                            </span>
+                            ${edit_btn}
+                        </div>
+                    </div>
                     <div>
                         <span class="text-muted assistant-info-string">${data.info_string}</span>
                     </div>
@@ -1043,12 +1203,19 @@ function errorProcessFile(xhr, err) {
     alert(get_error_msg(xhr));
 }
 
-function processUrl(form, result_item_id) {
+function processUrl(form, result_item_id, type=UPLOAD_TYPE_URL) {
     const $form = $(form);
     const formData = new FormData($(form).get(0));
     formData.append('add_btn', '');
+    formData.delete('file_field');
+    formData.delete(type == UPLOAD_TYPE_URL ? 'summary' : 'url_field');
     if (pageType == 'loadMaterials_v2' || pageType == 'event_dtrace')
         formData.append('result_item_id', result_item_id);
+    if (pageType == 'loadMaterials' && type == UPLOAD_TYPE_SUMMARY) {
+        let text_field = $form.find('.ckedit');
+        formData.delete('summary');
+        formData.append('summary', CKEDITOR.instances[text_field.attr('id')].getData());
+    }
     requestUrl = get_requestUrl(form);
     $.ajax({
         type: 'POST',
@@ -1093,6 +1260,8 @@ function get_requestUrl(form) {
 function processFile(form, file, filesLength, result_item_id) {
     const $form = $(form);
     const formData = new FormData($(form).get(0));
+    formData.delete('url_field');
+    formData.delete('summary');
     if (filesLength) {
         formData.delete('file_field');
         formData.append('file_field', file, file.name);
@@ -1129,6 +1298,17 @@ function processFile(form, file, filesLength, result_item_id) {
         },
         error: errorProcessFile
     })
+}
+
+function get_form_upload_type(form) {
+    switch (form.find('.upload-type-btn.active').attr('id')) {
+        case 'v-pills-home-tab':
+            return UPLOAD_TYPE_FILE;
+        case 'v-pills-profile-tab':
+            return UPLOAD_TYPE_URL;
+        case 'v-pills-summary-tab':
+            return UPLOAD_TYPE_SUMMARY;
+    }
 }
 
 function formSubmitHadler(form, resultId = null) {
@@ -1168,7 +1348,8 @@ function formSubmitHadler(form, resultId = null) {
 
 function formSubmitHandler_inner($form, resultId=null, result_item_id=null) {
     const fileField = $form.find('input[name=file_field]');
-    if (fileField && fileField[0].files.length) {
+    const upload_type = get_form_upload_type($form);
+    if (upload_type == UPLOAD_TYPE_FILE && fileField && fileField[0].files.length) {
         const filesLength = fileField[0].files ? fileField[0].files.length : 0;
         if (!((uploads.length + filesLength) > maxParallelUploads && filesLength)) {
             for (file of fileField[0].files) {
@@ -1179,8 +1360,11 @@ function formSubmitHandler_inner($form, resultId=null, result_item_id=null) {
             alert(`Максимальное количество одновременно загружаемых файлов не может превышать ${maxParallelUploads}`);
         }
     }
-    else {
+    else if (upload_type == UPLOAD_TYPE_URL && $form.find('input[name=url_field]').val()) {
         processUrl($form, result_item_id);
+    }
+    else if (upload_type == UPLOAD_TYPE_SUMMARY) {
+        processUrl($form, result_item_id, UPLOAD_TYPE_SUMMARY);
     }
 }
 

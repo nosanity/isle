@@ -3,6 +3,6 @@
 
 {% block additional %}
     {% if is_assistant or result.result_format != 'personal' %}
-        {% user_or_team_autocomplete event result %}
+        {% user_or_team_autocomplete event result draft_summary %}
     {% endif %}
 {% endblock %}

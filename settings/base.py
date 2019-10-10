@@ -214,6 +214,20 @@ HEADER_MY_SCHEDULE_URL = 'https://xle.u2035test.ru/island1022/timetable'
 STATISTICS_VALID_FOR = 60 * 30
 # периодичность "очистки" удаленных из xle записей на прогоны в часах
 XLE_RUN_ENROLLMENT_DELETE_CHECK_TIME = 24
+# интервал автосохранения конспектов в миллисекундах
+SUMMARY_SAVE_INTERVAL = 60000
+
+BLEACH_ALLOWED_TAGS = ['a', 'abbr', 'acronym', 'b', 'blockquote', 'code', 'em', 'i', 'li', 'ol', 'strong',
+                       'ul', 'p', 'img', 'table', 'td', 'tr', 'tbody', 'th', 'thead', 'h1', 'h2', 'h3',
+                       'h4', 'h5', 'h6', 'h7', 's', 'hr', 'div', 'br']
+
+BLEACH_ALLOWED_ATTRIBUTES = {
+    'a': ['href', 'title'],
+    'acronym': ['title'],
+    'abbr': ['title'],
+    'img': ['src', 'style', 'alt'],
+    'div': ['style']
+}
 
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}

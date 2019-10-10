@@ -63,6 +63,8 @@ urlpatterns = [
     path('autocomplete/team-and-user/', views.TeamAndUserAutocomplete.as_view(),
          name='team-and-user-autocomplete'),
     path('<str:uid>/teams/', views.EventTeams.as_view(), name='event-teams'),
+    path('<str:uid>/summary/autosave/', views.SummaryAutosave.as_view(), name='summary-autosave'),
+    path('<str:uid>/summary/delete/', views.SummaryDelete.as_view(), name='summary-delete'),
 ]
 
 if settings.DEBUG:

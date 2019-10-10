@@ -8,11 +8,16 @@
                         <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="{{ result_item.id }}">
                             {% for link in result_item.links %}
                                 <li>
-                                    <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
-                                    {% if can_upload %}
-                                        <button name="material_id" value="{{ link.id }}" class="btn-transparent delete-material-btn pull-right">
-                                            <span class="glyphicon glyphicon-remove"></span>
-                                        </button>
+                                    {% if link.summary %}
+                                        <p class="summary-content-short"><strong>{% trans "Конспект:" %}</strong>
+                                        {{ link.summary.get_short_content }}</p>
+                                    {% else %}
+                                        <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
+                                        {% if can_upload %}
+                                            <button name="material_id" value="{{ link.id }}" class="btn-transparent delete-material-btn pull-right">
+                                                <span class="glyphicon glyphicon-remove"></span>
+                                            </button>
+                                        {% endif %}
                                     {% endif %}
                                 </li>
                             {% endfor %}
@@ -24,7 +29,9 @@
                             {% if can_upload %}
                             <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
                             {% endif %}
-                            <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
+                            {% if not result_item.links.0.summary %}
+                                <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
+                            {% endif %}
                             <span data-url="{{ result_item.get_page_url }}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
                             {% if is_assistant %}
                                 <span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>

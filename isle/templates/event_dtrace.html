@@ -98,6 +98,10 @@
     const DEFAULT_USER_IMAGE = "{% static 'img/default.jpeg' %}";
     const UNTI_ID = "{{ request.user.unti_id }}";
     const blocks_structure = {{ blocks_structure_json|safe }};
+    const summarySyncUrl = "{% url 'summary-autosave' uid=event.uid %}";
+    const deleteSummaryUrl = "{% url 'summary-delete' uid=event.uid %}";
+    const SUMMARY_SAVE_INTERVAL = parseInt("{{ SUMMARY_SAVE_INTERVAL }}");
+    const resultType = "labseventresult";
 
     let user_or_team_input = yl.jQuery('#id_item');
     let only_my_input =  $('#id_only_my');
@@ -112,6 +116,7 @@
 </script>
 {% include 'includes/_link_preview.html' %}
 <script type="text/javascript" src="{% static 'js/libs/jquery.are-you-sure.min.js' %}"></script>
+<script type="text/javascript" src="{% static 'ckeditor/ckeditor.js' %}"></script>
 <script type="text/javascript" src="{% static 'js/upload.js' %}"></script>
 <script type="text/javascript" src="{% static 'js/pages/materials.js' %}"></script>
 {% endblock %}

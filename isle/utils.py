@@ -713,6 +713,7 @@ class EventMaterialsCSV:
             ('result_title', _('Ожидаемый результат')),
             ('file_url', _('Ссылка на артефакт')),
             ('file_extension', _('Расширение файла артефакта')),
+            ('summary_content', _('Содержимое конспекта')),
             ('comment', _('Комментарий')),
             ('sector', _('сектор')),
             ('level', _('уровень')),
@@ -816,6 +817,7 @@ class EventMaterialsCSV:
             'file_extension': m.get_extension(),
             'comment': self.get_comment(m, material_type),
             'type': self.get_type(material_type),
+            'summary_content': m.summary.content if m.summary_id else '',
         })
 
     def populate_user_data(self, d, user):
