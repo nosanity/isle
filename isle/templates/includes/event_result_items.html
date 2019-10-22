@@ -46,6 +46,9 @@
                                 {% if not result_item.links.0.summary %}
                                     <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
                                 {% endif %}
+                                {% if is_assistant %}
+                                    <span class="glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure"></span>
+                                {% endif %}
                                 <span data-url="{{ result_item.get_page_url }}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
                                 {% if is_assistant %}
                                     <span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>
@@ -80,11 +83,12 @@
                         </div>
                     </div>
                     <div class="row result-selected-circle-items-div" data-selected-circle-items="{{ result_item.selected_circle_items|join:',' }}">
-                        {% if result.available_circle_items %}
-                            {% for circle_item in result.available_circle_items %}
+                        {% get_result_circle_items result result_item as tools_data %}
+                        {% if tools_data %}
+                            {% for tool in tools_data %}
                             <div class="form-check">
-                                <input type="checkbox" class="result-circle-items" value="{{ circle_item.id }}" id="circle_item_{{ circle_item.id }}_{{ result_item.id }}" {% if circle_item.id in result_item.selected_circle_items %}checked="checked"{% endif %} disabled>
-                                <label class="result-circle-items-label" for="circle_item_{{ circle_item.id }}_{{ result_item.id }}">{{ circle_item.tool }}</label>
+                                <input type="checkbox" class="result-circle-items" value="{{ tool.value.id }}" id="circle_item_{{ tool.value.id }}_{{ result_item.id }}" {% if tool.value.id in result_item.selected_circle_items %}checked="checked"{% endif %} disabled data-can-edit="{% if tool.editable %}true{% else %}false{% endif %}">
+                                <label class="result-circle-items-label" for="circle_item_{{ tool.value.id }}_{{ result_item.id }}">{{ tool.value.tool }}</label>
                             </div>
                             {% endfor %}
                             {% if is_assistant or result_item.user == request.user or result_item.team_id in user_teams %}

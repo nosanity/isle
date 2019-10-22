@@ -877,7 +877,7 @@ class LabsEventResult(models.Model):
         """
         доступные для разметки элементы колеса
         """
-        return [i for i in self.circle_items.all() if i.tool]
+        return [i for i in self.circle_items.all() if i.tool and i.source == CircleItem.SYSTEM_LABS]
 
     def get_result_format_display(self):
         if self.result_format == 'personal':
@@ -984,6 +984,21 @@ class LabsTeamResult(AbstractResult):
         return EventTeamMaterial.objects.filter(result_v2=self)
 
 
+class DPType(models.Model):
+    uuid = models.CharField(unique=True, max_length=50)
+    title = models.CharField(max_length=500)
+
+
+class ModelCompetence(models.Model):
+    model = models.ForeignKey('MetaModel', on_delete=models.CASCADE, related_name='competences')
+    competence = models.ForeignKey('DpCompetence', on_delete=models.CASCADE, related_name='models')
+    order = models.IntegerField()
+    type = models.ForeignKey(DPType, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ('model', 'competence')
+
+
 class MetaModel(models.Model):
     """
     Информация о метамоделях. Нужно для хранения информации о названиях моделей
@@ -993,10 +1008,16 @@ class MetaModel(models.Model):
     guid = models.CharField(max_length=255)
     title = models.CharField(max_length=500)
 
+    def __str__(self):
+        return self.title
+
 
 class DpCompetence(models.Model):
     uuid = models.CharField(max_length=50, unique=True)
     title = models.CharField(max_length=500)
+
+    def __str__(self):
+        return self.title
 
 
 @deconstructible
@@ -1139,6 +1160,9 @@ class CircleItem(models.Model):
     """
     элемент колеса
     """
+    SYSTEM_UPLOADS = 'uploads'
+    SYSTEM_LABS = 'labs'
+
     level = models.IntegerField(null=True, default=None)
     sublevel = models.IntegerField(null=True, default=None)
     competence = models.ForeignKey(DpCompetence, null=True, default=None, on_delete=models.CASCADE)
@@ -1148,6 +1172,10 @@ class CircleItem(models.Model):
     model_uuid = models.CharField(max_length=36, default=None, null=True)
     result = models.ForeignKey(LabsEventResult, on_delete=models.CASCADE, related_name='circle_items')
     code = models.CharField(max_length=32, unique=True)
+    created_in = models.CharField(max_length=15, default=SYSTEM_LABS)
+    # параметр для отслеживания того, к какой системе сейчас принадлежит элемент. те, что есть в разметке
+    # мероприятия в labs доступны обычным пользователям для добавления к результату
+    source = models.CharField(max_length=15, default=SYSTEM_LABS)
 
     def get_code(self):
         """
@@ -1234,3 +1262,12 @@ class Summary(models.Model):
             is_draft=True
         ).delete()
         return summary
+
+
+class DpTool(models.Model):
+    uuid = models.CharField(max_length=50, unique=True)
+    title = models.TextField()
+    models = models.ManyToManyField(MetaModel, related_name='tools')
+
+    def __str__(self):
+        return self.title

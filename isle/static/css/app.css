@@ -704,7 +704,8 @@ img.user-img {
     display: inline-block;
 }
 
-#event_dtrace_filter_form .user-or-team-autocomplete-selector .select2-selection__rendered {
+#event_dtrace_filter_form .user-or-team-autocomplete-selector .select2-selection__rendered,
+#formset-structure-edit .select2-selection__rendered {
     line-height: 100%;
 }
 
@@ -716,4 +717,17 @@ img.user-img {
    -webkit-line-clamp: 2; /* number of lines to show */
    line-height: 25px;        /* fallback */
    max-height: 50px;       /* fallback */
+}
+
+.result-individual-structure-item:not(:first-of-type) {
+    border-top: 1px solid grey;
+    margin-top: 15px;
+}
+
+#formset-structure-edit .delete-row {
+    margin-left: 15px;
+}
+
+.has-error {
+    color: #a94442;
 }

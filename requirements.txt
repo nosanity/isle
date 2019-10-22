@@ -34,6 +34,7 @@ python3-memcached==1.51
 XlsxWriter==1.1.8
 django-querysetsequence==0.11
 bleach==3.1.0
+django-dynamic-formsets==0.0.8
 
 git+https://github.com/adrtdr/python-logstash-ssl/@master
 -e git+https://github.com/EduScaled/carrier-client@master#egg=carrier_client

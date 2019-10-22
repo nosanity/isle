@@ -591,7 +591,7 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
     e.preventDefault();
     $(e.target).parents('.result-selected-circle-items-div').find('.change-circle-items, .cancel-change-circle-items').show();
     $(e.target).hide();
-    $(e.target).parents('.result-selected-circle-items-div').find('.result-circle-items').prop('disabled', false);
+    $(e.target).parents('.result-selected-circle-items-div').find('.result-circle-items[data-can-edit=true]').prop('disabled', false);
 }).delegate('.cancel-change-circle-items', 'click', (e) => {
     e.preventDefault();
     disable_circle_items_btns($(e.target).parents('.result-selected-circle-items-div'));
@@ -637,6 +637,89 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
             });
         }
     }
+}).delegate('.edit-result-structure', 'click', (e) => {
+    e.preventDefault();
+    let $obj = $(e.target);
+    const url = pageType == 'event_dtrace' ? get_url_from_item_wrapper($obj.parents('.item-result-wrapper')) : '';
+    const result_item_id = $obj.parents('.result-item-li').find('.result-materials-wrapper').data('result-id')
+    const labs_id = $obj.parents('.material-result-div').data('result');
+    open_structure_edit_window(url, labs_id, result_item_id);
+}).delegate('#edit-structure-modal', 'shown.bs.modal', (e) => {
+    $('#formset-structure-edit').formset({
+        allowEmptyFormset: true,
+        uiText: {
+            addPrompt: 'Добавить',
+            removePrompt: 'Удалить',
+        },
+        callbacks: {
+            onAdd: (elem, index) => {
+                $(elem).find('.form-group .col-sm-10').each((i, el) => {
+                    if ($(el).find('.select2-hidden-accessible').length) {
+                        $(el).children('span').last().remove();
+                    }
+                });
+            },
+            postInitialize: (formset) => {
+                formset.find('a.delete-row').last().trigger('click');
+                $('#edit-structure-modal').css('opacity', 1);
+            }
+        }
+    });
+}).delegate('.btn-save-edited-structure', 'click', (e) => {
+    const formData = new FormData($('#formset-structure-edit').get(0));
+    $.ajax({
+        method: 'POST',
+        url: $('#edit-structure-modal').data('url'),
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: (data) => {
+            if (data.status == 0) {
+                $('#edit-structure-modal').modal('hide');
+                let block;
+                if (pageType == 'event_dtrace') {
+                    block = $('.material-result-div[data-result=' + data['labs_result_id'] + ']')
+                    .find('.item-result-wrapper[data-id=' + data['type'] + '-' + data['object_id'] + ']')
+                    .find('.result-selected-circle-items-div');
+                }
+                else {
+                    block = $('.material-result-div[data-result=' + data['labs_result_id'] + ']')
+                    .find('.result-selected-circle-items-div');
+                }
+                let current_tools = [];
+                block.find('.result-circle-items').each((i, el) => { current_tools.push(parseInt($(el).val())); })
+                for (let tool_id in data['items']) {
+                    tool_id = parseInt(tool_id);
+                    if (current_tools.indexOf(tool_id) == -1) {
+                        let new_tool = `
+                        <div class="form-check">
+                            <input type="checkbox" class="result-circle-items" value="${tool_id}" id="circle_item_${tool_id}_${data['result_id']}" data-can-edit="true">
+                            <label class="result-circle-items-label" for="circle_item_${tool_id}_${data['result_id']}">${data['items'][tool_id]}</label>
+                        </div>
+                        `;
+                        block.find('.form-check').last().after($(new_tool));
+                    }
+                }
+                block.find('.result-circle-items').each((i, el) => {
+                    $(el).prop('checked', data['items'][parseInt($(el).val())] !== undefined).prop('disabled', true);
+                });
+            }
+            else {
+                $('#formset-structure-edit').find('.result-individual-structure-item').each((i, form) => {
+                    $(form).find('.error-container').remove();
+                    $(form).find('.has-error').removeClass('has-error');
+                    let errors = data.errors[i];
+                    for (let key in errors) {
+                        let input = $(form).find('[name$=' + key + ']');
+                        input.parents('.form-group').addClass('has-error').children('div').append($(`
+                            <div class="error-container"><span class="small">${errors[key][0]}</span><div>
+                        `));
+                    }
+                });
+            }
+        },
+        error: () => { alert('error'); }
+    });
 });
 
 function clear_draft_id(form) {
@@ -672,6 +755,42 @@ function disable_circle_items_btns(wrapper) {
 if (pageType == 'loadMaterials') {
     $('body').delegate('form.trace-form select[name=trace_name]', 'change', (e) => {
         setActivateButton($(e.target).parents('form.trace-form'));
+    })
+}
+
+function open_structure_edit_window(url, labs_result_id, result_id) {
+    if (!$('#edit-structure-modal').length) {
+        html = `
+            <div class="modal fade text-left" role="dialog" id="edit-structure-modal">
+              <div class="modal-dialog">
+                <div class="modal-content">
+                  <div class="modal-body">
+                  </div>
+                  <div class="modal-footer" style="justify-content: space-between">
+                      <button class="btn btn-success btn-save-edited-structure">Сохранить</button>
+                      <button data-dismiss="modal" class="btn btn-danger">Закрыть</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+        `;
+        $('body').append($(html));
+    }
+    const request_data = {
+        csrfmiddlewaretoken: csrfmiddlewaretoken,
+        action: 'init_structure_edit',
+        labs_result_id: labs_result_id,
+        result_item_id: result_id
+    }
+    $.post({
+        url: url,
+        data: request_data,
+        method: 'POST',
+        success: (data) => {
+            $('#edit-structure-modal').find('.modal-body').html(data.html);
+            $('#edit-structure-modal').css('opacity', 0);
+            $('#edit-structure-modal').data('url', url).data('result_id', result_id).modal('show');
+        }
     })
 }
 
@@ -1011,7 +1130,7 @@ function successProcessFile(data, $form, result_item_id) {
                         let checked = data['selected_circle_items'].indexOf(cid) != -1 ? `checked="checked"` : ``;
                         checkboxes += `
                             <div class="form-check">
-                                <input type="checkbox" class="result-circle-items" value="${cid}" id="circle_item_${cid}_${result_item_id}" ${checked} disabled>
+                                <input type="checkbox" class="result-circle-items" value="${cid}" id="circle_item_${cid}_${result_item_id}" data-can-edit="true" ${checked} disabled>
                                 <label class="result-circle-items-label" for="circle_item_${cid}_${result_item_id}">${title}</label>
                             </div>
                         `;
@@ -1038,6 +1157,7 @@ function successProcessFile(data, $form, result_item_id) {
                             <div class="result-helper-block">
                                 <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
                                 ${summary ? `` : `<span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>`}
+                                ${isAssistant ? `<span class="glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure"></span>` : ``}
                                 <span data-url="${page_url}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
                                 ${additional_btns}
                             </div>
@@ -1254,7 +1374,7 @@ function get_requestUrl(form) {
         }
         return ''
     }
-    return form.attr('action')
+    return form.attr('action') || ''
 }
 
 function processFile(form, file, filesLength, result_item_id) {

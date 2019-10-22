@@ -18,6 +18,7 @@ from django.db.models import Count, Q
 from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404, FileResponse, \
     StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import get_template
 from django.urls import reverse, resolve, Resolver404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -44,12 +45,12 @@ from isle.api import LabsApi, XLEApi, DpApi, SSOApi
 from isle.cache import UserAvailableContexts
 from isle.filters import LabsUserResultFilter, LabsTeamResultFilter, StatisticsFilter
 from isle.forms import CreateTeamForm, AddUserForm, EventMaterialForm, EditTeamForm, EventDTraceFilter, \
-    EventDTraceAdminFilter
+    EventDTraceAdminFilter, ResultStructureFormset, get_available_sublevels
 from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
     LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, PLEUserResult, RunEnrollment, DTraceStatistics, \
-    CircleItem, Summary
+    CircleItem, Summary, MetaModel, DpTool, DpCompetence, ModelCompetence
 from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer, \
     UserFileSerializer, UserResultSerializer, EventOnlyMaterialSerializer, DTraceStatisticsSerializer
 from isle.tasks import generate_events_csv, team_members_set_changed, handle_ple_user_result
@@ -623,7 +624,7 @@ class BaseLoadMaterialsLabsResults:
             return resp
         result_id_error, result_deleted, type_ok = self._check_labs_result_id(request)
         allowed_actions = ['delete_all', 'init_result', 'move', 'move_unattached', 'approve_result',
-                           'change_circle_items']
+                           'change_circle_items', 'init_structure_edit', 'edit_structure']
         if 'add_btn' in request.POST:
             if result_id_error is not None or result_deleted or not type_ok:
                 return result_id_error
@@ -645,7 +646,109 @@ class BaseLoadMaterialsLabsResults:
                 return self.action_approve_result(request)
             elif request.POST['action'] == 'change_circle_items':
                 return self.action_change_circle_items(request)
+            elif request.POST['action'] == 'init_structure_edit':
+                return self.action_init_structure_edit(request)
+            elif request.POST['action'] == 'edit_structure':
+                return self.action_edit_structure(request)
         return self.delete_item(request)
+
+    def action_init_structure_edit(self, request):
+        """
+        рендерит формсет текущей структуры результата
+        """
+        if not self.current_user_is_assistant:
+            raise PermissionDenied
+        result = self.get_result_for_request(request)
+        if not result:
+            return JsonResponse({}, status=400)
+        initial_data = self.get_result_structure_initial_data(result)
+        context = {
+            'formset': ResultStructureFormset(initial=initial_data),
+            'additional_fields': {
+                'labs_result_id': result.result_id,
+                'action': 'edit_structure',
+                'result_item_id': result.id,
+            }
+        }
+        t = get_template('edit_result_structure_modal.html').render(context=context, request=request)
+        return JsonResponse({'html': t})
+
+    def get_result_structure_initial_data(self, result):
+        """
+        initial data для формсета структуры результата
+        """
+        initial_data = []
+        meta = result.get_meta()
+        competence_uuids = filter(None, (i['competence'] for i in meta))
+        model_uuids = filter(None, (i['model'] for i in meta))
+        competences = {i.uuid: i for i in DpCompetence.objects.filter(uuid__in=competence_uuids)}
+        models = {i.uuid: i for i in MetaModel.objects.filter(uuid__in=model_uuids)}
+        for item in meta:
+            tmp = {
+                'level': str(item['level']) if item['level'] else None,
+                'sublevel': str(item['sublevel']) if item['sublevel'] else None,
+            }
+            tmp['metamodel'] = models.get(item['model'])
+            tmp['competence'] = competences.get(item['competence'])
+            if item.get('tools'):
+                # на данном этапе у инструментов нет uuid, но можно считать, что в пределах одной модели
+                # названия инструментов уникальны
+                tmp['tools'] = DpTool.objects.filter(models=tmp['metamodel'], title__in=item['tools'])
+            initial_data.append(tmp)
+        return initial_data
+
+    def action_edit_structure(self, request):
+        """
+        обновление структуры результата
+        """
+        if not self.current_user_is_assistant:
+            raise PermissionDenied
+        result = self.get_result_for_request(request)
+        if not result:
+            return JsonResponse({}, status=400)
+        initial_data = self.get_result_structure_initial_data(result)
+        formset = ResultStructureFormset(initial=initial_data, data=request.POST)
+        if formset.is_valid():
+            circle_items = []
+            for form_data in formset.cleaned_data:
+                if not form_data:
+                    continue
+                defaults = dict(
+                    level=form_data['level'],
+                    sublevel=form_data['sublevel'],
+                    competence=form_data['competence'],
+                    model=form_data['metamodel'],
+                    result=result.result,
+                    competence_uuid=form_data['competence'].uuid,
+                    model_uuid=form_data['metamodel'].uuid,
+                    created_in=CircleItem.SYSTEM_UPLOADS,
+                    source=CircleItem.SYSTEM_UPLOADS,
+                    tool=None,
+                )
+                if form_data.get('tools'):
+                    for tool in form_data['tools']:
+                        defaults['tool'] = tool.title
+                        ci = CircleItem(**defaults)
+                        ci = CircleItem.objects.get_or_create(code=ci.get_code(), defaults=defaults)[0]
+                        circle_items.append(ci)
+                else:
+                    ci = CircleItem(**defaults)
+                    ci = CircleItem.objects.get_or_create(code=ci.get_code(), defaults=defaults)[0]
+                    circle_items.append(ci)
+            result.circle_items.set(circle_items)
+            logging.info('User %s has set new structure for %s %s: %s', self.request.user.unti_id,
+                         result._meta.model_name, result.id, result.get_meta())
+            send_object_info(result, result.id, KafkaActions.UPDATE,
+                             additional_data={'what': ResultUpdateType.EDIT_TOOLS})
+            return JsonResponse({
+                'status': 0,
+                'items': {i.id: i.tool for i in circle_items if i.tool},
+                'type': 'user' if isinstance(result, LabsUserResult) else 'team',
+                'labs_result_id': result.result_id,
+                'result_id': result.id,
+                'object_id': result.user.unti_id if isinstance(result, LabsUserResult) else result.team_id,
+            })
+        return JsonResponse({'status': 1, 'errors': formset.errors})
 
     def action_approve_result(self, request):
         if not self.current_user_is_assistant:
@@ -681,7 +784,17 @@ class BaseLoadMaterialsLabsResults:
             result = self.get_result_for_request(request)
             if not result or result.result.block.event_id != self.event.id:
                 return JsonResponse({}, status=404)
-            result.circle_items.set([i for i in result.result.available_circle_items if i.id in selected_circle_items])
+            q = Q(tool__isnull=True)
+            if not self.current_user_is_assistant:
+                q |= Q(created_in=CircleItem.SYSTEM_UPLOADS)
+            q &= Q(id__in=list(result.circle_items.values_list('id', flat=True)))
+            # обычный пользователь не может редактировать инструменты своего результата, если они не описаны
+            # в структуре мероприятия в лабс
+            unchangeable_items = result.result.circle_items.filter(q)
+            all_items = set([i.id for i in result.result.circle_items.all()])
+            selected_items = set([i for i in all_items if i in selected_circle_items])
+            selected_items |= set(unchangeable_items.values_list('id', flat=True))
+            result.circle_items.set(selected_items)
             if self.should_send_to_kafka(result):
                 send_object_info(result, result.id, KafkaActions.UPDATE,
                                  additional_data={'what': ResultUpdateType.EDIT_TOOLS})
@@ -1451,6 +1564,49 @@ class EventTeamAutocomplete(EventItemAutocompleteBase):
 
     def get_result_label(self, result):
         return '{} ({})'.format(result.name, ', '.join([i.last_name for i in result.users.all()]))
+
+
+class MetaModelAutocomplete(autocomplete.Select2QuerySetView):
+    queryset = MetaModel.objects.all()
+    model_field_name = 'title'
+
+    def get_queryset(self):
+        return super().get_queryset().order_by('title')
+
+
+class CompetenceAutocomplete(autocomplete.Select2QuerySetView):
+    queryset = DpCompetence.objects.all()
+    model_field_name = 'title'
+
+    def get_queryset(self):
+        if self.forwarded.get('metamodel') and self.forwarded['metamodel'].isdigit():
+            return super().get_queryset().filter(models__model_id=self.forwarded['metamodel'])\
+                .order_by('models__order')
+        else:
+            raise Http404
+
+
+class ToolAutocomplete(autocomplete.Select2QuerySetView):
+    def get_queryset(self):
+        try:
+            model = MetaModel.objects.get(id=self.forwarded['metamodel'])
+        except (MetaModel.DoesNotExist, TypeError, ValueError):
+            return DpTool.objects.none()
+        qs = model.tools.order_by('title')
+        if self.q:
+            qs = qs.filter(title__icontains=self.q)
+        return qs
+
+
+class SublevelAutocomplete(autocomplete.Select2ListView):
+    def get_list(self):
+        try:
+            modelcompetence = ModelCompetence.objects.select_related('type').\
+                get(competence_id=self.forwarded['competence'], model_id=self.forwarded['metamodel'])
+            level = int(self.forwarded['level'])
+        except (ModelCompetence.DoesNotExist, ValueError, TypeError, KeyError):
+            raise Http404
+        return list(map(str, get_available_sublevels(modelcompetence, level)))
 
 
 class Paginator(PageNumberPagination):

@@ -2,7 +2,7 @@ from urllib import parse
 from django import template
 from django.contrib.contenttypes.models import ContentType
 from isle.forms import UserOrTeamUploadAutocomplete
-from isle.models import Summary, User
+from isle.models import Summary, User, LabsUserResult, LabsTeamResult, CircleItem
 
 register = template.Library()
 
@@ -103,3 +103,17 @@ def result_draft_summary(context, result=None):
         'is_draft': True,
     }
     return Summary.objects.filter(**filter_dict).first()
+
+
+@register.simple_tag(takes_context=True)
+def get_result_circle_items(context, labs_result, result_item):
+    """
+    инструменты, отображаемые под результатом, с отметкой о возможности редактирования в зависимости
+    от того, является ли текущий пользователь ассистентом
+    """
+    labs_items = list({'value': i, 'editable': True} for i in labs_result.available_circle_items)
+    uploads_items = list(
+        {'value': i, 'editable': context.get('is_assistant')}
+        for i in result_item.circle_items.filter(tool__isnull=False, source=CircleItem.SYSTEM_UPLOADS)
+    )
+    return labs_items + uploads_items

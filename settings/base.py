@@ -36,7 +36,8 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'django_carrier_client',
     'djcelery',
-    'django_user_agents'
+    'django_user_agents',
+    'dynamic_formsets',
 ]
 
 MIDDLEWARE = [

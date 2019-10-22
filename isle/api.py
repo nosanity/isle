@@ -159,6 +159,9 @@ class DpApi(BaseApi):
     def get_metamodel(self, uuid):
         return self.make_request_no_pagination('/api/v1/model/{}'.format(uuid))
 
+    def get_frameworks(self):
+        return self.make_request('/api/v1/framework')
+
 
 class SSOApi(BaseApi):
     name = 'sso'
