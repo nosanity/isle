@@ -1,5 +1,8 @@
 from urllib import parse
 from django import template
+from django.contrib.contenttypes.models import ContentType
+from isle.forms import UserOrTeamUploadAutocomplete
+from isle.models import Summary, User, LabsUserResult, LabsTeamResult, CircleItem
 
 register = template.Library()
 
@@ -69,3 +72,48 @@ def upload_files_compact_view(context):
                                             result.results):
                     cnt += 1
     return cnt == 1
+
+
+@register.inclusion_tag('includes/user_or_team_autocomplete.html')
+def user_or_team_autocomplete(event, result, draft_summary=None):
+    initial = {}
+    if draft_summary:
+        if draft_summary.content_type.model.lower() == 'user':
+            try:
+                unti_id = User.objects.get(id=draft_summary.object_id).unti_id
+                assert unti_id
+                initial['item'] = '{}-{}'.format(draft_summary.content_type_id, unti_id)
+            except (User.DoesNotExist, AssertionError):
+                pass
+        elif draft_summary.content_type.model.lower() == 'team':
+            initial['item'] = '{}-{}'.format(draft_summary.content_type_id, draft_summary.object_id)
+    return {
+        'autocomplete': UserOrTeamUploadAutocomplete(event=event, result=result, prefix=str(result.id), initial=initial),
+    }
+
+
+@register.simple_tag(takes_context=True)
+def result_draft_summary(context, result=None):
+    user = context['request'].user
+    filter_dict = {
+        'event': context['event'],
+        'author': user,
+        'content_type': ContentType.objects.get_for_model(result) if result else None,
+        'object_id': result.id if result else None,
+        'is_draft': True,
+    }
+    return Summary.objects.filter(**filter_dict).first()
+
+
+@register.simple_tag(takes_context=True)
+def get_result_circle_items(context, labs_result, result_item):
+    """
+    инструменты, отображаемые под результатом, с отметкой о возможности редактирования в зависимости
+    от того, является ли текущий пользователь ассистентом
+    """
+    labs_items = list({'value': i, 'editable': True} for i in labs_result.available_circle_items)
+    uploads_items = list(
+        {'value': i, 'editable': context.get('is_assistant')}
+        for i in result_item.circle_items.filter(tool__isnull=False, source=CircleItem.SYSTEM_UPLOADS)
+    )
+    return labs_items + uploads_items

@@ -176,12 +176,18 @@
         const canUpload = eval("{{ can_upload|lower }}");
         const csrfmiddlewaretoken = "{{ csrf_token }}";
         const blocks_structure = {{ blocks_structure_json|safe }};
+        const summarySyncUrl = "{% url 'summary-autosave' uid=event.uid %}";
+        const deleteSummaryUrl = "{% url 'summary-delete' uid=event.uid %}";
+        const SUMMARY_SAVE_INTERVAL = parseInt("{{ SUMMARY_SAVE_INTERVAL }}");
+        const resultType = "labseventresult";
     </script>
     <script type="text/javascript">
         const maxSize = parseInt("{{ max_size }}");
         const maxParallelUploads = parseInt("{{ max_uploads }}");
     </script>
     <script type="text/javascript" src="{% static 'js/libs/jquery.are-you-sure.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'ckeditor/ckeditor.js' %}"></script>
+    <script src="{% static 'dynamic_formsets/jquery.formset.js' %}" type="text/javascript"> </script>
     <script type="text/javascript" src="{% static 'js/upload.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/pages/materials.js' %}"></script>
     {% include "includes/_link_preview.html" %}

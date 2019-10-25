@@ -11,20 +11,20 @@ from datetime import datetime
 from django.conf import settings
 from django.core.cache import caches
 from django.core.files.storage import default_storage
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext as _
 import xlsxwriter
 from celery.task.control import inspect
-from isle.api import ApiError, LabsApi, XLEApi, DpApi, SSOApi, PTApi
+from rest_framework.authtoken.models import Token
+from isle.api import ApiError, LabsApi, XLEApi, DpApi, SSOApi, PTApi, Openapi
 from isle.cache import UserAvailableContexts
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
-                         Team, Author, DpCompetence, CasbinData, Run, RunEnrollment, DTraceStatistics,
-                         DTraceStatisticsHistory, CircleItem, LabsTeamResult, UpdateTimes, EventAuthor)
-
+                         Team, Author, DpCompetence, CasbinData, Run, RunEnrollment, DTraceStatistics, DPType, EventAuthor,
+                         DTraceStatisticsHistory, CircleItem, LabsTeamResult, UpdateTimes, DpTool, ModelCompetence)
 
 DEFAULT_CACHE = caches['default']
 EVENT_TYPES_CACHE_KEY = 'EVENT_TYPE_IDS'
@@ -135,7 +135,10 @@ def refresh_events_data(fast=True):
                         continue
                     current_run = Run.objects.update_or_create(
                         uuid=run['uuid'],
-                        defaults={'activity': current_activity, 'deleted': run.get('is_deleted')}
+                        defaults={
+                            'activity': current_activity,
+                            'deleted': run.get('is_deleted') or current_activity.is_deleted,
+                        }
                     )[0]
                     events = run.get('events') or []
                     for event in events:
@@ -143,7 +146,8 @@ def refresh_events_data(fast=True):
                         event_json = filter_dict(event, EVENT_EXCLUDE_KEYS)
                         uid = event['uuid']
                         timeslot = event.get('timeslot')
-                        is_active = False if event.get('is_deleted') else True
+                        is_active = not (event.get('is_deleted') or current_run.deleted or
+                                         current_activity.is_deleted)
                         dt_start, dt_end = datetime.now(), datetime.now()
                         if timeslot:
                             dt_start = _parse_dt(timeslot['start'])
@@ -282,17 +286,16 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels, competenc
                         if isinstance(model, dict) and model.get('model') and model['model'] not in metamodels:
                             try:
                                 meta_data = DpApi().get_metamodel(model['model'])
-                                if isinstance(meta_data, dict) and all(i in meta_data for i in ['title', 'guid']):
-                                    metamodel = MetaModel.objects.update_or_create(uuid=model['model'], defaults={
-                                        'guid': meta_data['guid'], 'title': meta_data['title']
-                                    })[0]
-                                    parse_competences(meta_data, competences)
+                                metamodel = parse_model(meta_data)
+                                competences.update(dict(metamodel.competences.values_list('competence__uuid', 'competence_id')))
+                                if metamodel:
                                     metamodels[model['model']] = metamodel.id
                             except ApiError:
                                 pass
                     create_circle_items_for_result(
                         r.id,
-                        [] if r_created else list(r.circle_items.values_list('id', flat=True)),
+                        [] if r_created else list(r.circle_items.filter(created_in=CircleItem.SYSTEM_LABS).
+                                                  values_list('id', flat=True)),
                         meta,
                         metamodels,
                         competences
@@ -307,6 +310,11 @@ def update_event_structure(data, event, event_blocks_uuid, metamodels, competenc
 
 
 def create_circle_items_for_result(result_id, current_circle_items_ids, meta, metamodels, competences):
+    """
+    апдейт элементов колеса, доступных для разметки результата по данным labs. В current_circle_items_ids
+    должны быть переданы id элементов, которые были созданы в labs, чтобы те, что были созданы в uploads,
+    не были удалены
+    """
     from isle.kafka import send_object_info, KafkaActions
     real_items_ids = []
     for meta_item in meta:
@@ -323,11 +331,14 @@ def create_circle_items_for_result(result_id, current_circle_items_ids, meta, me
                 tool=tool,
                 competence_id=competences.get(meta_item.get('competence')),
                 model_id = metamodels.get(meta_item.get('model')),
+                source=CircleItem.SYSTEM_LABS,
             )
             code = CircleItem(**circle_data).get_code()
-            circle_item = CircleItem.objects.update_or_create(
+            circle_item, created = CircleItem.objects.update_or_create(
                 code=code, defaults=circle_data
-            )[0]
+            )
+            if created:
+                CircleItem.objects.filter(id=circle_item.id).update(created_in=CircleItem.SYSTEM_LABS)
             real_items_ids.append(circle_item.id)
     deleted_circle_items = set(current_circle_items_ids) - set(real_items_ids)
     if deleted_circle_items:
@@ -345,18 +356,24 @@ def create_circle_items_for_result(result_id, current_circle_items_ids, meta, me
     return real_items_ids
 
 
-def parse_competences(data, competences):
+def parse_competences(data, metamodel, competences, types):
     if not isinstance(data.get('competences'), list):
         logging.error('Failed to parse competences for meta model %s' % data.get('uuid'))
         return
+    comps = []
     for item in data['competences']:
-        if item['uuid'] in competences:
-            continue
-        try:
-            comp = DpCompetence.objects.update_or_create(uuid=item['uuid'], defaults={'title': item['title']})[0]
-            competences[comp.uuid] = comp.id
-        except KeyError:
-            logging.exception('Wrong competence structure')
+        if item['uuid'] not in competences:
+            try:
+                competences[item['uuid']] = DpCompetence.objects.update_or_create(
+                    uuid=item['uuid'], defaults={'title': item['title']})[0].id
+            except KeyError:
+                logging.exception('Wrong competence structure')
+                continue
+        comps.append(ModelCompetence.objects.update_or_create(
+            model=metamodel, competence_id=competences[item['uuid']],
+            defaults={'order': item['data']['order'], 'type': types[item['data']['type']]}
+        )[0].id)
+    ModelCompetence.objects.filter(model=metamodel).exclude(id__in=comps).delete()
 
 
 def update_event_entries():
@@ -650,6 +667,49 @@ def update_teams():
         logging.exception('Failed to fetch teams')
 
 
+def parse_model(data):
+    if isinstance(data, dict) and all([data.get(i) is not None for i in ['title', 'guid', 'uuid']]):
+        metamodel = MetaModel.objects.update_or_create(uuid=data['uuid'], defaults={
+            'guid': data['guid'], 'title': data['title']
+        })[0]
+        tools = []
+        schema = data.get('schema')
+        if schema and isinstance(schema, dict):
+            for item in schema.get('tool') or []:
+                uuid = item.get('uuid')
+                title = item.get('title')
+                if uuid and title:
+                    tools.append(DpTool.objects.update_or_create(uuid=uuid, defaults={'title': title})[0])
+        metamodel.tools.set(tools)
+        types = {}
+        for item in schema['type']:
+            types[item['order']] = DPType.objects.update_or_create(uuid=item['uuid'], defaults={'title': item['title']})[0]
+        parse_competences(data, metamodel, {}, types)
+        return metamodel
+
+
+def update_metamodels():
+    model_uuids = set()
+    try:
+        for data in DpApi().get_frameworks():
+            for item in data:
+                for model in item.get('models') or []:
+                    if model.get('uuid') and isinstance(model.get('uuid'), str):
+                        model_uuids.add(model.get('uuid'))
+    except Exception:
+        logging.exception('Failed to fetch metamodels')
+        return
+    for model_uuid in model_uuids:
+        try:
+            data = DpApi().get_metamodel(model_uuid)
+            if data.get('handler') != 'BigWheel':
+                # размечать цс можно только по "колесным" моделям
+                continue
+            parse_model(data)
+        except Exception:
+            logging.exception('Failed to fetch metamodel %s', model_uuid)
+
+
 def get_results_list(event=None):
     """
     возвращает генератор списков вида
@@ -746,6 +806,7 @@ class EventMaterialsCSV:
             ('result_title', _('Ожидаемый результат')),
             ('file_url', _('Ссылка на артефакт')),
             ('file_extension', _('Расширение файла артефакта')),
+            ('summary_content', _('Содержимое конспекта')),
             ('comment', _('Комментарий')),
             ('sector', _('сектор')),
             ('level', _('уровень')),
@@ -849,6 +910,7 @@ class EventMaterialsCSV:
             'file_extension': m.get_extension(),
             'comment': self.get_comment(m, material_type),
             'type': self.get_type(material_type),
+            'summary_content': m.summary.content if m.summary_id else '',
         })
 
     def populate_user_data(self, d, user):
@@ -1174,3 +1236,31 @@ def event_has_author_materials(event_id):
     """
     author_ids = EventAuthor.objects.filter(event_id=event_id, is_active=True).values_list('user__unti_id', flat=True)
     return EventOnlyMaterial.objects.filter(event_id=event_id, initiator__in=author_ids).exists()
+
+  
+def update_user_token(token_id):
+    try:
+        resp = Openapi().get_token(token_id)
+        user = User.objects.filter(unti_id=resp['user']).first()
+        if not user:
+            user = pull_sso_user(resp['user'])
+        if not user:
+            logging.error('User with unti id %s does not exist', resp['user'])
+            return
+        update_token(user, resp['key'])
+    except ApiError:
+        pass
+    except Exception:
+        logging.exception('Failed to update user token %s', token_id)
+
+
+def update_token(user, key):
+    try:
+        token = user.auth_token
+        if token.key != key:
+            with transaction.atomic():
+                token.delete()
+                Token.objects.create(user=user, key=key)
+                logging.warning('User %s token has changed', user.unti_id)
+    except Token.DoesNotExist:
+        Token.objects.create(user=user, key=key)

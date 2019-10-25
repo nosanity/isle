@@ -7,7 +7,7 @@ from carrier_client.message import OutgoingMessage
 from django_carrier_client.helpers import MessageManagerHelper
 from isle.api import SSOApi, ApiError
 from isle.models import LabsUserResult, LabsTeamResult, PLEUserResult
-from isle.utils import update_casbin_data
+from isle.utils import update_casbin_data, update_user_token
 
 
 message_manager = MessageManager(
@@ -25,13 +25,16 @@ class KafkaActions:
     DELETE = 'delete'
 
 
-def get_payload(obj, obj_id, action):
+def get_payload(obj, obj_id, action, additional_data=None):
     def for_type(payload_type):
+        id_dict = {'id': obj_id}
+        if additional_data:
+            id_dict.update(additional_data)
         return {
             'action': action,
             'type': payload_type,
             'id': {
-                payload_type: {'id': obj_id}
+                payload_type: id_dict
             },
             'timestamp': datetime.isoformat(timezone.now()),
             'title': str(obj),
@@ -46,14 +49,14 @@ def get_payload(obj, obj_id, action):
         return for_type('user_result_ple')
 
 
-def send_object_info(obj, obj_id, action):
+def send_object_info(obj, obj_id, action, additional_data=None):
     """
     отправка в кафку сообщения, составленного исходя из типа объекта obj и действия
     """
     if not getattr(settings, 'KAFKA_HOST'):
         logging.warning('KAFKA_HOST is not defined')
         return
-    payload = get_payload(obj, obj_id, action)
+    payload = get_payload(obj, obj_id, action, additional_data=additional_data)
     if not payload:
         logging.error("Can't get payload for %s action %s" % (obj, action))
         return
@@ -124,6 +127,21 @@ class CasbinModelListener(KafkaBaseListener):
         update_casbin_data()
 
 
+class OpenapiTokenListener(KafkaBaseListener):
+    topic = settings.KAFKA_TOPIC_OPENAPI
+    actions = (KafkaActions.CREATE, KafkaActions.UPDATE)
+    msg_type = 'token'
+
+    def _handle_for_id(self, obj_id, action):
+        try:
+            token_id = obj_id.get(self.msg_type, {}).get('id')
+            assert token_id, 'Failed to get token id'
+            update_user_token(token_id)
+        except (AssertionError, AttributeError):
+            logging.error('Got wrong object id from kafka: %s' % obj_id)
+
+
 MessageManagerHelper.set_manager_to_listen(SSOUserChangeListener())
 MessageManagerHelper.set_manager_to_listen(CasbinPolicyListener())
 MessageManagerHelper.set_manager_to_listen(CasbinModelListener())
+MessageManagerHelper.set_manager_to_listen(OpenapiTokenListener())

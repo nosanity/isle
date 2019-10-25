@@ -70,8 +70,13 @@
 
     <div class="row">
         <div class="col">
-            <div class="inline-divs-wrapper mt-40">
-                <div><h3>Цифровой след участников</h3></div>
+            <div class="inline-divs-wrapper mt-40" id="students">
+                <div>
+                    <h3 class="display-inline-block">Цифровой след участников</h3>
+                    {% if teams %}
+                        <a class="btn btn-light font-red mb-05rem display-inline-block" href="#teams">{% trans "к командам" %}</a>
+                    {% endif %}
+                </div>
                 <div class="event-sign-user">
                 {% if event_entry %}
                     <a class="btn btn-danger mb-2" href="{% url 'load-materials' uid=event.uid unti_id=request.user.unti_id %}">{% trans "Загрузить свой след" %}</a>
@@ -143,7 +148,10 @@
 
     <div class="mt-40 inline-divs-wrapper" id="teams">
         <div>
-            <h3>Цифровой след команд</h3>
+            <h3 class="display-inline-block">Цифровой след команд</h3>
+            {% if students %}
+                <a class="btn btn-light font-red mb-05rem display-inline-block" href="#students">{% trans "к участникам" %}</a>
+            {% endif %}
         </div>
         <div>
             <a class="nav-item btn btn-warning create-team-btn mb-2" href="{% url 'create-team' uid=event.uid %}">
@@ -151,62 +159,7 @@
                 Создать команду</a>
         </div>
     </div>
-    {% if teams %}
-        <div class="overflow-scroll mt-20">
-            <table class="table table-hover table-bordered">
-                <thead class="thead-light">
-                    <tr>
-                      <th scope="col">Название</th>
-                      <th scope="col" class="td-user-images">Фото</th>
-                      <th scope="col">ФИО</th>
-                      <th scope="col">Элементов следа</th>
-                      <th scope="col">Действия</th>
-                    </tr>
-                </thead>
-                {% for team in teams %}
-                    <tr class="{% if team.confirmed and team.creator and not team.created_by_assistant %}confirmed-team-link{% elif team.confirmed %}assistant-team-link{% endif %}">
-                        <td>
-                            <a href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{{ team.name }}</a>
-                        </td>
-                        <td class="td-user-images">
-                            {% for u in team.users.all %}
-                                <div class="user-images-cell">
-                                    {% item_not_in_container u students as half_transparent %}
-                                    {% include 'includes/user_image.html' %}
-                                </div>
-                            {% endfor %}
-                        </td>
-                        <td>
-                            {% for u in team.users.all %}
-                                {% item_not_in_container u students as half_transparent %}
-                                <span {% if half_transparent %}class="color-grey"{%endif %}>{{ u.fio }}</span><br>
-                            {% endfor %}
-                        </td>
-                        <td>{{ team.traces_number }}</td>
-                        <td>
-                            {% if event.is_active %}
-                                {% if is_assistant or team.id in user_teams %}
-                                    <a class="btn btn-primary btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
-                                {% endif %}
-                            {% endif %}
-                            {% if team|user_can_edit_team:request.user %}
-                                <a class="btn btn-grey" href="{% url 'edit-team' uid=event.uid team_id=team.id %}">
-                                    <i class="glyphicon glyphicon-pencil" title="{% blocktrans %}Редактировать{% endblocktrans %}"></i>
-                                </a>
-                            {% endif %}
-                            {% if team.id in teams_allowed_to_delete %}
-                                <btn class="btn btn-danger delete-team-btn" data-action-url="{% url 'delete-team' uid=event.uid team_id=team.id %}">
-                                    <i class="glyphicon glyphicon-remove" title="{% blocktrans %}Удалить{% endblocktrans %}"></i>
-                                </btn>
-                            {% endif %}
-                        </td>
-                    </tr>
-                {% endfor %}
-            </table>
-        </div>
-    {% else %}
-        <div class="alert alert-default">Ни одной команды еще не создано</div>
-    {% endif %}
+    {% include 'includes/teams_table.html' %}
 {% endblock %}
 
 {% block js %}

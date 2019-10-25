@@ -27,6 +27,7 @@ class FileSerializer(serializers.Serializer):
     file_url = serializers.CharField(source='get_url')
     file_name = serializers.CharField(source='get_file_name')
     created_at = serializers.DateTimeField(allow_null=True)
+    summary_content = serializers.CharField(source='get_summary')
 
 
 class UserNestedSerializer(serializers.ModelSerializer):
@@ -50,6 +51,8 @@ class TeamNestedserializer(serializers.BaseSerializer):
 
 
 class LabsBaseResultSerializer(serializers.Serializer):
+    activity_uuid = serializers.CharField(source='result.block.event.activity.uid')
+    title = serializers.CharField(source='result.title')
     event_uuid = serializers.CharField(source='result.block.event.uid')
     comment = serializers.CharField()
     approved = serializers.NullBooleanField()
