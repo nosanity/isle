@@ -1,14 +1,14 @@
 {% extends 'base.html' %}
-{% load static i18n tz %}
+{% load static i18n tz helpers %}
 
 {% block title %}Страница мероприятия "{{ event.title }}"{% endblock %}
 
 {% block content %}
-    {% if request.user.is_assistant %}
+    {% if is_assistant %}
         <div>
-            <a href="{% url 'activities' %}">Активности</a>
+            <a href="{% url 'index' %}">Активности</a>
             &nbsp;/&nbsp;
-            <a href="{% url 'index' %}?activity={{ event.activity_id }}">{{ event.activity.title|truncatechars:30 }}</a>
+            <a href="{% url 'events' %}?activity={{ event.activity_id }}">{{ event.activity.title|truncatechars:30 }}</a>
             &nbsp;/&nbsp;
             {% localtime off %}{{ event.get_dt_start|date:'d E H:i' }}{% endlocaltime %}
         </div>
@@ -28,27 +28,26 @@
                     {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }} - {{ event.get_dt_end|date:'H:i' }}{% endlocaltime %};
                 </h6>
             </div>
-            {% if request.user.is_assistant %}
-                <div>
-                    <a href="{{ event.activity.get_labs_link }}">Открыть в LABS</a>
-                </div>
-            {% endif %}
+            <div>
+                {% if is_assistant %}
+                <a href="{{ event.activity.get_labs_link }}">Открыть в LABS</a> <span class="text-muted">|</span> <a href="{{ event.get_xle_link }}">Открыть в расписании</a>
+                {% else %}
+                    <a href="{{ event.get_xle_link }}">Открыть в расписании</a>
+                {% endif %}
+            </div>
         </div>
         <div>
-            {% if request.user.is_assistant %}
-                <a class="pull-right export_event_csv" href="{% url 'get_event_csv' uid=event.uid %}">
-                    <span class="glyphicon glyphicon-download-alt"></span>&nbsp;Экспортировать все
-                </a>
-                <div class="clearfix"></div>
-            {% endif %}
-            <a class="nav-item btn btn-danger mt-10" href="{% url 'load-event-materials' uid=event.uid %}">
+            {% url 'get_event_csv' uid=event.uid as export_url %}
+            {% include 'includes/export_event_csv.html' %}
+            <div class="clearfix"></div>
+            <a class="nav-item btn btn-red-border mt-2" href="{% url 'load-event-materials' uid=event.uid %}">
                 Материалы мероприятия</a>
         </div>
     </div>
 
     {% csrf_token %}
 
-    {% if not event_entry.approved %}
+    {% if event_entry and not event_entry.approved %}
       <div class="approve-text d-none">
         <div class="alert alert-warning">
             Ваше присутствие на мероприятии не подтверждено!
@@ -69,70 +68,65 @@
         </div>
     {% endif %}
 
-    <nav class="nav nav-pills nav-justified">
-        {% if not request.user.is_assistant and not event_entry.approved %}
-            <a class="nav-item btn btn-primary text-white item-margin" id="i-was-here">
-                {% if event_entry.approve_text %}Изменить подтверждение присутствия{% else %}Я тут точно был!{% endif %}
-            </a>      
-        {% endif %}
-    </nav>
-
     <div class="row">
         <div class="col">
-            <div class="inline-divs-wrapper mt-40">
-                <div><h3>Участники</h3></div>
-                {% if request.user.is_assistant %}
+            <div class="inline-divs-wrapper mt-40" id="students">
                 <div>
-                    <a class="nav-item btn btn-warning" href="{% url 'add-user' uid=event.uid %}">
+                    <h3 class="display-inline-block">Цифровой след участников</h3>
+                    {% if teams %}
+                        <a class="btn btn-light font-red mb-05rem display-inline-block" href="#teams">{% trans "к командам" %}</a>
+                    {% endif %}
+                </div>
+                <div class="event-sign-user">
+                {% if event_entry %}
+                    <a class="btn btn-danger mb-2" href="{% url 'load-materials' uid=event.uid unti_id=request.user.unti_id %}">{% trans "Загрузить свой след" %}</a>
+                {% else %}
+                    <button class="btn btn-success self-enroll-btn mb-2">{% trans "Загрузить цифровой след" %}</button>
+                {% endif %}
+                {% if is_assistant %}
+                    <a class="nav-item btn btn-warning mb-2" href="{% url 'add-user' uid=event.uid %}">
                         <span class="glyphicon glyphicon-plus mr-10"></span>
                         Добавить участника</a>
-                </div>
                 {% endif %}
+                </div>
             </div>
-            {% if request.user.is_assistant %}
-                <p>
-                    <b>Важно: обязательно проверьте список участников.</b>
-                    <br>
-                    Поставьте отметки присутствия и добавьте недостающих участников.
-                </p>
-            {% endif %}
-            <div class="overflow-scroll">
+            <div class="overflow-scroll mt-40">
                 <table id="event-users-table" class="table table-hover table-bordered table-striped">
                     <thead class="thead-light">
                         <tr>
-                            <th class="text-center align-middle table-item" scope="col">ФИО</th>
                             <th class="text-center align-middle table-item" scope="col">Фото</th>
+                            <th class="text-center align-middle table-item" scope="col">ФИО</th>
                             <th class="text-center align-middle table-item" scope="col">Элементов следа</th>
                             <th class="text-center align-middle table-item" scope="col">Чекин</th>
                             <th class="text-center align-middle table-item" scope="col">Присутствие</th>
                             <th class="text-center align-middle table-item" scope="col">Результаты</th>
-                            {% if request.user.is_assistant %}
+                            {% if is_assistant %}
                                 <th scope="col"></th>
                             {% endif %}
                         </tr>
                     </thead>
                     {% for student in students %}
-                        <tr {% if student.can_delete %}class="tr-added-user"{% elif student.added_by_chat_bot %}class="tr-added-chatbot-user"{% endif %}>
+                        <tr class="{% if student.can_delete %}tr-added-user{% elif student.added_by_chat_bot %}tr-added-chatbot-user{% endif %} {% if forloop.counter == 1 and student == request.user %}event-participants-self{% endif %}">
+                            <td class="text-center align-middle table-item">{% include 'includes/user_image.html' with u=student %}</td>
                             <td class="align-middle table-item">
-                                <a href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{{ student.get_full_name }}</a>
+                                <a href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{{ student.get_full_name }}{% if student.id == request.user.id %} {% trans "(это вы)" %}{% endif %}</a>
                             </td>
-                            <td class="text-center align-middle table-item">{% if student.icon %}<img src="{{ student.icon.Small }}"/>{% endif %}</td>
                             <td class="text-center align-middle table-item">{{ student.materials_num }}</td>
                             <td class="text-center align-middle table-item"><input type="checkbox" data-user="{{ student.id }}" class="check-in"
                                     {% if student.checked_in %}checked{% endif %} disabled>
                             </td>
                             <td class="text-center align-middle table-item"><input type="checkbox" data-user="{{ student.id }}" class="attendance"
                                     {% if student.attend %}checked {% endif %}
-                                    {% if not request.user.is_assistant %} disabled{% endif %}>
+                                    {% if not is_assistant %} disabled{% endif %}>
                             </td>
                             <td>
                                 {% if event.is_active %}
-                                {% if student.unti_id == request.user.unti_id or request.user.is_assistant %}
-                                <a class="btn btn-primary btn-sm btn-block" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
+                                {% if student.unti_id == request.user.unti_id or is_assistant %}
+                                <a class="btn {% if student.id == request.user.id %}btn-danger{% else %}btn-primary{% endif %} btn-sm btn-block" href="{% url 'load-materials' uid=event.uid unti_id=student.unti_id %}">{% trans "Загрузить" %}</a>
                                 {% endif %}
                                 {% endif %}
                             </td>
-                            {% if request.user.is_assistant %}
+                            {% if is_assistant %}
                                 <td>
                                     {% if student.can_delete %}
                                         <button class="btn btn-danger btn-sm btn-delete-attendance" data-user-id="{{ student.id }}">
@@ -152,72 +146,31 @@
 	    <div class="alert alert-danger" role="alert">Нет записей на данное мероприятие</div>
     {% endif %}
 
-    <div class="mt-40 inline-divs-wrapper">
+    <div class="mt-40 inline-divs-wrapper" id="teams">
         <div>
-            <h3>Команды</h3>
+            <h3 class="display-inline-block">Цифровой след команд</h3>
+            {% if students %}
+                <a class="btn btn-light font-red mb-05rem display-inline-block" href="#students">{% trans "к участникам" %}</a>
+            {% endif %}
         </div>
         <div>
-            <a class="nav-item btn btn-warning create-team-btn" href="{% url 'create-team' uid=event.uid %}">
+            <a class="nav-item btn btn-warning create-team-btn mb-2" href="{% url 'create-team' uid=event.uid %}">
                 <span class="glyphicon glyphicon-plus mr-10"></span>
                 Создать команду</a>
         </div>
     </div>
-    {% if teams %}
-        <table class="table table-hover table-bordered mt-20">
-            <thead class="thead-light">
-                <tr>
-                  <th scope="col">Название команды</th>
-                  <th scope="col">Количество участников</th>
-                  <th scope="col">Элементов следа</th>
-                  <th scope="col">Результаты</th>
-                  {% if request.user.is_assistant %}
-                      <th scope="col">Подтверждение</th>
-                  {% endif %}
-                </tr>
-            </thead>
-            {% for team in teams %}
-                <tr class="{% if team.confirmed and team.creator and not team.creator.is_assistant %}confirmed-team-link{% elif team.confirmed %}assistant-team-link{% endif %}">
-                    <td>
-                        <a href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{{ team.name }}</a>
-                    </td>
-                    <td>{{ team.users.count }}</td>
-                    <td>{{ team.traces_number }}</td>
-                    <td>
-                        {% if event.is_active %}
-                            {% if request.user.is_assistant or team.id in user_teams %}
-                                <a class="btn btn-primary btn-sm" href="{% url 'load-team-materials' uid=event.uid team_id=team.id %}">{% trans "Загрузить" %}</a>
-                            {% endif %}
-                        {% endif %}
-                    </td>
-                    {% if request.user.is_assistant %}
-                        <td>
-                        {% if team.creator and not team.creator.is_assistant and not team.confirmed %}
-                            <button class="btn btn-success btn-sm btn-confirm-team" value="{{ team.id }}">{% trans "Подтвердить" %}</button>
-                        {% endif %}
-                        </td>
-                    {% endif %}
-                </tr>
-            {% endfor %}
-        </table>
-    {% else %}
-        <div class="alert alert-default">Ни одной команды не создано</div>
-    {% endif %}
-{% endblock %}
-
-{% block css %}
-    {{ block.super }}
-    <link href="{% static 'css/bootstrap-glyphicons.min.css' %}" rel="stylesheet">
+    {% include 'includes/teams_table.html' %}
 {% endblock %}
 
 {% block js %}
     {{ block.super }}  
     <script type="text/javascript">
-        const isAssistant = eval("{{ request.user.is_assistant|lower }}");
+        const isAssistant = eval("{{ is_assistant|lower }}");
         const updateAttendanceViewUrl = "{% url 'update-attendance-view' uid=event.uid %}";
-        const confirmTeamUrl = "{% url 'confirm-team' uid=event.uid %}";
         const removeUserUrl = "{% url 'remove-user' uid=event.uid %}";
         const approveTextEdit = "{% url 'approve-text-edit' event_entry_id=event_entry_id %}"
         const csrfmiddlewaretoken = $('input[name=csrfmiddlewaretoken]').val();
+        const enrollUrl = "{% url 'event-self-enroll' uid=event.uid %}";
     </script>
     <!-- event handlers of buttons are binded in js file below -->
     <script type="text/javascript" src="{% static 'js/pages/events.js' %}"></script>

@@ -37,45 +37,52 @@ if (isAssistant) {
         $('body').delegate('.edit-event-block-material', 'click', (e) => {
             e.preventDefault();
             const $obj = $(e.target);
-            const id = $obj.val();
-            $.get({
-                url: eventBlockEditRendererUrl,
-                method: 'GET',
-                data: { 
-                    id: id 
-                },
-                success: (data) => {
-                    const html = `
-                        <div>
-                            <button class="save-edited-block btn btn-sm btn-danger">
-                                Сохранить
-                            </button> 
-                            <button class="cancel-block-edit btn btn-sm btn-gray">
-                                Отменить
-                            </button>
-                        </div>
-                    `;
-                    $obj.parents('li').find('div.info-string-edit').html(data).append($(s));
-                },
-                error: () => {
-                    // TODO show appropriate message
-                    alert('error');
-                }
-            })
+            const id = $obj.attr('value');
+            const trace_id = $obj.parents('div.event-trace-materials-wrapper').data('trace-id');
+            const comment = $obj.parents('li').data('comment') || '';
+            const csrf = $('[name=csrfmiddlewaretoken]').val();
+            let li = $obj.parents('li');
+            let wrapper = li.find('div.info-string-edit');
+            let select_options = '';
+            let is_summary = !!$obj.data('is-summary');
+            for (tid in tracesDict) {
+                let name = tracesDict[tid];
+                select_options += `<option value="${tid}"` + (tid == trace_id ? " selected": "") + `>${name}</option>`
+            }
+            let html = `
+                <form class="mt-20 change-event-material-form" method="post">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="${csrf}">
+                    <input type="hidden" name="material_id" value="${id}">
+                    <select name="trace_name" class="material-type-select form-control mb-20">${select_options}</select>
+                    ${is_summary ? `` : `<textarea maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Описание файлов">${comment}</textarea>`}
+                    <button class="btn btn-success save-edited-block">Сохранить</button>
+                    <button class="btn btn-danger cancel-block-edit">Отменить</button>
+                </form>
+            `;
+            wrapper.html(html);
             }).delegate('.cancel-block-edit', 'click', (e) => {
                 e.preventDefault();
                 $(e.target).parents('div.info-string-edit').html('');
             }).delegate('.save-edited-block', 'click', (e) => {
                 e.preventDefault();
                 const $obj = $(e.target);
-                const data = $obj.parents('form').serialize();
+                let data = $obj.parents('form').serializeArray();
+                data.push({name: 'change_material_info', value: ''})
                 $.post({
-                    url: addEventBlockUrl,
+                    url : '',
                     method: 'POST',
                     data: data,
                     success: (data) => {
-                        $obj.parents('li').find('span.assistant-info-string').html(data.info_string);
-                        $obj.parents('div.info-string-edit').html('');
+                        let wrapper = $('div.event-trace-materials-wrapper[data-trace-id=' + data.original_trace_id + ']').find('ul.list-group li[data-material-id=' + data.material_id + ']');
+                        wrapper.find('div.info-string-edit').html('');
+                        wrapper.data('comment', data.comment);
+                        wrapper.find('.assistant-info-string').html(data.info_str);
+                        if (data.trace_id != data.original_trace_id) {
+                            let destination = $('div.event-trace-materials-wrapper[data-trace-id=' + data.trace_id + ']').find('ul.list-group');
+                            wrapper.appendTo(destination);
+                            show_trace_name(data.trace_id);
+                            show_trace_name(data.original_trace_id);
+                        }
                     },
                     error: () => {
                         // TODO show appropriate message
@@ -110,12 +117,14 @@ $('.load-results-btn').on('click', (e) => {
     let div = $(e.target).parents('.material-result-div');
     div.find('form').removeClass('hidden');
     $(e.target).hide();
+    $(e.target).parents('.material-result-div').find('.upload-circle-items-wrapper').show();
 });
 
 $('.hide-results-form-btn').on('click', (e) => {
     e.preventDefault();
     $(e.target).parents('.material-result-div').find('form').addClass('hidden');
     $(e.target).parents('.material-result-div').find('.load-results-btn').show();
+    $(e.target).parents('.material-result-div').find('.upload-circle-items-wrapper').hide();
 });
 
 function setOwnership(obj) {

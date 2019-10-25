@@ -1,10 +1,19 @@
-from isle.models import Context
+from django.conf import settings
+from isle.cache import UserAvailableContexts
+from isle.models import Context, ZendeskData
 
 
 def context(request):
     contexts = []
-    if request.user.is_authenticated and request.user.is_assistant:
-        contexts = ((i[0], i[1] or i[2] or i[3]) for i in Context.objects.values_list('id', 'title', 'guid', 'uuid'))
+    if request.user.is_authenticated:
+        qs = Context.objects.filter(uuid__in=UserAvailableContexts.get(request.user) or [])\
+            .values_list('id', 'title', 'guid', 'uuid').order_by('title', 'guid', 'uuid')
+        contexts = [(i[0], i[1] or i[2] or i[3]) for i in qs]
     return {
         'AVAILABLE_CONTEXTS': contexts,
+        'ZENDESK_DATA': ZendeskData.objects.first(),
+        'NOW_URL': settings.NOW_URL,
+        'HEADER_CABINET_URL': settings.HEADER_CABINET_URL,
+        'HEADER_FULL_SCHEDULE_URL': settings.HEADER_FULL_SCHEDULE_URL,
+        'HEADER_MY_SCHEDULE_URL': settings.HEADER_MY_SCHEDULE_URL,
     }

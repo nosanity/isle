@@ -1,0 +1,30 @@
+<div class="row">
+    <div class="col activity-filter-wrapper">
+        <form class="activity-filter-form">
+            <input type="search" id="search-events" placeholder="Найти" class="form-control mb-2" {% if search %}value="{{ search }}{% endif %}">
+            <input type="{% if date_min %}date{% else %}text{% endif %}" id="choose-date-min" class="form-control events-date-choser mb-2" placeholder="Дата: от">
+            <input type="{% if date_max %}date{% else %}text{% endif %}" id="choose-date-max" class="form-control events-date-choser mb-2" placeholder="Дата: до">
+            <div>
+                <button class="btn btn-primary events-filter-btn mb-2" id="btn-filter-events">
+                    <i class="glyphicon glyphicon-ok"></i>
+                </button>
+                <a href="{{ reset_filter_url }}{% if activity_filter %}?activity={{ activity_filter.id }}{% endif %}">
+                    <button class="btn events-filter-btn events-filter-cancel-btn mb-2">
+                        <i class="glyphicon glyphicon-ban-circle"></i>
+                    </button>
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% if has_assistant_role %}
+    <div>
+        <form class="form-inline">
+            <label>Смотреть как</label>
+            <select id="select-view-mode" class="form-control">
+                <option value="as_assistant" {% if is_assistant %}selected{% endif %}>ассистент</option>
+                <option value="as_user" {% if not is_assistant %}selected{% endif %}>пользователь</option>
+            </select>
+        </form>
+    </div>
+{% endif %}

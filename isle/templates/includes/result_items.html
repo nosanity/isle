@@ -1,0 +1,90 @@
+{% load i18n %}
+<div class="result-items-wrapper">
+    <ul class="list-group list-group-flush">
+        {% for result_item in result.results %}
+            <li class="list-group-item no-left-padding result-item-li">
+                <div class="row">
+                    <div class="col-md-9">
+                        <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="{{ result_item.id }}">
+                            {% for link in result_item.links %}
+                                <li>
+                                    {% if link.summary %}
+                                        <p class="summary-content-short"><strong>{% trans "Конспект:" %}</strong>
+                                        {{ link.summary.get_short_content }}</p>
+                                    {% else %}
+                                        <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
+                                        {% if can_upload %}
+                                            <button name="material_id" value="{{ link.id }}" class="btn-transparent delete-material-btn pull-right">
+                                                <span class="glyphicon glyphicon-remove"></span>
+                                            </button>
+                                        {% endif %}
+                                    {% endif %}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                        <p class="result-comment">{{ result_item.comment }}</p>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="result-helper-block">
+                            {% if can_upload %}
+                            <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
+                            {% endif %}
+                            {% if not result_item.links.0.summary %}
+                                <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
+                            {% endif %}
+                            {% if is_assistant %}
+                                <span class="glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure"></span>
+                            {% endif %}
+                            <span data-url="{{ result_item.get_page_url }}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
+                            {% if is_assistant %}
+                                <span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>
+                            {% endif %}
+                        </div>
+                        {% if is_assistant %}
+                        <div class="clearfix"></div>
+                        <div class="approve-result-block">
+                            <div class="pull-right">
+                                <div class="approve-input-container">
+                                    <input type="radio" class="approve-radio-btn" name="approved-{{ result_item.id }}" id="{{ result_item.id }}-approved-true" value="true" {% if result_item.approved == True %}checked="checked"{% endif %}>
+                                    <label for="{{ result_item.id }}-approved-true">{% trans "Валидный" %}</label>
+                                </div>
+                                <div class="approve-input-container">
+                                    <input type="radio" class="approve-radio-btn" name="approved-{{ result_item.id }}" id="{{ result_item.id }}-approved-false" value="false" {% if result_item.approved == False %}checked="checked"{% endif %}>
+                                    <label for="{{ result_item.id }}-approved-false">{% trans "Невалидный" %}</label>
+                                </div>
+                            </div>
+                            <div class="clearfix"></div>
+                            <div class="approve-text pull-right">
+                                <p class="current-approve-text text-muted">{% if result_item.approved != None and result_item.approve_text %}{{ result_item.approve_text }}{% endif %}</p>
+                            </div>
+                            <div class="clearfix"></div>
+                            <div class="approve-text-edit" style="display: none;" data-approved="{{ result_item.approved }}">
+                                <input type="text" maxlength="255" class="approve-text-edit-input pull-right" placeholder="{% trans 'Комментарий (опционально)' %}">
+                                <div class="clearfix"></div>
+                                <button class="btn btn-success do-approve-result pull-left" data-labs-result-id="{{ result.id }}" data-result-id="{{ result_item.id }}">{% trans "Сохранить" %}</button>
+                                <button class="btn btn-danger cancel-approve-btn pull-right">{% trans "Отменить" %}</button>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="row result-selected-circle-items-div" data-selected-circle-items="{{ result_item.selected_circle_items|join:',' }}">
+                    {% get_result_circle_items result result_item as tools_data %}
+                    {% if tools_data %}
+                        {% for tool in tools_data %}
+                        <div class="form-check">
+                            <input type="checkbox" class="result-circle-items" value="{{ tool.value.id }}" id="circle_item_{{ tool.value.id }}_{{ result_item.id }}" {% if tool.value.id in result_item.selected_circle_items %}checked="checked"{% endif %} disabled data-can-edit="{% if tool.editable %}true{% else %}false{% endif %}">
+                            <label class="result-circle-items-label" for="circle_item_{{ tool.value.id }}_{{ result_item.id }}">{{ tool.value.tool }}</label>
+                        </div>
+                        {% endfor %}
+                        {% if can_upload %}
+                            <span class="start-change-circle-items">{% trans "Изменить" %}</span>
+                            <span class="change-circle-items" data-labs-result-id="{{ result.id }}" data-result-id="{{ result_item.id }}">{% trans "Сохранить" %}</span>
+                            <span class="cancel-change-circle-items">{% trans "Отменить" %}</span>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </li>
+        {% endfor %}
+    </ul>
+</div>

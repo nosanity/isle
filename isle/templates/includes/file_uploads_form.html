@@ -1,0 +1,63 @@
+{% load i18n %}
+{% result_draft_summary result as draft_summary %}
+{% if result.available_circle_items %}
+    <div class="row upload-circle-items-wrapper">
+        <div class="col-md-12">
+            <b class="circle-label">{% trans "Выберите к чему имеет отношение ваш результат" %}</b>
+            {% for circle_item in result.available_circle_items %}
+                <div class="form-check">
+                    <input type="checkbox" class="result-circle-items" value="{{ circle_item.id }}" id="circle_item_{{ circle_item.id }}">
+                    <label class="result-circle-items-label" for="circle_item_{{ circle_item.id }}">{{ circle_item.tool }}</label>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+{% endif %}
+
+<form method="post" class="form {% if not draft_summary %}hidden{% endif %} user-materials-form">
+    {% block additional %}{% endblock %}
+    <div class="row">
+        {% csrf_token %}
+        <input name="labs_result_id" type="hidden" value="{{ result.id }}">
+        <div class="col-sm-12 col-md-3 mb-10">
+            <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
+                <a class="nav-link {% if not draft_summary %}active{% endif %} upload-type-btn" id="v-pills-home-tab" data-toggle="pill" href="#v-pills-home-{{ result.id }}" role="tab" aria-controls="v-pills-home" aria-selected="true">Файлы</a>
+                <a class="nav-link upload-type-btn" id="v-pills-profile-tab" data-toggle="pill" href="#v-pills-profile-{{ result.id }}" role="tab" aria-controls="v-pills-profile" aria-selected="false">Ссылки</a>
+                <a class="nav-link upload-type-btn {% if draft_summary %}active{% endif %}" id="v-pills-summary-tab" data-toggle="pill" href="#v-pills-summary-{{ result.id }}" role="tab" aria-controls="v-pills-profile" aria-selected="false">Конспект</a>
+            </div>
+        </div>
+        <div class="col-sm-12 col-md-9">
+            <div class="tab-content" id="v-pills-tabContent">
+                <div class="tab-pane fade show active" id="v-pills-home-{{ result.id }}" role="tabpanel" aria-labelledby="v-pills-home-tab">
+                    {% if allow_file_upload %}
+                        <label class="btn btn-block btn-file border label-overflow select-files-btn">
+                            {% trans "Выбрать файлы" %}
+                            <input type="file" multiple name="file_field" class="form-control hidden">
+                        </label>
+                    {% endif %}
+                    <div><span class="file-name"></span></div>
+                    <div class="uploads"></div>
+                </div>
+                <div class="tab-pane fade" id="v-pills-profile-{{ result.id }}" role="tabpanel" aria-labelledby="v-pills-profile-tab">
+                    <input type="url" name="url_field" class="form-control full-width" id="url" placeholder="Укажите URL-ссылку на материал">
+                </div>
+                <div class="tab-pane fade {% if draft_summary %}show active{% endif %}" id="v-pills-summary-{{ result.id }}" role="tabpanel" aria-labelledby="v-pills-profile-tab">
+                    <textarea name="summary" class="form-control full-width ckedit" id="summary-{{ result.id }}" {% if draft_summary %}data-draft-id="{{ draft_summary.id }}{% endif %}">
+                        {% if draft_summary %}{{ draft_summary.content }}{% endif %}
+                    </textarea>
+                </div>
+                <div class="materials-form-comment-div">
+                    <textarea maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Описание файлов"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-3">
+            <button name="add_btn" type="submit" class="btn btn-success btn-block add-material-btn" disabled="disabled">{% trans "Сохранить" %}</button>
+        </div>
+        <div class="col-sm-3">
+            <span class="btn btn-danger btn-block hide-results-form-btn">{% trans "Отменить" %}</span>
+        </div>
+    </div>
+</form>
