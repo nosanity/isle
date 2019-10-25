@@ -99,6 +99,9 @@ class Activity(models.Model):
     def get_labs_link(self):
         return '{}/admin/activity/view/{}'.format(settings.LABS_URL.rstrip('/'), self.uid)
 
+    def get_authors(self):
+        return list(self.authors.values_list('title', flat=True))
+
 
 class NotDeletedEntries(models.Manager):
     def get_queryset(self):
@@ -214,9 +217,8 @@ class Event(models.Model):
         return EventOnlyMaterial.objects.filter(event=self).count()
 
     def get_authors(self):
-        if self.data and isinstance(self.data, dict):
-            authors = (self.data.get('activity') or {}).get('authors') or []
-            return [(i.get('title') or '').strip() for i in authors]
+        if self.activity:
+            return self.activity.get_authors()
         return []
 
     @cached_property
@@ -673,6 +675,7 @@ class Team(models.Model):
     class Meta:
         verbose_name = 'Команда'
         verbose_name_plural = 'Команды'
+        unique_together = ('system', 'uuid')
 
     def __str__(self):
         return self.name
@@ -1205,18 +1208,50 @@ class CircleItem(models.Model):
 class UpdateTimes(models.Model):
     CHECKINS = 'checkins'
     RUN_ENROLLMENTS = 'run_enrollments'
+    DWH_CHECKINS = 'dwh_checkins'
+    DWH_RUN_ENROLLMENTS = 'dwh_run_enrollments'
+    DELETE_RUN_ENROLLMENTS = 'delete_run_enrollments'
+    CONTEXTS = 'contexts'
+    EVENT_CONTEXTS = 'event_contexts'
+    EVENT_TYPES = 'event_types'
+    EVENT_TYPE_CONNECTIONS = 'event_type_connections'
+    ACTIVITY_AUTHORS = 'activity_authors'
+    EVENT_AUTHORS = 'event_authors'
+    METAMODELS = 'metamodels'
+    COMPETENCES = 'competences'
+    EVENT_STRUCTURE = 'event_structure'
+    EVENT_RUN_ACTIVITY = 'event_run_activity'
+    PT_TEAMS = 'pt_teams'
 
     event_type = models.CharField(max_length=255, unique=True, primary_key=True)
     dt = models.DateTimeField()
 
     @classmethod
-    def get_last_update_for_event(cls, event_type):
+    def get_last_update_for_event(cls, event_type, iso=True):
         item = cls.objects.filter(event_type=event_type).first()
-        return item and item.dt and item.dt.isoformat()
+        if iso:
+            return item and item.dt and item.dt.isoformat()
+        return item and item.dt
 
     @classmethod
     def set_last_update_for_event(cls, event_type, dt):
         cls.objects.update_or_create(event_type=event_type, defaults={'dt': dt})
+
+
+class EventAuthor(models.Model):
+    SOURCE_EVENT = 'event'
+    SOURCE_ACTIVITY = 'activity'
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    source = models.CharField(max_length=15, choices=(
+        (SOURCE_EVENT, SOURCE_EVENT),
+        (SOURCE_ACTIVITY, SOURCE_ACTIVITY),
+    ))
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('user', 'event')
 
 
 class Summary(models.Model):

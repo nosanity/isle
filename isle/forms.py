@@ -1,3 +1,4 @@
+import uuid
 from django import forms
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
@@ -41,6 +42,7 @@ class CreateTeamForm(BaseTeamForm):
         instance.creator = self.creator
         instance.confirmed = self.creator.is_assistant_for_context(self.event.context)
         instance.created_by_assistant = instance.confirmed
+        instance.uuid = str(uuid.uuid4())
         return instance
 
 
