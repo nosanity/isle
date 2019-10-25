@@ -35,8 +35,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'django_carrier_client',
-    'djcelery',
-    'django_user_agents',
+    'django_celery_results',
+    'django_user_agents'
     'dynamic_formsets',
 ]
 
@@ -215,6 +215,9 @@ HEADER_MY_SCHEDULE_URL = 'https://xle.u2035test.ru/island1022/timetable'
 STATISTICS_VALID_FOR = 60 * 30
 # периодичность "очистки" удаленных из xle записей на прогоны в часах
 XLE_RUN_ENROLLMENT_DELETE_CHECK_TIME = 24
+CELERY_RESULT_BACKEND = 'django-db'
+DJANGO_CELERY_RESULTS_TASK_ID_MAX_LENGTH = 191
+
 # интервал автосохранения конспектов в миллисекундах
 SUMMARY_SAVE_INTERVAL = 60000
 

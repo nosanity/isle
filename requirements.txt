@@ -20,10 +20,10 @@ urllib3==1.23
 django-autocomplete-light==3.4.1
 djangorestframework==3.7.7
 django-split-settings==0.2.5
-celery==3.1.19
-django-celery==3.2.2
+celery==4.3.0
+django-celery-results==1.0.4
 django-user-agents==0.3.2
-redis==2.10.6
+redis==3.2.1
 django-filter==2.1.0
 raven==6.10.0
 coreapi==2.3.3
