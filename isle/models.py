@@ -16,7 +16,9 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.deconstruct import deconstructible
 from django.utils.functional import cached_property
+from django.utils.html import strip_tags
 from django.utils.translation import ugettext_lazy as _
+import bleach
 from jsonfield import JSONField
 from .cache import UserAvailableContexts
 
@@ -230,17 +232,20 @@ class Event(models.Model):
         Если соответствующая настройка отключена показываются только те, для которых есть загруженный след
         """
         if self.context:
-            user_ids = user_ids or list(EventEntry.objects.filter(event=self).values_list('user_id', flat=True))
-            qs = Team.objects.all()
+            user_ids = user_ids or self.get_participant_ids()
             filter_dict = {
                 'system': Team.SYSTEM_PT,
                 'contexts': self.context,
                 'users__id__in': user_ids,
             }
+            qs = Team.objects.filter(**filter_dict)
             if not settings.ENABLE_PT_TEAMS:
-                qs = qs.annotate(material_cnt=models.Count('eventteammaterial', filter=models.Q(event_id=self.id)))
-                filter_dict['material_cnt__gt'] = 0
-            return qs.filter(**filter_dict).distinct().prefetch_related('users')
+                qs = qs.annotate(
+                    material_cnt=models.Count('eventteammaterial',
+                                              filter=models.Q(id__in=list(qs.values_list('id', flat=True))))).filter(
+                    material_cnt__gt=0
+                )
+            return qs.distinct().prefetch_related('users')
         return Team.objects.none()
 
     def get_participant_ids(self):
@@ -519,6 +524,7 @@ class AbstractMaterial(BaseMaterial):
     object_id = models.PositiveIntegerField(null=True, default=None)
     parent = GenericForeignKey()
     deleted = models.BooleanField(default=False)
+    summary = models.ForeignKey('Summary', on_delete=models.CASCADE, null=True, blank=True, default=None)
 
     objects = NotDeletedEntries()
     all_objects = models.Manager()
@@ -589,6 +595,14 @@ class AbstractMaterial(BaseMaterial):
             if 'pdf' in self.file_type:
                 return 'pdf', 'fa-file-pdf-o'
         return 'other', 'fa-file'
+
+    def get_summary(self):
+        if self.summary_id:
+            return self.summary.content
+
+    def get_short_summary(self):
+        if self.summary_id:
+            return self.summary.get_short_content()
 
 
 class EventMaterial(AbstractMaterial):
@@ -863,7 +877,7 @@ class LabsEventResult(models.Model):
         """
         доступные для разметки элементы колеса
         """
-        return [i for i in self.circle_items.all() if i.tool]
+        return [i for i in self.circle_items.all() if i.tool and i.source == CircleItem.SYSTEM_LABS]
 
     def get_result_format_display(self):
         if self.result_format == 'personal':
@@ -970,6 +984,21 @@ class LabsTeamResult(AbstractResult):
         return EventTeamMaterial.objects.filter(result_v2=self)
 
 
+class DPType(models.Model):
+    uuid = models.CharField(unique=True, max_length=50)
+    title = models.CharField(max_length=500)
+
+
+class ModelCompetence(models.Model):
+    model = models.ForeignKey('MetaModel', on_delete=models.CASCADE, related_name='competences')
+    competence = models.ForeignKey('DpCompetence', on_delete=models.CASCADE, related_name='models')
+    order = models.IntegerField()
+    type = models.ForeignKey(DPType, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ('model', 'competence')
+
+
 class MetaModel(models.Model):
     """
     Информация о метамоделях. Нужно для хранения информации о названиях моделей
@@ -979,10 +1008,16 @@ class MetaModel(models.Model):
     guid = models.CharField(max_length=255)
     title = models.CharField(max_length=500)
 
+    def __str__(self):
+        return self.title
+
 
 class DpCompetence(models.Model):
     uuid = models.CharField(max_length=50, unique=True)
     title = models.CharField(max_length=500)
+
+    def __str__(self):
+        return self.title
 
 
 @deconstructible
@@ -1125,6 +1160,9 @@ class CircleItem(models.Model):
     """
     элемент колеса
     """
+    SYSTEM_UPLOADS = 'uploads'
+    SYSTEM_LABS = 'labs'
+
     level = models.IntegerField(null=True, default=None)
     sublevel = models.IntegerField(null=True, default=None)
     competence = models.ForeignKey(DpCompetence, null=True, default=None, on_delete=models.CASCADE)
@@ -1134,6 +1172,10 @@ class CircleItem(models.Model):
     model_uuid = models.CharField(max_length=36, default=None, null=True)
     result = models.ForeignKey(LabsEventResult, on_delete=models.CASCADE, related_name='circle_items')
     code = models.CharField(max_length=32, unique=True)
+    created_in = models.CharField(max_length=15, default=SYSTEM_LABS)
+    # параметр для отслеживания того, к какой системе сейчас принадлежит элемент. те, что есть в разметке
+    # мероприятия в labs доступны обычным пользователям для добавления к результату
+    source = models.CharField(max_length=15, default=SYSTEM_LABS)
 
     def get_code(self):
         """
@@ -1175,3 +1217,57 @@ class UpdateTimes(models.Model):
     @classmethod
     def set_last_update_for_event(cls, event_type, dt):
         cls.objects.update_or_create(event_type=event_type, defaults={'dt': dt})
+
+
+class Summary(models.Model):
+    """
+    Модель для хранения конспектов и их черновиков
+    """
+    result_limit_models = models.Q(app_label='isle', model='Trace') | \
+                          models.Q(app_label='isle', model='LabsEventResult')
+
+    content = models.TextField(blank=True)
+    author = models.ForeignKey(User, on_delete=models.CASCADE)
+    is_draft = models.BooleanField(default=True)
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, related_name='+',
+                                     limit_choices_to=result_limit_models, null=True)
+    object_id = models.PositiveIntegerField(null=True)
+    result = GenericForeignKey()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def get_short_content(self):
+        return '\n'.join(strip_tags(self.content).splitlines()[:2])
+
+    @classmethod
+    def publish_summary(cls, user, event, result, content):
+        """
+        сохранение конспекта с обработкой от потенциально опасных элементов и удаление старых черновиков, относящихся
+        к указанному блоку
+        """
+        content = bleach.clean(
+            content,
+            tags=settings.BLEACH_ALLOWED_TAGS,
+            attributes=settings.BLEACH_ALLOWED_ATTRIBUTES,
+        )
+        summary = cls.objects.create(author=user, event=event, result=result, content=content, is_draft=False)
+        if isinstance(result, Trace):
+            result = None
+        cls.objects.filter(
+            author=user,
+            event=event,
+            content_type=ContentType.objects.get_for_model(result) if result else None,
+            object_id=result.id if result else None,
+            is_draft=True
+        ).delete()
+        return summary
+
+
+class DpTool(models.Model):
+    uuid = models.CharField(max_length=50, unique=True)
+    title = models.TextField()
+    models = models.ManyToManyField(MetaModel, related_name='tools')
+
+    def __str__(self):
+        return self.title

@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% load i18n tz static %}
+
+{% block title %}Команды мероприятия "{{ event.title }}"{% endblock %}
+
+{% block content %}
+    {% include 'includes/to_event_page.html' with with_xle_url=True %}
+    <div class="mt-40 inline-divs-wrapper" id="teams">
+        <div>
+            <h3 class="display-inline-block">Команды мероприятия</h3>
+            <p>
+                <strong>{% trans "Мероприятие:" %}</strong> {{ event.title }}
+                <br>
+                {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }}{% endlocaltime %}
+            </p>
+        </div>
+        <div>
+            <a class="nav-item btn btn-warning create-team-btn mb-2" href="{% url 'create-team' uid=event.uid %}?next={{ request.path }}">
+                <span class="glyphicon glyphicon-plus mr-10"></span>
+                Создать команду</a>
+        </div>
+    </div>
+    {% include 'includes/teams_table.html' with teams_page=True %}
+{% endblock %}
+
+{% block js %}
+    {{ block.super }}
+    <script type="text/javascript">
+        const isAssistant = eval("{{ is_assistant|lower }}");
+        const csrfmiddlewaretoken = $('input[name=csrfmiddlewaretoken]').val();
+    </script>
+    <script type="text/javascript" src="{% static 'js/pages/events.js' %}"></script>
+{% endblock %}

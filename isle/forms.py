@@ -1,7 +1,14 @@
 from django import forms
 from django.conf import settings
+from django.contrib.contenttypes.models import ContentType
+from django.utils import six
+from django.utils.translation import ugettext_lazy as _
 from dal import autocomplete, forward
-from isle.models import Team, User, EventBlock, EventOnlyMaterial, UserResult, TeamResult, UserRole, EventEntry
+from dal_genericm2m.fields import GenericM2MFieldMixin
+from dal_select2_queryset_sequence.fields import QuerySetSequence, QuerySetSequenceModelField
+from dal_select2_queryset_sequence.widgets import QuerySetSequenceSelect2
+from isle.models import Team, User, EventBlock, EventOnlyMaterial, EventEntry, MetaModel, DpCompetence, DpTool, \
+    ModelCompetence
 
 
 class BaseTeamForm(forms.ModelForm):
@@ -95,3 +102,176 @@ class EventMaterialForm(forms.ModelForm):
         self.fields['related_teams'].widget.forward = [
             forward.Const(self.event.id, 'event'), forward.Field('related_teams', 'exclude')
         ]
+
+
+class GenericUserTeamField(GenericM2MFieldMixin, QuerySetSequenceModelField):
+    """
+    GenericField, считающий для объектов User основным полем unti_id вместо id
+    """
+    def to_python(self, value):
+        if not value:
+            return value
+
+        content_type_id, object_id = self.get_content_type_id_object_id(value)
+        queryset = self.get_queryset_for_content_type(content_type_id)
+
+        if queryset is None:
+            self.raise_invalid_choice()
+
+        try:
+            if queryset.model is User:
+                return queryset.get(unti_id=object_id)
+            return queryset.get(pk=object_id)
+        except (queryset.model.DoesNotExist, queryset.model.MultipleObjectsReturned):
+            self.raise_invalid_choice()
+
+    def prepare_value(self, value):
+        if not value:
+            return ''
+
+        if isinstance(value, six.string_types):
+            if value.split('-')[0] == str(ContentType.objects.get_for_model(User).id):
+                user = User.objects.filter(unti_id=value.split('-')[1]).first()
+                value = '{}-{}'.format(value.split('-')[0], user.id) if user else ''
+            return value
+
+        return '%s-%s' % (ContentType.objects.get_for_model(value).pk,
+                          value.unti_id if isinstance(value, User) else value.pk)
+
+
+class UserOrTeamUploadAutocompleteBase(forms.Form):
+    item = GenericUserTeamField(
+        queryset=QuerySetSequence(
+            User.objects.all(),
+            Team.objects.all(),
+        ),
+        required=False,
+        widget=QuerySetSequenceSelect2('team-and-user-autocomplete',
+                                       attrs={'data-placeholder': _('Пользователь или команда'),
+                                              'class': 'user-or-team-autocomplete-selector'})
+    )
+
+    def __init__(self, **kwargs):
+        event = kwargs.pop('event')
+        super().__init__(**kwargs)
+        self.event = event
+        self.fields['item'].widget.forward = [forward.Const(self.event.id, 'event')]
+
+
+class UserOrTeamUploadAutocomplete(UserOrTeamUploadAutocompleteBase):
+    """
+    форма с полем пользователь/команда для использования в форме загрузки
+    """
+    def __init__(self, **kwargs):
+        result = kwargs.pop('result')
+        super().__init__(**kwargs)
+        self.fields['item'].widget.forward.append(forward.Const('upload', 'format'))
+        if result.result_format == 'personal':
+            self.fields['item'].queryset = QuerySetSequence(User.objects.all())
+            self.fields['item'].widget.forward.append(forward.Const('user', 'type'))
+        elif result.result_format == 'group':
+            self.fields['item'].queryset = QuerySetSequence(Team.objects.all())
+            self.fields['item'].widget.forward.append(forward.Const('team', 'type'))
+
+
+class EventDTraceFilter(UserOrTeamUploadAutocompleteBase):
+    """
+    форма для фильтрации результатов на странице общих результатов мероприятия
+    """
+    APPROVED_ANY = 0
+    APPROVED_TRUE = 1
+    APPROVED_FALSE = 2
+    APPROVED_NONE = 3
+
+    field_order = ['only_my', 'search', 'item']
+
+    only_my = forms.BooleanField(widget=forms.CheckboxInput, label=_('Показывать только мой след'), required=False)
+    search = forms.CharField(max_length=100, required=False, widget=forms.TextInput(attrs={'placeholder': _('Найти')}))
+
+    def clean(self):
+        data = super().clean()
+        if data.get('only_my') and data.get('item'):
+            self.add_error('item', forms.ValidationError(_('Нельзя выбрать одновременно с опцией "{}"')
+                                                         .format(self.fields['only_my'].label)))
+        return data
+
+
+class EventDTraceAdminFilter(EventDTraceFilter):
+    """
+    форма для фильтрации результатов на странице общих результатов мероприятия - вид для ассистента
+    """
+    field_order = ['only_my', 'search', 'approved', 'item']
+
+    approved = forms.IntegerField(widget=forms.Select(choices=(
+        (EventDTraceFilter.APPROVED_ANY, _('Любой статус валидности')),
+        (EventDTraceFilter.APPROVED_TRUE, _('Валидный')),
+        (EventDTraceFilter.APPROVED_FALSE, _('Невалидный')),
+        (EventDTraceFilter.APPROVED_NONE, _('Не валидирован')),
+    )), required=False)
+
+
+def get_available_sublevels(modelcompetence, level):
+    """
+    допустимые подуровни для выбранной связки модель-компетенция-уровень
+    т.к. uuidы типов в dp выдаются разными для каждой модели, приходится ориентироваться на название
+    """
+    if level == 1:
+        if modelcompetence.type.title == 'Экономика и управление на основе данных':
+            list(range(1, 5))
+        if modelcompetence.type.title in ['Сквозные технологии НТИ', 'IT сфера']:
+            return list(range(1, 8))
+        else:
+            return list(range(1, 4))
+    elif level == 2:
+        return list(range(1, 6))
+    elif level == 3:
+        return list(range(1, 8))
+    return []
+
+
+class CircleItemForm(forms.Form):
+    metamodel = forms.ModelChoiceField(
+        queryset=MetaModel.objects.all(),
+        widget=autocomplete.ModelSelect2(url='metamodel-autocomplete'),
+        label=_('Модель'),
+    )
+    competence = forms.ModelChoiceField(
+        queryset=DpCompetence.objects.all(),
+        widget=autocomplete.ModelSelect2(url='competences-autocomplete', forward=[forward.Field('metamodel')]),
+        label=_('Компетенция'),
+    )
+    level = forms.ChoiceField(choices=[(None, None)] + [(i, i) for i in range(1, 4)], label=_('Уровень'),
+                              widget=autocomplete.ListSelect2())
+    sublevel = forms.ChoiceField(widget=autocomplete.Select2(
+        url='sublevel-autocomplete',
+        forward=[forward.Field('metamodel'), forward.Field('competence'), forward.Field('level')]
+    ), label=_('Подуровень'), choices=[(i, i) for i in range(1, 8)])
+    tools = forms.ModelMultipleChoiceField(
+        queryset=DpTool.objects.all(),
+        widget=autocomplete.ModelSelect2Multiple(url='tools-autocomplete', forward=[forward.Field('metamodel')]),
+        label=_('Инструменты'),
+        required=False,
+    )
+
+    def clean(self):
+        data = super().clean()
+        metamodel = data.get('metamodel')
+        if metamodel:
+            if data.get('competence') and not metamodel.competences.filter(competence_id=data['competence'].id)\
+                    .exists():
+                self.add_error('competence', _('Выбрана неверная компетенция для данной модели'))
+            if data.get('tools'):
+                wrong_tools_ids = set([i.id for i in data['tools']]) - set(metamodel.tools.values_list('id', flat=True))
+                wrong_tools = list(filter(lambda x: x.id in wrong_tools_ids, data['tools']))
+                if wrong_tools:
+                    self.add_error('tools', _('Выбраны неверные инструменты для данной модели: %s')
+                                   % ', '.join(i.title for i in wrong_tools))
+            if data.get('competence'):
+                modelcompetence = ModelCompetence.objects.filter(model=metamodel, competence=data['competence']).first()
+                if modelcompetence and data.get('sublevel') and data.get('level') and int(data['sublevel']) not in \
+                        get_available_sublevels(modelcompetence, int(data['level'])):
+                    self.add_error('sublevel', _('Выбран неверный подуровень'))
+        return data
+
+
+ResultStructureFormset = forms.formset_factory(extra=1, form=CircleItemForm)
