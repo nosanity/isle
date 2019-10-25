@@ -6,7 +6,6 @@
         <h2>Элемент цифрового следа</h2>
     </div>
     <div>
-        {% if result.result.title %}<strong>{{ result.result.title }}</strong>{% endif %} <br>
         {% if result.result.block.description %}<strong>Деятельность:</strong> {{ result.result.block.description }}{% endif %} <br>
         {% if result.result.result_format %}<strong>Формат работы:</strong> {{ result.result.get_result_format_display }}{% endif %}
     </div>
@@ -19,6 +18,12 @@
 
         <div class="row">
             {% for material in files %}
+                {% if material.summary %}
+                    <div class="col-sm-12">
+                        <strong>Конспект:</strong>
+                        {{ material.summary.content|safe }}
+                    </div>
+                {% else %}
                 <div class="col-sm-4">
                     <div class="artefact-item-wrapper" href="{{ material.get_url }}" {{ material.render_metadata|safe }} data-material-title="{{ material.get_name }}">
                         {% if material.get_metadata.file_type == 'image' %}
@@ -29,6 +34,7 @@
                     </div>
                     <a class="link_preview" href="{{ material.get_url }}" {{ material.render_metadata|safe }}>{{ material.get_name }}</a>&nbsp;
                 </div>
+                {% endif %}
             {% endfor %}
         </div>
 
@@ -45,18 +51,6 @@
                 {% endif %}
                 {% if event.get_authors %}<strong>Автор:</strong> {{ event.get_authors|join:', '|safe }}<br>{% endif %}
                 {% if event.data.event.place.title %}<strong>Место:</strong> {{ event.data.event.place.title }}<br>{% endif %}
-
-                <h6 class="font-weight-bold mt-20">Структура мероприятия</h6>
-                {% for block in structure %}
-                    <strong>Блок {{ block.order }}. {{ block.title }}</strong>
-                    <ul class="no-bullets">
-                        {% for result in block.results.all %}
-                            <li>Результат {{ block.order }}.{{ result.order }}. {{ result.title }}</li>
-                        {% empty %}
-                            <li>Нет ожидаемых результатов</li>
-                        {% endfor %}
-                    </ul>
-                {% endfor %}
             </div>
 
             <div class="col-sm-6">

@@ -10,13 +10,15 @@ from urllib.parse import quote
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import logout as base_logout
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.storage import default_storage
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponseForbidden, JsonResponse, HttpResponseRedirect, Http404, FileResponse, \
     StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import get_template
 from django.urls import reverse, resolve, Resolver404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -25,27 +27,30 @@ from django.views.generic import TemplateView, View, ListView
 import django_filters
 import requests
 from dal import autocomplete
+from dal_select2_queryset_sequence.views import Select2QuerySetSequenceView
 from drf_swagger_docs.permissions import SwaggerBasePermission
 from drf_yasg.openapi import Parameter, Schema
 from drf_yasg.utils import swagger_auto_schema
+from queryset_sequence import QuerySetSequence
 from rest_framework import status, exceptions
-from rest_framework.authentication import SessionAuthentication
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
 from rest_framework.generics import ListAPIView, CreateAPIView
 from rest_framework.pagination import PageNumberPagination, LimitOffsetPagination
 from rest_framework.parsers import MultiPartParser
-from rest_framework.permissions import BasePermission, IsAdminUser
+from rest_framework.permissions import BasePermission, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
 from isle.api import LabsApi, XLEApi, DpApi, SSOApi
 from isle.cache import UserAvailableContexts
 from isle.filters import LabsUserResultFilter, LabsTeamResultFilter, StatisticsFilter
-from isle.forms import CreateTeamForm, AddUserForm, EventMaterialForm, EditTeamForm
+from isle.forms import CreateTeamForm, AddUserForm, EventMaterialForm, EditTeamForm, EventDTraceFilter, \
+    EventDTraceAdminFilter, ResultStructureFormset, get_available_sublevels
 from isle.kafka import send_object_info, KafkaActions, check_kafka
 from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, EventTeamMaterial, EventOnlyMaterial, \
     Attendance, Activity, ActivityEnrollment, EventBlock, BlockType, UserResult, TeamResult, UserRole, ApiUserChart, \
     LabsEventResult, LabsUserResult, LabsTeamResult, Context, CSVDump, PLEUserResult, RunEnrollment, DTraceStatistics, \
-    CircleItem
+    CircleItem, Summary, MetaModel, DpTool, DpCompetence, ModelCompetence
 from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer, \
     UserFileSerializer, UserResultSerializer, EventOnlyMaterialSerializer, DTraceStatisticsSerializer
 from isle.tasks import generate_events_csv, team_members_set_changed, handle_ple_user_result
@@ -351,26 +356,31 @@ class EventView(GetEventMixin, TemplateView):
             u.can_delete = u.id in can_delete
             u.added_by_chat_bot = u.id in chat_bot_added
         event_entry = EventEntry.objects.filter(event=self.event, user=self.request.user).first()
-        teams = list(Team.objects.filter(event=self.event).select_related('creator').prefetch_related('users')) + \
-            list(self.event.get_pt_teams(user_ids=[i.id for i in users]))
-        user_teams = [
-            i.id for i in teams if self.request.user in
-                i.get_members_for_event(self.event, user_ids=[i.id for i in users])
-        ]
-        teams = sorted(list(teams), key=lambda x: (int(x.id not in user_teams), x.name.lower()))
-        for team in teams:
-            team.traces_number = team.get_traces_number_for_event(self.event)
-        teams_allowed_to_delete = [i.id for i in teams if i.user_can_delete_team(self.request.user)]
         data.update({
             'students': users,
             'event': self.event,
-            'teams': teams,
-            'user_teams': user_teams,
             'event_entry': event_entry,
             'event_entry_id': getattr(event_entry, 'id', 0),
-            'teams_allowed_to_delete': teams_allowed_to_delete,
         })
+        data.update(self.get_teams_data(self.event, self.request.user, users))
         return data
+
+    @staticmethod
+    def get_teams_data(event, user, users):
+        teams = list(Team.objects.filter(event=event).select_related('creator').prefetch_related('users')) + \
+                list(event.get_pt_teams(user_ids=[i.id for i in users]))
+        user_teams = [
+            i.id for i in teams if user in
+                                   i.get_members_for_event(event, user_ids=[i.id for i in users])
+        ]
+        teams = sorted(list(teams), key=lambda x: (int(x.id not in user_teams), x.name.lower()))
+        for team in teams:
+            team.traces_number = team.get_traces_number_for_event(event)
+        return {
+            'teams': teams,
+            'user_teams': user_teams,
+            'teams_allowed_to_delete': [i.id for i in teams if i.user_can_delete_team(user)],
+        }
 
 
 @method_decorator(context_setter, name='get')
@@ -388,6 +398,7 @@ class BaseLoadMaterials(TemplateView):
             'event': self.event,
             'can_upload': self.can_upload(),
             'can_set_public': self._can_set_public(),
+            'SUMMARY_SAVE_INTERVAL': settings.SUMMARY_SAVE_INTERVAL,
             'unattached_files': self.get_unattached_files()
         })
         return data
@@ -457,7 +468,9 @@ class BaseLoadMaterials(TemplateView):
         data[result_key] = result_value
         url = request.POST.get('url_field')
         file_ = request.FILES.get('file_field')
-        if bool(file_) == bool(url):
+        summary_content = request.POST.get('summary')
+        # в запросе должен быть или файл, или урл, или содержание конспекта
+        if sum(map(lambda x: int(bool(x)), [url, file_, summary_content])) != 1:
             return JsonResponse({}, status=400)
         if url:
             try:
@@ -468,8 +481,16 @@ class BaseLoadMaterials(TemplateView):
             except:
                 file_type, file_size = '', None
             data.update({'url': url, 'file_type': file_type, 'file_size': file_size})
-        else:
+        elif file_:
             data.update({'file_type': file_.content_type, 'file_size': file_.size})
+        else:
+            summary = Summary.publish_summary(
+                request.user,
+                self.event,
+                result_value if isinstance(result_value, Trace) else result_value.result,
+                summary_content
+            )
+            data.update({'summary_id': summary.id})
         data['initiator'] = request.user.unti_id
         material = self.material_model.objects.create(**data)
         if file_:
@@ -481,6 +502,7 @@ class BaseLoadMaterials(TemplateView):
             'comment': getattr(material, 'comment', ''),
             'is_public': getattr(material, 'is_public', True),
             'data_attrs': material.render_metadata(),
+            'summary': material.get_short_summary(),
             'can_set_public': self._can_set_public()
         }
         self.update_add_item_response(resp, material, result_value)
@@ -605,7 +627,7 @@ class BaseLoadMaterialsLabsResults:
             return resp
         result_id_error, result_deleted, type_ok = self._check_labs_result_id(request)
         allowed_actions = ['delete_all', 'init_result', 'move', 'move_unattached', 'approve_result',
-                           'change_circle_items']
+                           'change_circle_items', 'init_structure_edit', 'edit_structure']
         if 'add_btn' in request.POST:
             if result_id_error is not None or result_deleted or not type_ok:
                 return result_id_error
@@ -627,7 +649,109 @@ class BaseLoadMaterialsLabsResults:
                 return self.action_approve_result(request)
             elif request.POST['action'] == 'change_circle_items':
                 return self.action_change_circle_items(request)
+            elif request.POST['action'] == 'init_structure_edit':
+                return self.action_init_structure_edit(request)
+            elif request.POST['action'] == 'edit_structure':
+                return self.action_edit_structure(request)
         return self.delete_item(request)
+
+    def action_init_structure_edit(self, request):
+        """
+        рендерит формсет текущей структуры результата
+        """
+        if not self.current_user_is_assistant:
+            raise PermissionDenied
+        result = self.get_result_for_request(request)
+        if not result:
+            return JsonResponse({}, status=400)
+        initial_data = self.get_result_structure_initial_data(result)
+        context = {
+            'formset': ResultStructureFormset(initial=initial_data),
+            'additional_fields': {
+                'labs_result_id': result.result_id,
+                'action': 'edit_structure',
+                'result_item_id': result.id,
+            }
+        }
+        t = get_template('edit_result_structure_modal.html').render(context=context, request=request)
+        return JsonResponse({'html': t})
+
+    def get_result_structure_initial_data(self, result):
+        """
+        initial data для формсета структуры результата
+        """
+        initial_data = []
+        meta = result.get_meta()
+        competence_uuids = filter(None, (i['competence'] for i in meta))
+        model_uuids = filter(None, (i['model'] for i in meta))
+        competences = {i.uuid: i for i in DpCompetence.objects.filter(uuid__in=competence_uuids)}
+        models = {i.uuid: i for i in MetaModel.objects.filter(uuid__in=model_uuids)}
+        for item in meta:
+            tmp = {
+                'level': str(item['level']) if item['level'] else None,
+                'sublevel': str(item['sublevel']) if item['sublevel'] else None,
+            }
+            tmp['metamodel'] = models.get(item['model'])
+            tmp['competence'] = competences.get(item['competence'])
+            if item.get('tools'):
+                # на данном этапе у инструментов нет uuid, но можно считать, что в пределах одной модели
+                # названия инструментов уникальны
+                tmp['tools'] = DpTool.objects.filter(models=tmp['metamodel'], title__in=item['tools'])
+            initial_data.append(tmp)
+        return initial_data
+
+    def action_edit_structure(self, request):
+        """
+        обновление структуры результата
+        """
+        if not self.current_user_is_assistant:
+            raise PermissionDenied
+        result = self.get_result_for_request(request)
+        if not result:
+            return JsonResponse({}, status=400)
+        initial_data = self.get_result_structure_initial_data(result)
+        formset = ResultStructureFormset(initial=initial_data, data=request.POST)
+        if formset.is_valid():
+            circle_items = []
+            for form_data in formset.cleaned_data:
+                if not form_data:
+                    continue
+                defaults = dict(
+                    level=form_data['level'],
+                    sublevel=form_data['sublevel'],
+                    competence=form_data['competence'],
+                    model=form_data['metamodel'],
+                    result=result.result,
+                    competence_uuid=form_data['competence'].uuid,
+                    model_uuid=form_data['metamodel'].uuid,
+                    created_in=CircleItem.SYSTEM_UPLOADS,
+                    source=CircleItem.SYSTEM_UPLOADS,
+                    tool=None,
+                )
+                if form_data.get('tools'):
+                    for tool in form_data['tools']:
+                        defaults['tool'] = tool.title
+                        ci = CircleItem(**defaults)
+                        ci = CircleItem.objects.get_or_create(code=ci.get_code(), defaults=defaults)[0]
+                        circle_items.append(ci)
+                else:
+                    ci = CircleItem(**defaults)
+                    ci = CircleItem.objects.get_or_create(code=ci.get_code(), defaults=defaults)[0]
+                    circle_items.append(ci)
+            result.circle_items.set(circle_items)
+            logging.info('User %s has set new structure for %s %s: %s', self.request.user.unti_id,
+                         result._meta.model_name, result.id, result.get_meta())
+            send_object_info(result, result.id, KafkaActions.UPDATE,
+                             additional_data={'what': ResultUpdateType.EDIT_TOOLS})
+            return JsonResponse({
+                'status': 0,
+                'items': {i.id: i.tool for i in circle_items if i.tool},
+                'type': 'user' if isinstance(result, LabsUserResult) else 'team',
+                'labs_result_id': result.result_id,
+                'result_id': result.id,
+                'object_id': result.user.unti_id if isinstance(result, LabsUserResult) else result.team_id,
+            })
+        return JsonResponse({'status': 1, 'errors': formset.errors})
 
     def action_approve_result(self, request):
         if not self.current_user_is_assistant:
@@ -663,7 +787,17 @@ class BaseLoadMaterialsLabsResults:
             result = self.get_result_for_request(request)
             if not result or result.result.block.event_id != self.event.id:
                 return JsonResponse({}, status=404)
-            result.circle_items.set([i for i in result.result.available_circle_items if i.id in selected_circle_items])
+            q = Q(tool__isnull=True)
+            if not self.current_user_is_assistant:
+                q |= Q(created_in=CircleItem.SYSTEM_UPLOADS)
+            q &= Q(id__in=list(result.circle_items.values_list('id', flat=True)))
+            # обычный пользователь не может редактировать инструменты своего результата, если они не описаны
+            # в структуре мероприятия в лабс
+            unchangeable_items = result.result.circle_items.filter(q)
+            all_items = set([i.id for i in result.result.circle_items.all()])
+            selected_items = set([i for i in all_items if i in selected_circle_items])
+            selected_items |= set(unchangeable_items.values_list('id', flat=True))
+            result.circle_items.set(selected_items)
             if self.should_send_to_kafka(result):
                 send_object_info(result, result.id, KafkaActions.UPDATE,
                                  additional_data={'what': ResultUpdateType.EDIT_TOOLS})
@@ -997,6 +1131,17 @@ class LoadUserMaterialsResult(BaseLoadMaterialsLabsResults, LoadMaterials):
     def block_has_available_results(self, block):
         return not block.block_has_only_group_results()
 
+    def update_add_item_response(self, resp, material, trace):
+        super().update_add_item_response(resp, material, trace)
+        resp.update({
+            'target_item_info': {
+                'type': 'user',
+                'name': trace.user.fio,
+                'id': trace.user.unti_id,
+                'image': trace.user.icon,
+            }
+        })
+
 
 class LoadTeamMaterials(BaseLoadMaterialsWithAccessCheck):
     """
@@ -1098,6 +1243,20 @@ class LoadTeamMaterialsResult(BaseLoadMaterialsLabsResults, LoadTeamMaterials):
 
     def block_has_available_results(self, block):
         return not block.block_has_only_personal_results()
+
+    def update_add_item_response(self, resp, material, trace):
+        super().update_add_item_response(resp, material, trace)
+        participants = self.event.get_participant_ids()
+        resp.update({
+            'target_item_info': {
+                'type': 'team',
+                'name': trace.team.name,
+                'id': trace.team.id,
+                'users': [{
+                    'name': user.fio, 'image': user.icon, 'enrolled': user.id in participants,
+                } for user in trace.team.users.all()],
+            }
+        })
 
 
 class LoadEventMaterials(GetEventMixin, BaseLoadMaterials):
@@ -1222,7 +1381,11 @@ class BaseTeamView(GetEventMixin):
             return JsonResponse({}, status=400)
         team, members_changed = form.save()
         self.team_saved(team, members_changed)
-        return JsonResponse({'redirect': reverse('event-view', kwargs={'uid': self.event.uid})})
+        if request.GET.get('next'):
+            redirect_url = request.GET['next']
+        else:
+            redirect_url = reverse('event-view', kwargs={'uid': self.event.uid})
+        return JsonResponse({'redirect': redirect_url})
 
     def team_saved(self, team, members_changed):
         pass
@@ -1406,6 +1569,49 @@ class EventTeamAutocomplete(EventItemAutocompleteBase):
         return '{} ({})'.format(result.name, ', '.join([i.last_name for i in result.users.all()]))
 
 
+class MetaModelAutocomplete(autocomplete.Select2QuerySetView):
+    queryset = MetaModel.objects.all()
+    model_field_name = 'title'
+
+    def get_queryset(self):
+        return super().get_queryset().order_by('title')
+
+
+class CompetenceAutocomplete(autocomplete.Select2QuerySetView):
+    queryset = DpCompetence.objects.all()
+    model_field_name = 'title'
+
+    def get_queryset(self):
+        if self.forwarded.get('metamodel') and self.forwarded['metamodel'].isdigit():
+            return super().get_queryset().filter(models__model_id=self.forwarded['metamodel'])\
+                .order_by('models__order')
+        else:
+            raise Http404
+
+
+class ToolAutocomplete(autocomplete.Select2QuerySetView):
+    def get_queryset(self):
+        try:
+            model = MetaModel.objects.get(id=self.forwarded['metamodel'])
+        except (MetaModel.DoesNotExist, TypeError, ValueError):
+            return DpTool.objects.none()
+        qs = model.tools.order_by('title')
+        if self.q:
+            qs = qs.filter(title__icontains=self.q)
+        return qs
+
+
+class SublevelAutocomplete(autocomplete.Select2ListView):
+    def get_list(self):
+        try:
+            modelcompetence = ModelCompetence.objects.select_related('type').\
+                get(competence_id=self.forwarded['competence'], model_id=self.forwarded['metamodel'])
+            level = int(self.forwarded['level'])
+        except (ModelCompetence.DoesNotExist, ValueError, TypeError, KeyError):
+            raise Http404
+        return list(map(str, get_available_sublevels(modelcompetence, level)))
+
+
 class Paginator(PageNumberPagination):
     page_size = 20
 
@@ -1426,6 +1632,15 @@ class ApiPermission(SwaggerBasePermission, BasePermission):
         if key and api_key and key == api_key:
             return True
         return False
+
+
+class IsAuthenticatedCustomized(SwaggerBasePermission, IsAuthenticated):
+    _require_authentication = True
+
+    def has_permission(self, request, view):
+        if request.method == 'OPTIONS':
+            return True
+        return super().has_permission(request, view)
 
 
 class AttendanceApi(ListAPIView):
@@ -1895,11 +2110,12 @@ class UserChartApiView(APIView):
 
         * 200 успешно
         * 400 неполный запрос
-        * 403 api key отсутствует или неправильный
+        * 401 если не передан авторизационный токен
         * 404 пользователь не найден
     """
 
-    permission_classes = ()
+    authentication_classes = (TokenAuthentication, )
+    permission_classes = (IsAuthenticatedCustomized, )
 
     @swagger_auto_schema(manual_parameters=[
         Parameter('user_id', 'query', type='number', required=True),
@@ -1918,12 +2134,16 @@ class UserChartApiView(APIView):
 class FileInfoMixin:
     def get_file_info(self, m):
         return {
+            'activity_uuid': m.event.activity.uid,
+            'title': m.result_v2.result.title,
             'event_uuid': m.event.uid,
             'file_url': m.get_url(),
             'file_name': m.get_file_name(),
+            'summary_content': m.summary.content if m.summary_id else None,
             'comment': m.result_v2.comment,
             'levels': m.result_v2.get_meta(),
             'url': m.get_page_url(),
+            'approved': m.result_v2.approved,
         }
 
 
@@ -1946,21 +2166,28 @@ class UserMaterialsListView(FileInfoMixin, APIView):
         * 200 успешно
             [
                 {
+                    "activity_uuid": "12341234-1234-1234-1234123412341234",
+                    "title": "title",
                     "event_uuid": "11111111-1111-1111-11111111",
                     "file_url": "http://example.com/file.pdf"
                     "file_name": "file.pdf",
+                    "summary_content": null,
                     "comment": "",
                     "levels": [{"level": 1, "sublevel": 1, "competence": "11111111-1111-1111-11111111}],
-                    "url": "https://uploads.2035.university/11111111-1111-1111-11111111/123/"
+                    "url": "https://uploads.2035.university/11111111-1111-1111-11111111/123/",
+                    "approved": null,
                 },
                 {
+                    "activity_uuid": "12341234-1234-1234-1234123412341234",
+                    "title": "title",
                     "event_uuid": "11111111-1111-1111-11111111",
                     "file_url": "http://example.com/file.pdf"
                     "file_name": "file.pdf",
                     "comment": "",
                     "levels": [{"level": 1, "sublevel": 1, "competence": "11111111-1111-1111-11111111}],
                     "url": "https://uploads.2035.university/load-team/11111111-1111-1111-11111111/123/",
-                    "team": {"id": 1, "name": "name", "members": [1, 2]}
+                    "team": {"id": 1, "name": "name", "members": [1, 2]},
+                    "approved": true,
                 },
                 ...
             ]
@@ -2017,6 +2244,8 @@ class BaseResultInfoView(APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
         materials = self.materials_model.objects.filter(result_v2=result)
         resp = {
+            'activity_uuid': result.result.block.event.activity.uid,
+            'title': result.result.title,
             'event_uuid': result.result.block.event.uid,
             'comment': result.comment,
             'approved': result.approved,
@@ -2025,6 +2254,7 @@ class BaseResultInfoView(APIView):
             'files': [{
                 'file_url': f.get_url(),
                 'file_name': f.get_file_name(),
+                'summary_content': f.summary.content if f.summary_id else None,
                 'created_at': f.created_at and f.created_at.isoformat()
             } for f in materials]
         }
@@ -2053,6 +2283,8 @@ class UserResultInfoView(BaseResultInfoView):
 
         * 200 успешно
             {
+                "activity_uuid": "12341234-1234-1234-1234123412341234",
+                "title": "title",
                 "event_uuid": "11111111-1111-1111-11111111",
                 "comment": "",
                 "approved": false,
@@ -2063,6 +2295,7 @@ class UserResultInfoView(BaseResultInfoView):
                     {
                         "file_url": "http://example.com/file.pdf",
                         "file_name": "file.pdf",
+                        "summary_content": null,
                         "created_at": "2019-04-26T10:33:09.223871+00:00"
                     }
                 ]
@@ -2094,6 +2327,8 @@ class TeamResultInfoView(BaseResultInfoView):
 
         * 200 успешно
             {
+                "activity_uuid": "12341234-1234-1234-1234123412341234",
+                "title": "title",
                 "event_uuid": "11111111-1111-1111-11111111",
                 "comment": "",
                 "approved": false,
@@ -2104,6 +2339,7 @@ class TeamResultInfoView(BaseResultInfoView):
                     {
                         "file_url": "http://example.com/file.pdf",
                         "file_name": "file.pdf",
+                        "summary_content": null,
                         "created_at": "2019-04-26T10:33:09.223871+00:00"
                     }
                 ]
@@ -2155,6 +2391,8 @@ class AllUserResultsView(ListAPIView):
                 "previous": null,
                 "results": [
                     {
+                        "activity_uuid": "12341234-1234-1234-1234123412341234",
+                        "title": "title",
                         "event_uuid": "63284c8e-4f4a-4b54-9ef9-92f1cfb13d98",
                         "comment": "",
                         "approved": false,
@@ -2164,6 +2402,7 @@ class AllUserResultsView(ListAPIView):
                             {
                                 "file_url": "http://example.com/media/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/22/file.pdf",
                                 "file_name": "file.pdf",
+                                "summary_content": null,
                                 "created_at": "2019-04-26T10:33:09.223871+00:00"
                             }
                         ],
@@ -2183,7 +2422,7 @@ class AllUserResultsView(ListAPIView):
     permission_classes = (ApiPermission,)
 
     def get_queryset(self):
-        return LabsUserResult.objects.select_related('user', 'result__block__event')\
+        return LabsUserResult.objects.select_related('user')\
             .prefetch_related('eventmaterial_set', 'circle_items').distinct()
 
 
@@ -2214,6 +2453,8 @@ class AllTeamResultsView(ListAPIView):
                 "previous": null,
                 "results": [
                     {
+                        "activity_uuid": "12341234-1234-1234-1234123412341234",
+                        "title": "title",
                         "event_uuid": "63284c8e-4f4a-4b54-9ef9-92f1cfb13d98",
                         "comment": "",
                         "approved": false,
@@ -2223,6 +2464,7 @@ class AllTeamResultsView(ListAPIView):
                             {
                                 "file_url": "http://example.com/media/63284c8e-4f4a-4b54-9ef9-92f1cfb13d98/22/file.pdf",
                                 "file_name": "file.pdf",
+                                "summary_content": null,
                                 "created_at": "2019-04-26T10:33:09.223871+00:00"
                             }
                         ],
@@ -2244,7 +2486,7 @@ class AllTeamResultsView(ListAPIView):
     permission_classes = (ApiPermission,)
 
     def get_queryset(self):
-        return LabsTeamResult.objects.select_related('team', 'result__block__event')\
+        return LabsTeamResult.objects.select_related('team')\
             .prefetch_related('eventteammaterial_set', 'team__users', 'circle_items').distinct()
 
 
@@ -2295,7 +2537,6 @@ class ResultPage(TemplateView):
             'result': result,
             'files': result.get_files(),
             'event': event,
-            'structure': event.blocks.prefetch_related('results'),
             'models': result.models_list(),
         }
 
@@ -2719,8 +2960,11 @@ class CheckUserTraceApi(APIView):
                 "event_id": "event with uuid cd602dd7-4fef-440b-82bf-013b5817e3dd not found"
             }
             если не указан какой-то параметр или не найден пользователь/мероприятие с описанием ошибок по параметрам
+
+        * 401 если не передан авторизационный токен
     """
-    permission_classes = ()
+    authentication_classes = (TokenAuthentication, )
+    permission_classes = (IsAuthenticatedCustomized, )
 
     @swagger_auto_schema(manual_parameters=[
         Parameter('leader_id', 'query', type='number', required=False),
@@ -2906,3 +3150,245 @@ class ContextUserStatistics(ListAPIView):
                          or 'force_update' in request.query_params):
                 calculate_user_context_statistics(item.user, item.context)
         return super().list(request, *args, **kwargs)
+
+
+class EventDigitalTrace(GetEventMixinWithAccessCheck, TemplateView):
+    """
+    страница цс мероприятия
+    """
+    template_name = 'event_dtrace.html'
+    extra_context = {'can_upload': True}
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        blocks = self.event.blocks.prefetch_related('results', 'results__circle_items')
+        form = self.get_filter_form()
+        team_filter, user_filter, approved_filter, search_filter = self.get_filters(form)
+        qs_user_results, qs_user_materials = self.get_results_and_files(
+            LabsUserResult, EventMaterial, user_filter, approved_filter, search_filter
+        )
+        qs_team_results, qs_team_materials = self.get_results_and_files(
+            LabsTeamResult, EventTeamMaterial, team_filter, approved_filter, search_filter
+        )
+        blocks = self.add_info_to_blocks(blocks, qs_user_materials, qs_user_results, 'user')
+        blocks = self.add_info_to_blocks(blocks, qs_team_materials, qs_team_results, 'team')
+
+        user_upload_url_pattern = reverse('load-materials', kwargs={'uid': self.event.uid, 'unti_id': 0})
+        user_upload_url_pattern = user_upload_url_pattern.replace('/0/', '/{REPLACE}/')
+        team_upload_url_pattern = reverse('load-team-materials', kwargs={'uid': self.event.uid, 'team_id': 0})
+        team_upload_url_pattern = team_upload_url_pattern.replace('/0/', '/{REPLACE}/')
+
+        user_teams = list(Team.objects.filter(system=Team.SYSTEM_UPLOADS, event=self.event, users=self.request.user)
+                          .values_list('id', flat=True)) + \
+            list(self.event.get_pt_teams().filter(users=self.request.user).values_list('id', flat=True))
+        structure = [
+            {
+                'title': block.title,
+                'deleted': block.deleted,
+                'results': [
+                    {
+                        'id': result.id,
+                        'deleted': result.deleted,
+                        'title': 'Результат {}.{}'.format(i, j),
+                        'is_personal': result.is_personal(),
+                        'is_group': result.is_group(),
+                    } for j, result in enumerate(block.results.all(), 1)
+                ]
+            } for i, block in enumerate(blocks, 1)
+        ]
+
+        data.update({
+            'event': self.event,
+            'blocks': blocks,
+            'filter_form': form,
+            'allow_file_upload': getattr(settings, 'ALLOW_FILE_UPLOAD', True),
+            'max_size': settings.MAXIMUM_ALLOWED_FILE_SIZE,
+            'max_uploads': settings.MAX_PARALLEL_UPLOADS,
+            'user_upload_url_pattern': user_upload_url_pattern,
+            'team_upload_url_pattern': team_upload_url_pattern,
+            'user_content_type_id': ContentType.objects.get_for_model(User).id,
+            'team_content_type_id': ContentType.objects.get_for_model(Team).id,
+            'is_assistant': self.current_user_is_assistant,
+            'participant_ids': self.event.get_participant_ids(),
+            'user_teams': user_teams,
+            'blocks_structure_json': json.dumps(structure, ensure_ascii=False),
+            'SUMMARY_SAVE_INTERVAL': settings.SUMMARY_SAVE_INTERVAL,
+        })
+
+        return data
+
+    def get_filters(self, form):
+        selected_user, selected_team = None, None
+        team_filter, user_filter, approved_filter, search_filter = {}, {}, {}, Q()
+        if form.is_valid():
+            if form.cleaned_data.get('item'):
+                if isinstance(form.cleaned_data.get('item'), User):
+                    selected_user = form.cleaned_data.get('item')
+                elif isinstance(form.cleaned_data.get('item'), Team):
+                    selected_team = form.cleaned_data.get('item')
+            if form.cleaned_data.get('only_my'):
+                selected_user = self.request.user
+            if selected_user:
+                user_filter = {'user': selected_user}
+                team_filter = {
+                    'team_id__in': list(Team.objects.filter(users=selected_user).values_list('id', flat=True))}
+            elif selected_team:
+                user_filter = {'user_id__in': []}
+                team_filter = {'team': selected_team}
+            if form.cleaned_data.get('approved') == form.APPROVED_TRUE:
+                approved_filter['approved'] = True
+            elif form.cleaned_data.get('approved') == form.APPROVED_FALSE:
+                approved_filter['approved'] = False
+            elif form.cleaned_data.get('approved') == form.APPROVED_NONE:
+                approved_filter['approved__isnull'] = True
+            search = form.cleaned_data.get('search')
+            if search:
+                search_filter = Q(url__icontains=search) | Q(file__icontains=search) | \
+                                Q(result_v2__comment__icontains=search)
+        return team_filter, user_filter, approved_filter, search_filter
+
+    def get_results_and_files(self, result_model, materials_model, person_filter, approved_filter, search_filter):
+        qs_materials = materials_model.objects.filter(
+            event=self.event,
+            result_v2__isnull=False,
+            **person_filter
+        )
+        if search_filter:
+            qs_materials = qs_materials.filter(search_filter)
+        qs_results = result_model.objects.filter(result__block__event_id=self.event.id, **person_filter,
+                                                 **approved_filter)
+        return qs_results, qs_materials
+
+    def get_filter_form(self):
+        form_class = EventDTraceAdminFilter if self.current_user_is_assistant else EventDTraceFilter
+        return form_class(event=self.event, data=self.request.GET)
+
+    def add_info_to_blocks(self, blocks, qs_materials, qs_results, result_type):
+        materials = defaultdict(list)
+        for m in qs_materials:
+            materials[m.result_v2_id].append(m)
+        results = defaultdict(list)
+        for item in qs_results:
+            item.type = result_type
+            item.links = materials.get(item.id, [])
+            if item.links:
+                results[item.result_id].append(item)
+        for result_id, items in results.items():
+            by_attr = defaultdict(list)
+            for item in items:
+                by_attr[getattr(item, result_type)].append(item)
+            results[result_id] = [{'type': result_type, 'obj': k, 'items': v} for k, v in by_attr.items()]
+        for block in blocks:
+            for result in block.results.all():
+                if not hasattr(result, 'results'):
+                    result.results = []
+                result.results.extend(results.get(result.id, []))
+        return blocks
+
+
+class TeamAndUserAutocomplete(Select2QuerySetSequenceView):
+    """
+    автокомплит по пользователям и командам для использования в форме фильтрации результатов
+    и форме загрузки файлов на странице цс мероприятия
+    """
+    def get_queryset(self):
+        event_id = self.forwarded.get('event')
+        try:
+            event = Event.objects.get(id=event_id)
+        except (Event.DoesNotExist, ValueError, TypeError):
+            raise Http404
+        obj_type = self.forwarded.get('type')
+        action_upload = self.forwarded.get('format') == 'upload'
+        is_assistant = self.request.user.is_assistant_for_context(event.context)
+        if obj_type == 'team':
+            users = User.objects.none()
+        else:
+            users = event.get_participants()
+            if action_upload and not is_assistant:
+                users = users.filter(id=self.request.user.id)
+        if obj_type == 'user':
+            teams = Team.objects.none()
+        else:
+            teams = Team.objects.filter(event=event, system=Team.SYSTEM_UPLOADS)
+            if not (action_upload and not settings.ENABLE_PT_TEAMS):
+                uploads_teams = set(teams.values_list('id', flat=True))
+                pt_teams = set(event.get_pt_teams().values_list('id', flat=True))
+                teams = Team.objects.filter(id__in=uploads_teams | pt_teams)
+            if action_upload and not is_assistant:
+                teams = teams.filter(users=self.request.user)
+        if self.q:
+            teams_q = Q(name__icontains=self.q) | \
+                Q(users__last_name__icontains=self.q) | \
+                Q(users__first_name__icontains=self.q) | \
+                Q(users__second_name__icontains=self.q)
+            teams = teams.filter(teams_q).distinct()
+            users = UserAutocomplete.search_user(users, self.q)
+        return QuerySetSequence(users, teams)
+
+    def get_result_value(self, result):
+        return '%s-%s' % (ContentType.objects.get_for_model(result).pk,
+                          result.unti_id if isinstance(result, User) else result.pk)
+
+
+class EventTeams(GetEventMixinWithAccessCheck, TemplateView):
+    template_name = 'event_teams.html'
+
+    def get_context_data(self, **kwargs):
+        data = super().get_context_data(**kwargs)
+        users = list(self.event.get_participants())
+        data.update({
+            'students': users,
+            'event': self.event,
+            'team_ct': ContentType.objects.get_for_model(Team),
+        })
+        data.update(EventView.get_teams_data(self.event, self.request.user, users))
+        return data
+
+
+class SummaryAutosave(GetEventMixinWithAccessCheck, View):
+    """
+    автосохранение черновика конспекта
+    """
+    def post(self, request, **kwargs):
+        if 'id' in request.POST:
+            return self.do_update(request)
+        return self.do_create(request)
+
+    def do_create(self, request):
+        result_type = request.POST.get('result_type')
+        result_id = request.POST.get('result_id')
+        content = request.POST.get('content', '')
+        try:
+            if result_type == 'labseventresult':
+                result = LabsEventResult.objects.select_related('block').get(id=result_id)
+                assert result.block.event_id == self.event.id
+            else:
+                result = None
+        except (AssertionError, ValueError, TypeError, ObjectDoesNotExist):
+            return JsonResponse({}, status=400)
+        summary = Summary.objects.create(author=request.user, result=result, content=content, event=self.event)
+        return JsonResponse({'summary_id': summary.id})
+
+    def do_update(self, request):
+        summary_id = request.POST.get('id')
+        try:
+            summary = Summary.objects.get(id=summary_id)
+            assert summary.is_draft and summary.author_id == request.user.id and summary.event_id == self.event.id
+        except (Summary.DoesNotExist, ValueError, TypeError, AssertionError):
+            return JsonResponse({}, status=400)
+        summary.content = request.POST.get('content', '')
+        summary.save(update_fields=['content'])
+        return JsonResponse({'summary_id': summary.id})
+
+
+class SummaryDelete(GetEventMixinWithAccessCheck, View):
+    """
+    Удаление черновика конспекта
+    """
+    def post(self, request, **kwargs):
+        try:
+            Summary.objects.filter(is_draft=True, author=request.user, event=self.event,
+                                   id=request.POST.get('id')).delete()
+            return JsonResponse({})
+        except (ValueError, TypeError):
+            return JsonResponse({}, status=400)

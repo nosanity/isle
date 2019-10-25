@@ -17,7 +17,7 @@ six==1.11.0
 social-auth-app-django==2.1.0
 social-auth-core==1.7.0
 urllib3==1.23
-django-autocomplete-light==3.2.3
+django-autocomplete-light==3.4.1
 djangorestframework==3.7.7
 django-split-settings==0.2.5
 celery==3.1.19
@@ -32,6 +32,9 @@ responses==0.10.6
 casbin==0.3
 python3-memcached==1.51
 XlsxWriter==1.1.8
+django-querysetsequence==0.11
+bleach==3.1.0
+django-dynamic-formsets==0.0.8
 
 git+https://github.com/adrtdr/python-logstash-ssl/@master
 -e git+https://github.com/EduScaled/carrier-client@master#egg=carrier_client

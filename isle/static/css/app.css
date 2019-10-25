@@ -711,4 +711,35 @@ img.user-img {
     z-index: 1;
     opacity: 0;
     transition: opacity 0.3s;
+
+.inline-user-item {
+    display: inline-block;
+}
+
+#event_dtrace_filter_form .user-or-team-autocomplete-selector .select2-selection__rendered,
+#formset-structure-edit .select2-selection__rendered {
+    line-height: 100%;
+}
+
+.summary-content-short {
+   overflow: hidden;
+   text-overflow: ellipsis;
+   display: -webkit-box;
+   -webkit-box-orient: vertical;
+   -webkit-line-clamp: 2; /* number of lines to show */
+   line-height: 25px;        /* fallback */
+   max-height: 50px;       /* fallback */
+}
+
+.result-individual-structure-item:not(:first-of-type) {
+    border-top: 1px solid grey;
+    margin-top: 15px;
+}
+
+#formset-structure-edit .delete-row {
+    margin-left: 15px;
+}
+
+.has-error {
+    color: #a94442;
 }
