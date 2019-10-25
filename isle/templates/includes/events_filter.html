@@ -8,7 +8,7 @@
                 <button class="btn btn-primary events-filter-btn mb-2" id="btn-filter-events">
                     <i class="glyphicon glyphicon-ok"></i>
                 </button>
-                <a href="{{ reset_filter_url }}">
+                <a href="{{ reset_filter_url }}{% if activity_filter %}?activity={{ activity_filter.id }}{% endif %}">
                     <button class="btn events-filter-btn events-filter-cancel-btn mb-2">
                         <i class="glyphicon glyphicon-ban-circle"></i>
                     </button>

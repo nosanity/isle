@@ -33,9 +33,11 @@ INSTALLED_APPS = [
     'social_core',
     'social_django',
     'rest_framework',
+    'rest_framework.authtoken',
     'django_carrier_client',
     'django_celery_results',
     'django_user_agents'
+    'dynamic_formsets',
 ]
 
 MIDDLEWARE = [
@@ -170,6 +172,9 @@ DP_TOKEN = ''
 PT_URL = ''
 PT_TOKEN = ''
 
+OPENAPI_URL = ''
+OPENAPI_KEY = ''
+
 # базовый урл uploads
 BASE_URL = ''
 
@@ -183,6 +188,7 @@ KAFKA_PORT = 80
 KAFKA_TOKEN = ''
 KAFKA_PROTOCOL = 'http'
 KAFKA_TOPIC_SSO = 'sso'
+KAFKA_TOPIC_OPENAPI = 'openapi'
 
 # количество всех материалов в выбранных материалов, более которого генерация выгрузки должна идти асинхронно
 MAX_MATERIALS_FOR_SYNC_GENERATION = 500
@@ -211,6 +217,21 @@ STATISTICS_VALID_FOR = 60 * 30
 XLE_RUN_ENROLLMENT_DELETE_CHECK_TIME = 24
 CELERY_RESULT_BACKEND = 'django-db'
 DJANGO_CELERY_RESULTS_TASK_ID_MAX_LENGTH = 191
+
+# интервал автосохранения конспектов в миллисекундах
+SUMMARY_SAVE_INTERVAL = 60000
+
+BLEACH_ALLOWED_TAGS = ['a', 'abbr', 'acronym', 'b', 'blockquote', 'code', 'em', 'i', 'li', 'ol', 'strong',
+                       'ul', 'p', 'img', 'table', 'td', 'tr', 'tbody', 'th', 'thead', 'h1', 'h2', 'h3',
+                       'h4', 'h5', 'h6', 'h7', 's', 'hr', 'div', 'br']
+
+BLEACH_ALLOWED_ATTRIBUTES = {
+    'a': ['href', 'title'],
+    'acronym': ['title'],
+    'abbr': ['title'],
+    'img': ['src', 'style', 'alt'],
+    'div': ['style']
+}
 
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}
@@ -253,12 +274,22 @@ except IOError as e:
 
 define = [
     'SSO_UNTI_URL', 'SSO_API_KEY', 'SSO_API_KEY', 'SOCIAL_AUTH_UNTI_SECRET', 'LABS_URL', 'LABS_TOKEN',
-    'XLE_URL', 'XLE_TOKEN', 'DP_URL', 'DP_TOKEN', 'BASE_URL', 'PT_URL', 'PT_TOKEN',
+    'XLE_URL', 'XLE_TOKEN', 'DP_URL', 'DP_TOKEN', 'BASE_URL', 'PT_URL', 'PT_TOKEN', 'OPENAPI_URL', 'OPENAPI_KEY',
 ]
 
 for name in define:
     if not locals().get(name):
         raise Exception('"{}" must be defined'.format(name))
+
+DWH_DATABASES = {
+    'labs': locals().get('DWH_LABS_DB_NAME', 'labs'),
+    'xle': locals().get('DWH_XLE_DB_NAME', 'xle'),
+    'dp': locals().get('DWH_DP_DB_NAME', 'dp'),
+    'pt': locals().get('DWH_PT_DB_NAME', 'people'),
+}
+
+import djcelery
+djcelery.setup_loader()
 
 LOGGING = {
     'version': 1,

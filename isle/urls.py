@@ -1,11 +1,14 @@
 from django.conf import settings
+from django.conf.urls import url
 from django.urls import path, include
+from drf_swagger_docs.views import get_schema_view
 from rest_framework.documentation import include_docs_urls
 from isle import views
 
 urlpatterns = [
     path('carrier-django/', include('django_carrier_client.urls')),
     path('api/docs/', include_docs_urls()),
+    url(r'^api/swagger(?P<format>\.json)$', get_schema_view().without_ui(cache_timeout=0)),
     path('', views.ActivitiesView.as_view(), name='index'),
     path('events/', views.Events.as_view(), name='events'),
     path('login/', views.login, name='login'),
@@ -23,6 +26,10 @@ urlpatterns = [
     path('autocomplete/user/', views.UserAutocomplete.as_view(), name='user-autocomplete'),
     path('autocomplete/event-user/', views.EventUserAutocomplete.as_view(), name='event-user-autocomplete'),
     path('autocomplete/event-team/', views.EventTeamAutocomplete.as_view(), name='event-team-autocomplete'),
+    path('autocomplete/model/', views.MetaModelAutocomplete.as_view(), name='metamodel-autocomplete'),
+    path('autocomplete/competence/', views.CompetenceAutocomplete.as_view(), name='competences-autocomplete'),
+    path('autocomplete/tool/', views.ToolAutocomplete.as_view(), name='tools-autocomplete'),
+    path('autocomplete/sublevel/', views.SublevelAutocomplete.as_view(), name='sublevel-autocomplete'),
     path('api/attendance/', views.AttendanceApi.as_view()),
     path('api/user-chart/', views.UserChartApiView.as_view()),
     path('owner/team-material/<str:uid>/<int:team_id>/<int:material_id>/', views.TeamMaterialOwnership.as_view(),
@@ -56,6 +63,12 @@ urlpatterns = [
     path('api/event-materials/', views.EventMaterialsApi.as_view()),
     path('api/context-user-statistics/<uuid:context_uuid>/', views.ContextUserStatistics.as_view()),
     path('<str:uid>/<int:unti_id>/<str:result_type>/<int:result_id>', views.ResultPage.as_view(), name='result-page'),
+    path('<str:uid>/dtrace/', views.EventDigitalTrace.as_view(), name='event-dtrace'),
+    path('autocomplete/team-and-user/', views.TeamAndUserAutocomplete.as_view(),
+         name='team-and-user-autocomplete'),
+    path('<str:uid>/teams/', views.EventTeams.as_view(), name='event-teams'),
+    path('<str:uid>/summary/autosave/', views.SummaryAutosave.as_view(), name='summary-autosave'),
+    path('<str:uid>/summary/delete/', views.SummaryDelete.as_view(), name='summary-delete'),
 ]
 
 if settings.DEBUG:
