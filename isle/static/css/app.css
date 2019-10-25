@@ -700,6 +700,18 @@ img.user-img {
     display: inline-block;
 }
 
+.dt-warning-tooltip {
+    width: 220px;
+    background-color: #e52127;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px 0;
+    position: absolute;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.3s;
+
 .inline-user-item {
     display: inline-block;
 }
