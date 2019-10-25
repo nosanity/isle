@@ -5,8 +5,7 @@ from django.utils import timezone
 from carrier_client.manager import MessageManager, MessageManagerException
 from carrier_client.message import OutgoingMessage
 from django_carrier_client.helpers import MessageManagerHelper
-from isle.api import SSOApi, ApiError
-from isle.models import LabsUserResult, LabsTeamResult, PLEUserResult
+from isle.models import LabsUserResult, LabsTeamResult, PLEUserResult, EventEntry, User, Event
 from isle.utils import update_casbin_data, update_user_token
 
 
@@ -109,6 +108,46 @@ class SSOUserChangeListener(KafkaBaseListener):
             logging.error('Got wrong object id from kafka: %s' % obj_id)
 
 
+class XLECheckinListener(KafkaBaseListener):
+    topic = settings.XLE_TOPIC
+    actions = (KafkaActions.CREATE, KafkaActions.UPDATE)
+    msg_type = 'checkin'
+
+    def _handle_for_id(self, obj_id, action):
+        try:
+            assert isinstance(obj_id, dict)
+            checkin_uuid = obj_id.get('checkin')
+            unti_id = obj_id.get('user')
+            assert checkin_uuid and unti_id
+            user = User.objects.filter(unti_id=unti_id).first()
+            if not user:
+                try:
+                    SSOApi().push_user_to_uploads(unti_id)
+                    user = User.objects.filter(unti_id=unti_id).first()
+                except ApiError:
+                    pass
+            if not user:
+                logging.error('Failed to create user for unti_id %s' % unti_id)
+                return
+            try:
+                checkin_data = XLEApi().get_checkin(checkin_uuid)
+            except ApiError:
+                return
+            else:
+                if not (checkin_data.get('checkin') or checkin_data.get('attendance')):
+                    return
+                if checkin_data.get('unti_id') != user.unti_id:
+                    logging.error('Inconsistent data: kafka object id %s, xle checkin api returned %s' %
+                                  (obj_id, checkin_data))
+                    return
+                try:
+                    event = Event.objects.get(uid=checkin_data.get('event_uuid'))
+                except (Event.DoesNotExist, TypeError):
+                    logging.error('Event with uuid "%s" not found' % checkin_data.get('event_uuid'))
+                    return
+                EventEntry.objects.update_or_create(user=user, event=event, defaults={'deleted': False})
+
+
 class CasbinPolicyListener(KafkaBaseListener):
     topic = settings.KAFKA_TOPIC_SSO
     actions = (KafkaActions.CREATE, KafkaActions.DELETE, KafkaActions.UPDATE)
@@ -142,6 +181,7 @@ class OpenapiTokenListener(KafkaBaseListener):
 
 
 MessageManagerHelper.set_manager_to_listen(SSOUserChangeListener())
+MessageManagerHelper.set_manager_to_listen(XLECheckinListener())
 MessageManagerHelper.set_manager_to_listen(CasbinPolicyListener())
 MessageManagerHelper.set_manager_to_listen(CasbinModelListener())
 MessageManagerHelper.set_manager_to_listen(OpenapiTokenListener())
