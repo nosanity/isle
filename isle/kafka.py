@@ -146,6 +146,8 @@ class XLECheckinListener(KafkaBaseListener):
                     logging.error('Event with uuid "%s" not found' % checkin_data.get('event_uuid'))
                     return
                 EventEntry.objects.update_or_create(user=user, event=event, defaults={'deleted': False})
+        except (AssertionError, AttributeError):
+            logging.error('Got wrong object id from kafka: %s' % obj_id)
 
 
 class CasbinPolicyListener(KafkaBaseListener):

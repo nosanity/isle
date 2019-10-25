@@ -53,6 +53,8 @@
 
                 {% if event.data.place_title %}<strong>Место:</strong> {{ event.data.place_title }}<br>{% endif %}
 
+		{% comment %}
+		Временно скрываем Структуру мероприятия согласно тикету UPLOADS-267
                 <h6 class="font-weight-bold mt-20">Структура мероприятия</h6>
                 {% for block in structure %}
                     <strong>Блок {{ block.order }}. {{ block.title }}</strong>
@@ -64,6 +66,7 @@
                         {% endfor %}
                     </ul>
                 {% endfor %}
+		{% endcomment %}
 
             </div>
 
