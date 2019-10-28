@@ -36,7 +36,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'django_carrier_client',
     'django_celery_results',
-    'django_user_agents'
+    'django_user_agents',
     'dynamic_formsets',
 ]
 
