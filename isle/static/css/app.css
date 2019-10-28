@@ -744,3 +744,12 @@ img.user-img {
 .has-error {
     color: #a94442;
 }
+
+.notification-wrapper {
+    margin-top: 20px;
+    padding: 10px;
+}
+
+.notification-wrapper .close-notification:hover {
+    cursor: pointer;
+}

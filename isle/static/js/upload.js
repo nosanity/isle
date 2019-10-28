@@ -736,6 +736,9 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
         },
         error: () => { alert('error'); }
     });
+}).delegate('.close-notification', 'click', (e) => {
+    e.preventDefault();
+    $(e.target).parents('.notification-wrapper').remove();
 });
 
 function watch_edit_structure_selects_state() {
@@ -1321,6 +1324,17 @@ function successProcessFile(data, $form, result_item_id) {
         clearForm($form); 
     }
     apply_preview_icons();
+    if (pageType == 'event_dtrace' || pageType == 'loadMaterials_v2') {
+        if (!$form.find('.uploads').html().trim()) {
+            success_html = `
+                <div class="notification-wrapper bg-info">
+                    <span class="close-notification pull-right">×</span>
+                    Результат сохранен. Посмотреть его можно <a href="${page_url}">тут</a>
+                </div>
+            `;
+            $form.append($(success_html));
+        }
+    }
 }
 
 function xhrProcessFile(num) {
@@ -1447,12 +1461,13 @@ function processFile(form, file, filesLength, result_item_id) {
             return xhr;            
         },
         success: (data) => {
+            completeProcessFile(num, $form);
             successProcessFile(data, $form, result_item_id);
         },
-        complete: () => {
+        error: (xhr, err) => {
+            errorProcessFile(xhr, err);
             completeProcessFile(num, $form);
-        },
-        error: errorProcessFile
+        }
     })
 }
 
