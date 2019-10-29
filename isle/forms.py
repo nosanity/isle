@@ -232,6 +232,10 @@ def get_available_sublevels(modelcompetence, level):
 
 
 class CircleItemForm(forms.Form):
+    def __init__(self, *args, **kwargs):
+        kwargs['empty_permitted'] = False
+        super().__init__(*args, **kwargs)
+
     metamodel = forms.ModelChoiceField(
         queryset=MetaModel.objects.all(),
         widget=autocomplete.ModelSelect2(url='metamodel-autocomplete'),
