@@ -43,7 +43,7 @@
                                 {% if is_assistant or result_item.user_id and result_item.user_id == request.user.id or result_item.team_id and result_item.team_id in user_teams %}
                                 <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files" title="{% trans 'Удалить результат' %}"></span>
                                 {% endif %}
-                                {% if not result_item.links.0.summary %}
+                                {% if not result_item.links.0.summary and can_upload %}
                                     <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment" title="{% trans 'Добавить/редактировать комментарий' %}"></span>
                                 {% endif %}
                                 {% if is_assistant %}
