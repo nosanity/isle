@@ -34,6 +34,9 @@
             </form>
         </div>
     </div>
+    {% if not is_enrolled %}
+        <button class="btn btn-success self-enroll-btn mb-2">{% trans "Загрузить цифровой след" %}</button>
+    {% endif %}
     <div>
         {% for block in blocks %}
             {% if block|show_block %}
@@ -102,6 +105,7 @@
     const deleteSummaryUrl = "{% url 'summary-delete' uid=event.uid %}";
     const SUMMARY_SAVE_INTERVAL = parseInt("{{ SUMMARY_SAVE_INTERVAL }}");
     const resultType = "labseventresult";
+    const enrollUrl = "{% url 'event-self-enroll' uid=event.uid %}";
 
     let user_or_team_input = yl.jQuery('#id_item');
     let only_my_input =  $('#id_only_my');
@@ -112,6 +116,17 @@
     only_my_input.on('change', (e) => {
         if (only_my_input.prop('checked') && user_or_team_input.val())
             user_or_team_input.val(null).trigger('change');
+    });
+
+    $('.self-enroll-btn').on('click', (e) => {
+        e.preventDefault();
+        $.ajax({
+            method: 'POST',
+            url: enrollUrl,
+            data: {csrfmiddlewaretoken: csrfmiddlewaretoken},
+            success: (data) => { window.location.reload(); },
+            error: () => { alert('Произошла ошибка'); }
+        })
     });
 </script>
 {% include 'includes/_link_preview.html' %}

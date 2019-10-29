@@ -3152,7 +3152,7 @@ class ContextUserStatistics(ListAPIView):
         return super().list(request, *args, **kwargs)
 
 
-class EventDigitalTrace(GetEventMixinWithAccessCheck, TemplateView):
+class EventDigitalTrace(GetEventMixin, TemplateView):
     """
     страница цс мероприятия
     """
@@ -3196,6 +3196,7 @@ class EventDigitalTrace(GetEventMixinWithAccessCheck, TemplateView):
                 ]
             } for i, block in enumerate(blocks, 1)
         ]
+        is_enrolled = EventEntry.objects.filter(user=self.request.user, event=self.event).exists()
 
         data.update({
             'event': self.event,
@@ -3213,6 +3214,8 @@ class EventDigitalTrace(GetEventMixinWithAccessCheck, TemplateView):
             'user_teams': user_teams,
             'blocks_structure_json': json.dumps(structure, ensure_ascii=False),
             'SUMMARY_SAVE_INTERVAL': settings.SUMMARY_SAVE_INTERVAL,
+            'can_upload': self.current_user_is_assistant or is_enrolled,
+            'is_enrolled': is_enrolled,
         })
 
         return data
