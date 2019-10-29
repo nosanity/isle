@@ -117,8 +117,8 @@ class XLECheckinListener(KafkaBaseListener):
     def _handle_for_id(self, obj_id, action):
         try:
             assert isinstance(obj_id, dict)
-            checkin_uuid = obj_id.get('checkin')
-            unti_id = obj_id.get('user')
+            checkin_uuid = obj_id.get('checkin', {}).get('uuid')
+            unti_id = obj_id.get('user', {}).get('unti_id')
             assert checkin_uuid and unti_id
             user = User.objects.filter(unti_id=unti_id).first()
             if not user:
