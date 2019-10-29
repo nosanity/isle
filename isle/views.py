@@ -919,7 +919,19 @@ class BaseLoadMaterialsLabsResults:
                 circle_items_ids.append(int(cid))
             except (ValueError, TypeError):
                 pass
-        item.circle_items.set(CircleItem.objects.filter(id__in=circle_items_ids, result_id=item.result_id))
+        # если в структуре лабс указан какой-то элемент без инструментов, он автоматически добавляется
+        # к результату
+        auto_add_items = set(CircleItem.objects.filter(
+            result_id=item.result_id,
+            source=CircleItem.SYSTEM_LABS,
+            tool__isnull=True,
+        ).values_list('id', flat=True))
+        circle_items_ids = set(circle_items_ids) | auto_add_items
+        item.circle_items.set(CircleItem.objects.filter(
+            id__in=circle_items_ids,
+            result_id=item.result_id,
+            source=CircleItem.SYSTEM_LABS,
+        ))
         if self.should_send_to_kafka(item):
             send_object_info(item, item.id, KafkaActions.CREATE)
         return JsonResponse({'result_id': item.id})
