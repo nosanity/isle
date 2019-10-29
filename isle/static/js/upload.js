@@ -713,7 +713,17 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
                             <label class="result-circle-items-label" for="circle_item_${tool_id}_${data['result_id']}">${data['items'][tool_id]}</label>
                         </div>
                         `;
-                        block.find('.form-check').last().after($(new_tool));
+                        if (block.find('.form-check').length) {
+                            block.find('.form-check').last().after($(new_tool));
+                        }
+                        else {
+                            new_tool += `
+                                <span class="start-change-circle-items">Изменить</span>
+                                <span class="change-circle-items" data-labs-result-id="${data['labs_result_id']}" data-result-id="${data['result_id']}">Сохранить</span>
+                                <span class="cancel-change-circle-items">Отменить</span>
+                            `;
+                            block.append($(new_tool))
+                        }
                     }
                 }
                 block.find('.result-circle-items').each((i, el) => {
@@ -742,12 +752,18 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
 });
 
 function watch_edit_structure_selects_state() {
-    if (!structureEditSelectDisablerIsSet) {
+    if (!structureEditSelectDisablerIsSet && pageType == 'loadMaterials_v2') {
         yl.jQuery('body').delegate('#edit-structure-modal select', 'change', (e) => {
             check_structure_enabled_selects($(e.target).parents('.result-individual-structure-item'));
         });
         structureEditSelectDisablerIsSet = true;
     }
+}
+
+if (pageType == 'event_dtrace') {
+    yl.jQuery('body').delegate('#edit-structure-modal select', 'change', (e) => {
+        check_structure_enabled_selects($(e.target).parents('.result-individual-structure-item'));
+    });
 }
 
 function check_structure_enabled_selects(wrapper) {
