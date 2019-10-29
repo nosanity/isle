@@ -41,17 +41,17 @@
                         <div class="col-md-3">
                             <div class="result-helper-block">
                                 {% if is_assistant or result_item.user_id and result_item.user_id == request.user.id or result_item.team_id and result_item.team_id in user_teams %}
-                                <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
+                                <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files" title="{% trans 'Удалить результат' %}"></span>
                                 {% endif %}
                                 {% if not result_item.links.0.summary %}
-                                    <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>
+                                    <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment" title="{% trans 'Добавить/редактировать комментарий' %}"></span>
                                 {% endif %}
                                 {% if is_assistant %}
-                                    <span class="glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure"></span>
+                                    <span class="glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure" title="{% trans 'Редактировать структуру результата' %}"></span>
                                 {% endif %}
-                                <span data-url="{{ result_item.get_page_url }}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
+                                <span data-url="{{ result_item.get_page_url }}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page" title="{% trans 'Перейти на страницу результата' %}"></span>
                                 {% if is_assistant %}
-                                    <span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>
+                                    <span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result" title="{% trans 'Переместить результат' %}"></span>
                                 {% endif %}
                             </div>
                             {% if is_assistant %}

@@ -2,6 +2,7 @@ let counter = 0;
 const uploads = [];
 
 let maxSizeSelector = null;
+let structureEditSelectDisablerIsSet = false;
 
 const UPLOAD_TYPE_FILE = 'file';
 const UPLOAD_TYPE_URL = 'url';
@@ -654,17 +655,28 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
         callbacks: {
             onAdd: (elem, index) => {
                 $(elem).find('.form-group .col-sm-10').each((i, el) => {
-                    if ($(el).find('.select2-hidden-accessible').length) {
-                        $(el).children('span').last().remove();
+                    $(el).find('span.select2-container').remove()
+                    let select = $(el).find('select');
+                    if (select && select.data('select2-id')) {
+                        let id = select.data('select2-id').replace(new RegExp('id_form-(\\d+)-'), 'id_form-' + index + '-');
+                        select.attr('data-select2-id', id);
                     }
                 });
+                $('#edit-structure-modal').find('select[data-select2-id]').each((i, el) => {
+                    window.__dal__initialize($(el))
+                });
+                check_structure_enabled_selects($(elem));
             },
             postInitialize: (formset) => {
                 formset.find('a.delete-row').last().trigger('click');
                 $('#edit-structure-modal').css('opacity', 1);
+                $(formset).find('.result-individual-structure-item').each((i, el) => {
+                    check_structure_enabled_selects($(el))
+                });
             }
         }
     });
+    watch_edit_structure_selects_state();
 }).delegate('.btn-save-edited-structure', 'click', (e) => {
     const formData = new FormData($('#formset-structure-edit').get(0));
     $.ajax({
@@ -680,10 +692,14 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
                 if (pageType == 'event_dtrace') {
                     block = $('.material-result-div[data-result=' + data['labs_result_id'] + ']')
                     .find('.item-result-wrapper[data-id=' + data['type'] + '-' + data['object_id'] + ']')
+                    .find('.result-materials-wrapper[data-result-id=' + data['result_id'] + ']')
+                    .parents('.result-item-li')
                     .find('.result-selected-circle-items-div');
                 }
                 else {
                     block = $('.material-result-div[data-result=' + data['labs_result_id'] + ']')
+                    .find('.result-materials-wrapper[data-result-id=' + data['result_id'] + ']')
+                    .parents('.result-item-li')
                     .find('.result-selected-circle-items-div');
                 }
                 let current_tools = [];
@@ -705,12 +721,12 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
                 });
             }
             else {
-                $('#formset-structure-edit').find('.result-individual-structure-item').each((i, form) => {
+                $('#formset-structure-edit').find('.result-individual-structure-item:visible').each((i, form) => {
                     $(form).find('.error-container').remove();
                     $(form).find('.has-error').removeClass('has-error');
                     let errors = data.errors[i];
                     for (let key in errors) {
-                        let input = $(form).find('[name$=' + key + ']');
+                        let input = $(form).find('[name$=-' + key + ']');
                         input.parents('.form-group').addClass('has-error').children('div').append($(`
                             <div class="error-container"><span class="small">${errors[key][0]}</span><div>
                         `));
@@ -720,7 +736,30 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
         },
         error: () => { alert('error'); }
     });
+}).delegate('.close-notification', 'click', (e) => {
+    e.preventDefault();
+    $(e.target).parents('.notification-wrapper').remove();
 });
+
+function watch_edit_structure_selects_state() {
+    if (!structureEditSelectDisablerIsSet) {
+        yl.jQuery('body').delegate('#edit-structure-modal select', 'change', (e) => {
+            check_structure_enabled_selects($(e.target).parents('.result-individual-structure-item'));
+        });
+        structureEditSelectDisablerIsSet = true;
+    }
+}
+
+function check_structure_enabled_selects(wrapper) {
+    wrapper = yl.jQuery(wrapper);
+    const model_chosen = !!wrapper.find('select[name$=metamodel]').val();
+    const competence_chosen = !!wrapper.find('select[name$=competence]').val();
+    const level_chosen = !!wrapper.find('select[name$=level]').val();
+    wrapper.find('select[name$=competence]').prop('disabled', !model_chosen);
+    wrapper.find('select[name$=tools]').prop('disabled', !model_chosen);
+    wrapper.find('select[name$=level]').prop('disabled', !(model_chosen && competence_chosen));
+    wrapper.find('select[name$=sublevel]').prop('disabled', !(model_chosen && competence_chosen && level_chosen));
+}
 
 function clear_draft_id(form) {
     form.find('.ckedit').data('draft-id', '');
@@ -1087,7 +1126,7 @@ function successProcessFile(data, $form, result_item_id) {
         if (!$form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]').length) {
 
             if (isAssistant) {
-                additional_btns = `<span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result"></span>`;
+                additional_btns = `<span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result" title="Переместить результат"></span>`;
                 approve_block = `
                     <div class="clearfix"></div>
                     <div class="approve-result-block">
@@ -1155,10 +1194,10 @@ function successProcessFile(data, $form, result_item_id) {
                         </div>
                         <div class="col-md-3">
                             <div class="result-helper-block">
-                                <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files"></span>
-                                ${summary ? `` : `<span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment"></span>`}
-                                ${isAssistant ? `<span class="glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure"></span>` : ``}
-                                <span data-url="${page_url}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page"></span>
+                                <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files" title="Удалить результат"></span>
+                                ${summary ? `` : `<span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment" title="Добавить/редактировать комментарий"></span>`}
+                                ${isAssistant ? `<span class="glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure" title="Редактировать структуру результата"></span>` : ``}
+                                <span data-url="${page_url}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page" title="Перейти на страницу результата"></span>
                                 ${additional_btns}
                             </div>
                             ${approve_block}
@@ -1285,6 +1324,17 @@ function successProcessFile(data, $form, result_item_id) {
         clearForm($form); 
     }
     apply_preview_icons();
+    if (pageType == 'event_dtrace' || pageType == 'loadMaterials_v2') {
+        if (!$form.find('.uploads').html().trim()) {
+            success_html = `
+                <div class="notification-wrapper bg-info">
+                    <span class="close-notification pull-right">×</span>
+                    Результат сохранен. Посмотреть его можно <a href="${page_url}">тут</a>
+                </div>
+            `;
+            $form.append($(success_html));
+        }
+    }
 }
 
 function xhrProcessFile(num) {
@@ -1411,12 +1461,13 @@ function processFile(form, file, filesLength, result_item_id) {
             return xhr;            
         },
         success: (data) => {
+            completeProcessFile(num, $form);
             successProcessFile(data, $form, result_item_id);
         },
-        complete: () => {
+        error: (xhr, err) => {
+            errorProcessFile(xhr, err);
             completeProcessFile(num, $form);
-        },
-        error: errorProcessFile
+        }
     })
 }
 

@@ -714,7 +714,7 @@ class BaseLoadMaterialsLabsResults:
         if formset.is_valid():
             circle_items = []
             for form_data in formset.cleaned_data:
-                if not form_data:
+                if not form_data or form_data.get('DELETE'):
                     continue
                 defaults = dict(
                     level=form_data['level'],

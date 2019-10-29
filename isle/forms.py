@@ -276,4 +276,4 @@ class CircleItemForm(forms.Form):
         return data
 
 
-ResultStructureFormset = forms.formset_factory(extra=1, form=CircleItemForm)
+ResultStructureFormset = forms.formset_factory(extra=1, form=CircleItemForm, can_delete=True)

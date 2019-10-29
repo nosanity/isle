@@ -5,6 +5,7 @@ from django.utils import timezone
 from carrier_client.manager import MessageManager, MessageManagerException
 from carrier_client.message import OutgoingMessage
 from django_carrier_client.helpers import MessageManagerHelper
+from isle.api import SSOApi, ApiError, XLEApi
 from isle.models import LabsUserResult, LabsTeamResult, PLEUserResult, EventEntry, User, Event
 from isle.utils import update_casbin_data, update_user_token
 

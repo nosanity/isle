@@ -711,6 +711,7 @@ img.user-img {
     z-index: 1;
     opacity: 0;
     transition: opacity 0.3s;
+}
 
 .inline-user-item {
     display: inline-block;
@@ -742,4 +743,13 @@ img.user-img {
 
 .has-error {
     color: #a94442;
+}
+
+.notification-wrapper {
+    margin-top: 20px;
+    padding: 10px;
+}
+
+.notification-wrapper .close-notification:hover {
+    cursor: pointer;
 }
