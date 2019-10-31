@@ -30,6 +30,13 @@ def check_permission(user, context, obj_type='file', action='upload'):
     return enforce(str(user.unti_id), context, obj_type, action)
 
 
+def check_permission_for_contexts(user, context_uuids, obj_type='file', action='upload'):
+    from .casbin import enforce_for_contexts
+    if not user.unti_id or not context_uuids:
+        return []
+    return [i[0] for i in enforce_for_contexts(str(user.unti_id), context_uuids, obj_type, action).items() if i[1]]
+
+
 class User(AbstractUser):
     second_name = models.CharField(max_length=50)
     icon = JSONField()
@@ -61,7 +68,7 @@ class User(AbstractUser):
 
     @cached_property
     def available_context_uuids(self):
-        return [c for c in Context.objects.values_list('uuid', flat=True) if check_permission(self, c)]
+        return check_permission_for_contexts(self, Context.objects.values_list('uuid', flat=True))
 
 
 class EventType(models.Model):
