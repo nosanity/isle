@@ -34,3 +34,20 @@ def enforce(sub, ctx, obj_type, action):
     except Exception:
         logging.exception('Enforcer failed')
         return False
+
+
+def enforce_for_contexts(sub, contexts, obj_type, action):
+    try:
+        enforcer = get_enforcer()
+        if not enforcer:
+            return {key: False for key in contexts}
+    except Exception:
+        logging.exception('Failed to get enforcer')
+        return {key: False for key in contexts}
+    result = {}
+    for key in contexts:
+        try:
+            result[key] = enforcer.enforce(sub, key, obj_type, action)
+        except Exception:
+            result[key] = False
+    return result
