@@ -2,7 +2,7 @@
 <div class="result-items-wrapper">
     <ul class="list-group list-group-flush">
         {% for result_item in result.results %}
-            <li class="list-group-item no-left-padding result-item-li">
+            <li class="list-group-item result-item-li">
                 <div class="row">
                     <div class="col-md-9">
                         <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="{{ result_item.id }}">
@@ -15,7 +15,7 @@
                                         <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>&nbsp;
                                         {% if can_upload %}
                                             <button name="material_id" value="{{ link.id }}" class="btn-transparent delete-material-btn pull-right">
-                                                <span class="glyphicon glyphicon-remove"></span>
+                                                <span class="btn glyphicon glyphicon-remove"></span>
                                             </button>
                                         {% endif %}
                                     {% endif %}
@@ -27,17 +27,17 @@
                     <div class="col-md-3">
                         <div class="result-helper-block">
                             {% if can_upload %}
-                            <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files" title="{% trans 'Удалить результат' %}"></span>
+                            <span class="btn glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files" title="{% trans 'Удалить результат' %}"></span>
                             {% endif %}
                             {% if not result_item.links.0.summary %}
-                                <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment" title="{% trans 'Добавить/редактировать комментарий' %}"></span>
+                                <span class="btn glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment" title="{% trans 'Добавить/редактировать комментарий' %}"></span>
                             {% endif %}
                             {% if is_assistant %}
-                                <span class="glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure" title="{% trans 'Редактировать структуру результата' %}"></span>
+                                <span class="btn glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure" title="{% trans 'Редактировать структуру результата' %}"></span>
                             {% endif %}
-                            <span data-url="{{ result_item.get_page_url }}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page" title="{% trans 'Перейти на страницу результата' %}"></span>
+                            <span data-url="{{ result_item.get_page_url }}" class="btn glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page" title="{% trans 'Перейти на страницу результата' %}"></span>
                             {% if is_assistant %}
-                                <span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result" title="{% trans 'Переместить результат' %}"></span>
+                                <span class="btn glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result" title="{% trans 'Переместить результат' %}"></span>
                             {% endif %}
                         </div>
                         {% if is_assistant %}

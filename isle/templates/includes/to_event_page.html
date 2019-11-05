@@ -1,3 +1,7 @@
-<a href="{% if with_xle_url %}{{ event.get_xle_link }}{% else %}{% url 'event-view' uid=event.uid %}{% endif %}">
-    <button class="btn btn-light font-red"><i class="glyphicon glyphicon-arrow-left"></i>&nbsp;К странице мероприятия</button>
-</a>
+<div class="row mb-3">
+	<div class="col-lg-4 col-md-5 col-xs-12">
+		<a href="{% if with_xle_url %}{{ event.get_xle_link }}{% else %}{% url 'event-view' uid=event.uid %}{% endif %}" class="btn btn-block btn-light font-red">
+		    <i class="glyphicon glyphicon-arrow-left"></i>&nbsp;К странице мероприятия
+		</a>
+	</div>
+</div>

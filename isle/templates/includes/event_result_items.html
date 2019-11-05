@@ -3,20 +3,21 @@
     {% for result_dict in result.results %}
         <div class="item-result-wrapper" data-id="{{ result_dict.type }}-{% if result_dict.type == 'user' %}{{ result_dict.obj.unti_id }}{% else %}{{ result_dict.obj.id }}{% endif %}">
             {% if result_dict.type == 'user' %}
-                <div>{% include 'includes/user_image.html' with u=result_dict.obj %}<strong>{{ result_dict.obj.fio }}</strong></div>
+                <div class="item-result-user">{% include 'includes/user_image.html' with u=result_dict.obj %}<strong>{{ result_dict.obj.fio }}</strong></div>
             {% else %}
-                <div>
-                    <div class="inline-user-item"><strong>
+                <div class="result-user-item result-group-name mb-2"><strong>
                         {% blocktrans with name=result_dict.obj.name %}Группа "{{ name }}"{% endblocktrans %}
                     </strong></div>
+
+                <div class="item-result-group">
                     {% for u in result_dict.obj.users.all %}
-                        <div class="inline-user-item">{% include 'includes/user_image.html' %}<strong {% if u.id not in participant_ids %}class="color-grey"{% endif %}>{{ u.fio }}</strong></div>
+                        <div class="result-user-item mb-2">{% include 'includes/user_image.html' %}<strong {% if u.id not in participant_ids %}class="color-grey"{% endif %}>{{ u.fio }}</strong></div>
                     {% endfor %}
                 </div>
             {% endif %}
             <ul class="list-group list-group-flush">
                 {% for result_item in result_dict.items %}
-                <li class="list-group-item no-left-padding result-item-li">
+                <li class="list-group-item result-item-li">
                     <div class="row">
                         <div class="col-md-9">
                             <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="{{ result_item.id }}" data-result-type="{% if result_item.user_id %}user{% else %}team{% endif %}">
@@ -28,7 +29,7 @@
                                         {% else %}
                                             <a class="link_preview" href="{{ link.get_url }}" {{ link.render_metadata|safe }}>{{ link.get_name }}</a>
                                             {% if is_assistant or result_item.user_id and result_item.user_id == request.user.id or result_item.team_id and result_item.team_id in user_teams %}
-                                                <button name="material_id" value="{{ link.id }}" class="btn-transparent delete-material-btn pull-right">
+                                                <button name="material_id" value="{{ link.id }}" class="btn btn-transparent delete-material-btn pull-right">
                                                     <span class="glyphicon glyphicon-remove"></span>
                                                 </button>
                                             {% endif %}&nbsp;
@@ -38,26 +39,25 @@
                             </ul>
                             <p class="result-comment">{{ result_item.comment }}</p>
                         </div>
-                        <div class="col-md-3">
-                            <div class="result-helper-block">
+                        <div class="col-md-3 text-right">
+                            <div class="result-helper-block clearfix">
                                 {% if is_assistant or result_item.user_id and result_item.user_id == request.user.id or result_item.team_id and result_item.team_id in user_teams %}
-                                <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files" title="{% trans 'Удалить результат' %}"></span>
+                                <span class="btn glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files" title="{% trans 'Удалить результат' %}"></span>
                                 {% endif %}
                                 {% if not result_item.links.0.summary and can_upload %}
-                                    <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment" title="{% trans 'Добавить/редактировать комментарий' %}"></span>
+                                    <span class="btn glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment" title="{% trans 'Добавить/редактировать комментарий' %}"></span>
                                 {% endif %}
                                 {% if is_assistant %}
-                                    <span class="glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure" title="{% trans 'Редактировать структуру результата' %}"></span>
+                                    <span class="btn glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure" title="{% trans 'Редактировать структуру результата' %}"></span>
                                 {% endif %}
-                                <span data-url="{{ result_item.get_page_url }}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page" title="{% trans 'Перейти на страницу результата' %}"></span>
+                                <span data-url="{{ result_item.get_page_url }}" class="btn glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page" title="{% trans 'Перейти на страницу результата' %}"></span>
                                 {% if is_assistant %}
-                                    <span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result" title="{% trans 'Переместить результат' %}"></span>
+                                    <span class="btn glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result" title="{% trans 'Переместить результат' %}"></span>
                                 {% endif %}
                             </div>
                             {% if is_assistant %}
-                            <div class="clearfix"></div>
                             <div class="approve-result-block">
-                                <div class="pull-right">
+                                <div>
                                     <div class="approve-input-container">
                                         <input type="radio" class="approve-radio-btn" name="approved-{{ result_item.id }}" id="{{ result_item.id }}-approved-true" value="true" {% if result_item.approved == True %}checked="checked"{% endif %}>
                                         <label for="{{ result_item.id }}-approved-true">{% trans "Валидный" %}</label>
@@ -67,14 +67,11 @@
                                         <label for="{{ result_item.id }}-approved-false">{% trans "Невалидный" %}</label>
                                     </div>
                                 </div>
-                                <div class="clearfix"></div>
-                                <div class="approve-text pull-right">
+                                <div class="approve-text">
                                     <p class="current-approve-text text-muted">{% if result_item.approved != None and result_item.approve_text %}{{ result_item.approve_text }}{% endif %}</p>
                                 </div>
-                                <div class="clearfix"></div>
                                 <div class="approve-text-edit" style="display: none;" data-approved="{{ result_item.approved }}">
-                                    <input type="text" maxlength="255" class="approve-text-edit-input pull-right" placeholder="{% trans 'Комментарий (опционально)' %}">
-                                    <div class="clearfix"></div>
+                                    <input type="text" maxlength="255" class="form-control approve-text-edit-input pull-right" placeholder="{% trans 'Комментарий (опционально)' %}">
                                     <button class="btn btn-success do-approve-result pull-left" data-labs-result-id="{{ result.id }}" data-result-id="{{ result_item.id }}">{% trans "Сохранить" %}</button>
                                     <button class="btn btn-danger cancel-approve-btn pull-right">{% trans "Отменить" %}</button>
                                 </div>

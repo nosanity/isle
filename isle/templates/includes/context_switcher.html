@@ -1,8 +1,8 @@
 {% load i18n %}
 {% if AVAILABLE_CONTEXTS %}
-    <div class="row mr-auto context-switcher-wrapper">
+    <div class="row context-switcher-wrapper">
         {% csrf_token %}
-        <div class="col-md-3 col-xs-12">
+        <div class="col-xs-12 col-md-5 col-lg-4 mb-3">
             <select class="context-switching-select form-control" data-url="{% url 'switch_context' %}">
                 <option value="" {% if not request.user.chosen_context_id %}selected{% endif %}>Все контексты</option>
                 {% for cid, title in AVAILABLE_CONTEXTS %}
@@ -10,10 +10,8 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="col-md-3 col-xs-12">
-            <a href="{% url 'index' %}">
-                <button class="btn btn-light font-red">{% trans "На главную uploads" %}</button>
-            </a>
+        <div class="col-xs-12 col-md-5 col-lg-4 mb-3">
+            <a href="{% url 'index' %}" class="btn btn-block btn-light font-red">{% trans "На главную uploads" %}</a>
         </div>
     </div>
 {% endif %}
