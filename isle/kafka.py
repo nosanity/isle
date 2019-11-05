@@ -156,8 +156,15 @@ class CasbinPolicyListener(KafkaBaseListener):
     actions = (KafkaActions.CREATE, KafkaActions.DELETE, KafkaActions.UPDATE)
     msg_type = 'casbin_policy'
 
-    def _handle_for_id(self, obj_id, action):
-        update_casbin_data()
+    def handle_message(self, msg):
+        if msg.get_topic() == self.topic:
+            try:
+                payload = msg.get_payload()
+                if payload.get('type') == self.msg_type and payload.get('action') in self.actions and payload.get('id'):
+                    policy = payload['title']
+                    update_casbin_data(update_rule=policy)
+            except MessageManagerException:
+                logging.error('Got incorrect json from kafka: %s' % msg._value)
 
 
 class CasbinModelListener(KafkaBaseListener):

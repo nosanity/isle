@@ -20,7 +20,7 @@ from django.utils.html import strip_tags
 from django.utils.translation import ugettext_lazy as _
 import bleach
 from jsonfield import JSONField
-from .cache import UserAvailableContexts
+from .cache import get_user_available_contexts
 
 
 def check_permission(user, context, obj_type='file', action='upload'):
@@ -28,13 +28,6 @@ def check_permission(user, context, obj_type='file', action='upload'):
     if not user.unti_id or not context:
         return False
     return enforce(str(user.unti_id), context, obj_type, action)
-
-
-def check_permission_for_contexts(user, context_uuids, obj_type='file', action='upload'):
-    from .casbin import enforce_for_contexts
-    if not user.unti_id or not context_uuids:
-        return []
-    return [i[0] for i in enforce_for_contexts(str(user.unti_id), context_uuids, obj_type, action).items() if i[1]]
 
 
 class User(AbstractUser):
@@ -60,15 +53,15 @@ class User(AbstractUser):
         return ' '.join(filter(None, [self.last_name, self.first_name]))
 
     def is_assistant_for_context(self, context):
-        return check_permission(self, context and context.uuid)
+        context_uuid = context if isinstance(context, str) else context and context.uuid
+        return check_permission(self, context_uuid)
 
     def has_assistant_role(self):
-        ctx = UserAvailableContexts.get(self) or []
-        return bool(ctx)
+        return bool(self.available_context_uuids)
 
     @cached_property
     def available_context_uuids(self):
-        return check_permission_for_contexts(self, Context.objects.values_list('uuid', flat=True))
+        return get_user_available_contexts(self)
 
 
 class EventType(models.Model):
@@ -1095,6 +1088,7 @@ class UserFile(BaseMaterial, models.Model):
 class CasbinData(models.Model):
     model = models.TextField()
     policy = models.TextField()
+    model_version = models.IntegerField(default=1)
 
 
 class PLEUserResult(models.Model):

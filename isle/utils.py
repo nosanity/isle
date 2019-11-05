@@ -20,7 +20,7 @@ import xlsxwriter
 from celery.task.control import inspect
 from rest_framework.authtoken.models import Token
 from isle.api import ApiError, LabsApi, XLEApi, DpApi, SSOApi, PTApi, Openapi
-from isle.cache import UserAvailableContexts
+from isle.cache import UserContextAssistantCache
 from isle.models import (Event, EventEntry, User, Trace, EventType, Activity, EventOnlyMaterial, ApiUserChart, Context,
                          LabsEventBlock, LabsEventResult, LabsUserResult, EventMaterial, MetaModel, EventTeamMaterial,
                          Team, Author, DpCompetence, CasbinData, Run, RunEnrollment, DTraceStatistics, DPType, EventAuthor,
@@ -1059,15 +1059,30 @@ def get_csv_encoding_for_request(request):
     return overridden_encoding or settings.DEFAULT_CSV_ENCODING
 
 
-def update_casbin_data():
+def update_casbin_data(update_rule=None):
     try:
         data = SSOApi().get_casbin_data()
-        cdata = CasbinData.objects.first()
-        if cdata:
-            CasbinData.objects.filter(id=cdata.id).update(model=data['model'], policy=data['policy'])
-        else:
-            CasbinData.objects.create(model=data['model'], policy=data['policy'])
-        UserAvailableContexts.discard_many(User.objects.all().iterator())
+        defaults = {
+            'model': data['model'],
+            'policy': data['policy'],
+        }
+        CasbinData.objects.update_or_create(id=1, defaults=defaults)
+        if not update_rule:
+            # если обновилась модель, увеличивается номер ее версии, кэш для старой версии считается недействительным
+            CasbinData.objects.filter(id=1).update(model_version=models.F('model_version') + 1)
+
+        if update_rule and update_rule.startswith('p'):
+            # удаление прав всех пользователей для контекста
+            ctx_uuid = update_rule.strip().split(',')[2].strip()
+            UserContextAssistantCache().discard_many((user, ctx_uuid) for user in User.objects.iterator())
+        elif update_rule and update_rule.startswith('g'):
+            # удаление прав одного пользователя в контексте
+            unti_id = update_rule.strip().split(',')[1].strip()
+            ctx_uuid = update_rule.strip().split(',')[3].strip()
+            user = User.objects.filter(unti_id=unti_id).first()
+            if user:
+                UserContextAssistantCache().discard(user, ctx_uuid)
+
     except ApiError:
         pass
     except (TypeError, KeyError):
