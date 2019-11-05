@@ -2,7 +2,7 @@ from urllib import parse
 from django import template
 from django.contrib.contenttypes.models import ContentType
 from isle.forms import UserOrTeamUploadAutocomplete
-from isle.models import Summary, User, LabsUserResult, LabsTeamResult, CircleItem
+from isle.models import Summary, User, CircleItem, EventMaterial, EventTeamMaterial, EventOnlyMaterial
 
 register = template.Library()
 
@@ -117,3 +117,26 @@ def get_result_circle_items(context, labs_result, result_item):
         for i in result_item.circle_items.filter(tool__isnull=False, source=CircleItem.SYSTEM_UPLOADS)
     )
     return labs_items + uploads_items
+
+
+@register.simple_tag(takes_context=True)
+def can_edit_summary(context, file_obj):
+    return user_can_edit_summary(context['request'].user, file_obj)
+
+
+def user_can_edit_summary(user, file_obj, user_is_assistant=None):
+    """
+    редактировать конспект может тот, кто его создал, или все участники команды в случае группового результата
+    """
+    if file_obj.summary_id:
+        if isinstance(file_obj, EventMaterial) and file_obj.user_id == user.id:
+            return True
+        elif isinstance(file_obj, EventTeamMaterial) and user in file_obj.team.users.all():
+            return True
+        elif isinstance(file_obj, EventOnlyMaterial):
+            return file_obj.initiator == user.unti_id
+        if user_is_assistant is None:
+            user_is_assistant = user.is_assistant_for_context(file_obj.event.context)
+        if user_is_assistant:
+            return file_obj.initiator == user.unti_id
+    return False

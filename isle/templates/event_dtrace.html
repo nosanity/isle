@@ -106,6 +106,7 @@
     const SUMMARY_SAVE_INTERVAL = parseInt("{{ SUMMARY_SAVE_INTERVAL }}");
     const resultType = "labseventresult";
     const enrollUrl = "{% url 'event-self-enroll' uid=event.uid %}";
+    const getFullSummaryUrl = "{% url 'get-full-summary' uid=event.uid %}";
 
     let user_or_team_input = yl.jQuery('#id_item');
     let only_my_input =  $('#id_only_my');

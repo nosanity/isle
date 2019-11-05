@@ -54,6 +54,7 @@ from isle.models import Event, EventEntry, EventMaterial, User, Trace, Team, Eve
 from isle.serializers import AttendanceSerializer, LabsUserResultSerializer, LabsTeamResultSerializer, \
     UserFileSerializer, UserResultSerializer, EventOnlyMaterialSerializer, DTraceStatisticsSerializer
 from isle.tasks import generate_events_csv, team_members_set_changed, handle_ple_user_result
+from isle.templatetags.helpers import user_can_edit_summary
 from isle.utils import get_allowed_event_type_ids, \
     recalculate_user_chart_data, get_results_list, get_release_version, check_mysql_connection, \
     EventMaterialsCSV, EventGroupMaterialsCSV, BytesCsvStreamWriter, get_csv_encoding_for_request, XLSWriter, \
@@ -627,7 +628,7 @@ class BaseLoadMaterialsLabsResults:
             return resp
         result_id_error, result_deleted, type_ok = self._check_labs_result_id(request)
         allowed_actions = ['delete_all', 'init_result', 'move', 'move_unattached', 'approve_result',
-                           'change_circle_items', 'init_structure_edit', 'edit_structure']
+                           'change_circle_items', 'init_structure_edit', 'edit_structure', 'edit_summary']
         if 'add_btn' in request.POST:
             if result_id_error is not None or result_deleted or not type_ok:
                 return result_id_error
@@ -653,7 +654,21 @@ class BaseLoadMaterialsLabsResults:
                 return self.action_init_structure_edit(request)
             elif request.POST['action'] == 'edit_structure':
                 return self.action_edit_structure(request)
+            elif request.POST['action'] == 'edit_summary':
+                return self.action_edit_summary(request)
         return self.delete_item(request)
+
+    def action_edit_summary(self, request):
+        result = self.get_result_for_request(request)
+        if not result or not request.POST.get('content'):
+            return JsonResponse({}, status=400)
+        f = self.material_model.objects.filter(result_v2=result).first()
+        if f and f.summary and user_can_edit_summary(request.user, f):
+            f.summary.content = request.POST['content']
+            f.summary.save(update_fields=['content'])
+            logging.info('User %s updated summary %s' % (request.user.unti_id, f.summary.id))
+            return JsonResponse({'text': f.summary.get_short_content(), 'id': f.summary_id})
+        return JsonResponse({}, status=400)
 
     def action_init_structure_edit(self, request):
         """
@@ -1151,6 +1166,7 @@ class LoadUserMaterialsResult(BaseLoadMaterialsLabsResults, LoadMaterials):
                 'name': trace.user.fio,
                 'id': trace.user.unti_id,
                 'image': trace.user.icon,
+                'material_id': material.id,
             }
         })
 
@@ -1267,6 +1283,7 @@ class LoadTeamMaterialsResult(BaseLoadMaterialsLabsResults, LoadTeamMaterials):
                 'users': [{
                     'name': user.fio, 'image': user.icon, 'enrolled': user.id in participants,
                 } for user in trace.team.users.all()],
+                'material_id': material.id,
             }
         })
 
@@ -1279,7 +1296,7 @@ class LoadEventMaterials(GetEventMixin, BaseLoadMaterials):
     extra_context = {'with_comment_input': True, 'show_owners': True, 'event_upload': True}
 
     def post(self, request, *args, **kwargs):
-        if request.user.is_authenticated and self.current_user_is_assistant and 'change_material_info' in request.POST:
+        if request.user.is_authenticated and 'change_material_info' in request.POST:
             return self.change_material_info(request)
         return super().post(request, *args, **kwargs)
 
@@ -1292,18 +1309,26 @@ class LoadEventMaterials(GetEventMixin, BaseLoadMaterials):
             original_trace_id = material.trace_id
         except (self.material_model.DoesNotExist, ValueError, TypeError):
             return JsonResponse({}, status=400)
-        comment = request.POST.get('comment') or ''
-        material.trace = result_value
-        material.comment = comment
-        material.save(update_fields=['comment', 'trace'])
-        logging.info('User %s updated material %s. Trace_id: %s, comment: %s' %
-                     (request.user.username, material.id, result_value.id, comment))
+        comment = ''
+        if self.current_user_is_assistant:
+            comment = request.POST.get('comment') or ''
+            material.trace = result_value
+            material.comment = comment
+            material.save(update_fields=['comment', 'trace'])
+            logging.info('User %s updated material %s. Trace_id: %s, comment: %s' %
+                         (request.user.username, material.id, result_value.id, comment))
+        if material.summary_id and material.initiator == request.user.unti_id and 'summary' in request.POST:
+            if material.summary.content != request.POST['summary']:
+                material.summary.content = request.POST['summary']
+                material.summary.save(update_fields=['content'])
+                logging.info('User %s updated summary %s' % (request.user.unti_id, material.summary_id))
         return JsonResponse({
-            'comment': comment,
-            'trace_id': result_value.id,
+            'comment': comment or material.comment,
+            'trace_id': material.trace_id,
             'info_str': material.get_info_string(),
             'original_trace_id': original_trace_id,
             'material_id': material.id,
+            'summary': material.summary_id and material.summary.get_short_content(),
         })
 
     def get_context_data(self, **kwargs):
@@ -3407,3 +3432,26 @@ class SummaryDelete(GetEventMixinWithAccessCheck, View):
             return JsonResponse({})
         except (ValueError, TypeError):
             return JsonResponse({}, status=400)
+
+
+class GetSummary(GetEventMixin, View):
+    """
+    Получение полного текста конспекта
+    """
+    def get(self, request, **kwargs):
+        try:
+            file_id = request.GET.get('id')
+            file_type = request.GET.get('type')
+            cls = None
+            if file_type == 'user':
+                cls = EventMaterial
+            elif file_type == 'team':
+                cls = EventTeamMaterial
+            elif file_type == 'event':
+                cls = EventOnlyMaterial
+            assert file_id and cls
+            obj = cls.objects.get(id=file_id, event=self.event)
+            assert obj.summary
+        except (ObjectDoesNotExist, AssertionError, TypeError, ValueError):
+            return JsonResponse({}, status=400)
+        return JsonResponse({'text': obj.summary.content, 'id': obj.summary_id})
