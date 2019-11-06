@@ -42,7 +42,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
 from isle.api import LabsApi, XLEApi, DpApi, SSOApi
-from isle.cache import UserAvailableContexts
+from isle.cache import get_user_available_contexts
 from isle.filters import LabsUserResultFilter, LabsTeamResultFilter, StatisticsFilter
 from isle.forms import CreateTeamForm, AddUserForm, EventMaterialForm, EditTeamForm, EventDTraceFilter, \
     EventDTraceAdminFilter, ResultStructureFormset, get_available_sublevels
@@ -210,7 +210,7 @@ class IndexPageEventsFilterMixin(SearchHelperMixin):
                     self.request.user.is_assistant_for_context(self.request.user.chosen_context):
                 events = events.filter(context_id=self.request.user.chosen_context_id)
             else:
-                events = events.filter(context__uuid__in=UserAvailableContexts.get(self.request.user) or [])
+                events = events.filter(context__uuid__in=get_user_available_contexts(self.request.user) or [])
         return events
 
     def is_asc_sort(self):
@@ -2058,7 +2058,7 @@ class ActivitiesFilter(SearchHelperMixin):
                     context_id=self.request.user.chosen_context_id).values_list('activity_id', flat=True)
                 )
             return qs.none()
-        return qs.filter(event__context__uuid__in=UserAvailableContexts.get(self.request.user) or [])
+        return qs.filter(event__context__uuid__in=get_user_available_contexts(self.request.user) or [])
 
     def only_my_activities(self):
         return self.request.GET.get('activities') == 'my'
