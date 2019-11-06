@@ -4,7 +4,7 @@
         {% for result_item in result.results %}
             <li class="list-group-item result-item-li">
                 <div class="row">
-                    <div class="col-md-9">
+                    <div class="col-md-8">
                         <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="{{ result_item.id }}">
                             {% for link in result_item.links %}
                                 <li>
@@ -24,7 +24,7 @@
                         </ul>
                         <p class="result-comment">{{ result_item.comment }}</p>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <div class="result-helper-block">
                             {% if can_upload %}
                             <span class="btn glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files" title="{% trans 'Удалить результат' %}"></span>

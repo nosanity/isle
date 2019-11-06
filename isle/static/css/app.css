@@ -715,23 +715,23 @@ img.user-img {
     min-width: 100%;
     max-width: 100%;
 }
-#event_dtrace_filter_form .select2-container--default .select2-selection--single {
+form .select2-container--default .select2-selection--single {
     border: 1px solid #ced4da;
     border-radius: .1rem;
     height: 38px;
 }
-#event_dtrace_filter_form .user-or-team-autocomplete-selector .select2-selection__rendered {
-    line-height: 1.5;
-    padding-left: 0;
+form .user-or-team-autocomplete-selector .select2-selection__rendered {
+    line-height: 1.5 !important;
+    padding-left: 0 !important;
 }
-#event_dtrace_filter_form .select2-container--default .select2-selection--single .select2-selection__placeholder {
+form .select2-container--default .select2-selection--single .select2-selection__placeholder {
     color: #495057;
 }
-#event_dtrace_filter_form .select2-container--default .select2-selection--single .select2-selection__arrow {
+form .select2-container--default .select2-selection--single .select2-selection__arrow {
     height: 36px;
     right: 0;
 }
-#event_dtrace_filter_form .select2-container--default .select2-selection--single .select2-selection__arrow b {
+form .select2-container--default .select2-selection--single .select2-selection__arrow b {
     border-color: #495057 transparent transparent transparent;
     border-style: solid;
     border-width: 6px 3px 0 3px;
