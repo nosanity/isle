@@ -213,14 +213,10 @@ class EventDTraceAdminFilter(EventDTraceFilter):
 
 
 def get_available_sublevels(modelcompetence, level):
-    """
-    допустимые подуровни для выбранной связки модель-компетенция-уровень
-    т.к. uuidы типов в dp выдаются разными для каждой модели, приходится ориентироваться на название
-    """
     if level == 1:
-        if modelcompetence.type.title == 'Экономика и управление на основе данных':
-            list(range(1, 5))
-        if modelcompetence.type.title in ['Сквозные технологии НТИ', 'IT сфера']:
+        if modelcompetence.competence.type == 2:
+            return list(range(1, 5))
+        if modelcompetence.competence.type in [3, 4]:
             return list(range(1, 8))
         else:
             return list(range(1, 4))

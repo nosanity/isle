@@ -996,7 +996,6 @@ class ModelCompetence(models.Model):
     model = models.ForeignKey('MetaModel', on_delete=models.CASCADE, related_name='competences')
     competence = models.ForeignKey('DpCompetence', on_delete=models.CASCADE, related_name='models')
     order = models.IntegerField()
-    type = models.ForeignKey(DPType, on_delete=models.CASCADE)
 
     class Meta:
         unique_together = ('model', 'competence')
@@ -1018,6 +1017,7 @@ class MetaModel(models.Model):
 class DpCompetence(models.Model):
     uuid = models.CharField(max_length=50, unique=True)
     title = models.CharField(max_length=500)
+    type = models.IntegerField(null=True, default=None)
 
     def __str__(self):
         return self.title
