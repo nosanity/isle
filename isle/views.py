@@ -1616,7 +1616,7 @@ class ToolAutocomplete(autocomplete.Select2QuerySetView):
 class SublevelAutocomplete(autocomplete.Select2ListView):
     def get_list(self):
         try:
-            modelcompetence = ModelCompetence.objects.select_related('type').\
+            modelcompetence = ModelCompetence.objects.select_related('competence').\
                 get(competence_id=self.forwarded['competence'], model_id=self.forwarded['metamodel'])
             level = int(self.forwarded['level'])
         except (ModelCompetence.DoesNotExist, ValueError, TypeError, KeyError):

@@ -356,7 +356,7 @@ def create_circle_items_for_result(result_id, current_circle_items_ids, meta, me
     return real_items_ids
 
 
-def parse_competences(data, metamodel, competences, types):
+def parse_competences(data, metamodel, competences):
     if not isinstance(data.get('competences'), list):
         logging.error('Failed to parse competences for meta model %s' % data.get('uuid'))
         return
@@ -365,13 +365,13 @@ def parse_competences(data, metamodel, competences, types):
         if item['uuid'] not in competences:
             try:
                 competences[item['uuid']] = DpCompetence.objects.update_or_create(
-                    uuid=item['uuid'], defaults={'title': item['title']})[0].id
+                    uuid=item['uuid'], defaults={'title': item['title'], 'type': item['data']['type']})[0].id
             except KeyError:
                 logging.exception('Wrong competence structure')
                 continue
         comps.append(ModelCompetence.objects.update_or_create(
             model=metamodel, competence_id=competences[item['uuid']],
-            defaults={'order': item['data']['order'], 'type': types[item['data']['type']]}
+            defaults={'order': item['data'].get('order', 0)}
         )[0].id)
     ModelCompetence.objects.filter(model=metamodel).exclude(id__in=comps).delete()
 
@@ -676,15 +676,14 @@ def parse_model(data):
         schema = data.get('schema')
         if schema and isinstance(schema, dict):
             for item in schema.get('tool') or []:
+                if not isinstance(item, dict):
+                    continue
                 uuid = item.get('uuid')
                 title = item.get('title')
                 if uuid and title:
                     tools.append(DpTool.objects.update_or_create(uuid=uuid, defaults={'title': title})[0])
         metamodel.tools.set(tools)
-        types = {}
-        for item in schema['type']:
-            types[item['order']] = DPType.objects.update_or_create(uuid=item['uuid'], defaults={'title': item['title']})[0]
-        parse_competences(data, metamodel, {}, types)
+        parse_competences(data, metamodel, {})
         return metamodel
 
 
