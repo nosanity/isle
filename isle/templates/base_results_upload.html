@@ -180,6 +180,7 @@
         const deleteSummaryUrl = "{% url 'summary-delete' uid=event.uid %}";
         const SUMMARY_SAVE_INTERVAL = parseInt("{{ SUMMARY_SAVE_INTERVAL }}");
         const resultType = "labseventresult";
+        const getFullSummaryUrl = "{% url 'get-full-summary' uid=event.uid %}";
     </script>
     <script type="text/javascript">
         const maxSize = parseInt("{{ max_size }}");

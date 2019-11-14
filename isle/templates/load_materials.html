@@ -126,12 +126,13 @@
                                     <span name="material_id" value="{{ link.id }}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
                                     </span>
                                 {% endif %}
-                                {% if is_assistant %}
-                                    <span value="{{ link.id }}" {% if link.summary %}data-is-summary="true"{% endif %} class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
+                                {% can_edit_summary link as can_edit %}
+                                {% if is_assistant or can_edit %}
+                                    <span value="{{ link.id }}" {% if link.summary %}data-is-summary="true" data-can-edit="{% if link.initiator == request.user.unti_id %}true{% else %}false{% endif %}" data-type="event" data-file-id="{{ link.id }}"{% endif %} class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
                                     </span>
+                                {% endif %}
                             {% endif %}
                             </div>
-                        {% endif %}
                         </div>
                         <div>
                             <span class="text-muted assistant-info-string">
@@ -180,6 +181,7 @@
         const deleteSummaryUrl = "{% url 'summary-delete' uid=event.uid %}";
         const SUMMARY_SAVE_INTERVAL = parseInt("{{ SUMMARY_SAVE_INTERVAL }}");
         const resultType = null;
+        const getFullSummaryUrl = "{% url 'get-full-summary' uid=event.uid %}";
     </script>
     {% if team.id %}
         <script type="text/javascript">

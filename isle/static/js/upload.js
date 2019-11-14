@@ -749,6 +749,62 @@ $('body').delegate('.delete-material-btn', 'click', (e) => {
 }).delegate('.close-notification', 'click', (e) => {
     e.preventDefault();
     $(e.target).parents('.notification-wrapper').remove();
+}).delegate('.edit-summary', 'click', (e) => {
+    e.preventDefault();
+    let $obj = $(e.target);
+    $.ajax({
+        method: 'GET',
+        url: getFullSummaryUrl,
+        data: {
+            id: $obj.data('file-id'),
+            type: $obj.data('type')
+        },
+        success: (data) => {
+            let current_summary = $obj.parents('.result-item-li').find('.summary-content-short');
+            current_summary.hide();
+            let html = `
+                <div class="summary-editor">
+                    <textarea id="edit-summary-${data['id']}">${data['text']}</textarea>
+                    <button class="btn btn-success edit-summary-save">Сохранить</button>
+                    <button class="btn btn-danger edit-summary-cancel">Отменить</button>
+                </div>
+            `;
+            current_summary.after($(html));
+            CKEDITOR.replace('edit-summary-' + data['id']);
+        }
+    })
+}).delegate('.edit-summary-save', 'click', (e) => {
+    e.preventDefault();
+    let $obj = $(e.target);
+    let editor_id = $obj.parents('.summary-editor').find('textarea').attr('id');
+    $.ajax({
+        method: 'POST',
+        url: pageType == 'event_dtrace' ? get_url_from_item_wrapper($obj.parents('.item-result-wrapper')) : '',
+        data: {
+            csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
+            action: 'edit_summary',
+            result_item_id: $obj.parents('.result-item-li').find('.result-materials-wrapper').data('result-id'),
+            labs_result_id: $obj.parents('.material-result-div').data('result'),
+            content: CKEDITOR.instances[editor_id].getData()
+        },
+        success: (data) => {
+            let current_summary = $obj.parents('.result-item-li').find('.summary-content-short');
+            let html = `
+                <strong>Конспект:</strong> ${data['text']}
+            `;
+            current_summary.html(html);
+            current_summary.show();
+            CKEDITOR.instances[editor_id].destroy();
+            $obj.parents('.summary-editor').remove();
+        },
+        error: () => { alert('error'); }
+    })
+}).delegate('.edit-summary-cancel', 'click', (e) => {
+    e.preventDefault();
+    $(e.target).parents('.result-item-li').find('.summary-content-short').show();
+    let editor_id = $obj.parents('.summary-editor').find('textarea').attr('id')
+    CKEDITOR.instances[editor_id].destroy();
+    $(e.target).parents('.summary-editor').remove();
 });
 
 function watch_edit_structure_selects_state() {
@@ -1211,7 +1267,11 @@ function successProcessFile(data, $form, result_item_id) {
                         <div class="col-md-3">
                             <div class="result-helper-block">
                                 <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files" title="Удалить результат"></span>
-                                ${summary ? `` : `<span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment" title="Добавить/редактировать комментарий"></span>`}
+                                ${summary ?
+                                `<span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-summary" data-file-id="${data['target_item_info']['material_id']}" data-type="${data['target_item_info']['type']}" title="Редактировать конспект"></span>`
+                                :
+                                `<span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment" title="Добавить/редактировать комментарий"></span>`
+                                }
                                 ${isAssistant ? `<span class="glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure" title="Редактировать структуру результата"></span>` : ``}
                                 <span data-url="${page_url}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page" title="Перейти на страницу результата"></span>
                                 ${additional_btns}
@@ -1297,9 +1357,9 @@ function successProcessFile(data, $form, result_item_id) {
             `;
         } else {
             let edit_btn = ``;
-            if (isAssistant) {
+            if (isAssistant || summary) {
                 edit_btn = `
-                    <span value="${mId}" ${summary ? `data-is-summary="true"` : ``} class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
+                    <span value="${mId}" ${summary ? `data-is-summary="true" data-can-edit="true" data-type="event" data-file-id="${data['material_id']}"` : ``} class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
                     </span>`
             }
             html = `

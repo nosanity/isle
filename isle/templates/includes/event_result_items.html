@@ -45,6 +45,11 @@
                                 {% endif %}
                                 {% if not result_item.links.0.summary and can_upload %}
                                     <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment" title="{% trans 'Добавить/редактировать комментарий' %}"></span>
+                                {% elif result_item.links.0.summary %}
+                                    {% can_edit_summary result_item.links.0 as can_edit %}
+                                    {% if can_edit %}
+                                        <span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-summary" title="{% trans 'Редактировать конспект' %}" data-type="{{ result_dict.type }}" data-file-id="{{ result_item.links.0.id }}"></span>
+                                    {% endif %}
                                 {% endif %}
                                 {% if is_assistant %}
                                     <span class="glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure" title="{% trans 'Редактировать структуру результата' %}"></span>
