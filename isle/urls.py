@@ -6,7 +6,6 @@ from rest_framework.documentation import include_docs_urls
 from isle import views
 
 urlpatterns = [
-    path('carrier-django/', include('django_carrier_client.urls')),
     path('api/docs/', include_docs_urls()),
     url(r'^api/swagger(?P<format>\.json)$', get_schema_view().without_ui(cache_timeout=0)),
     path('', views.ActivitiesView.as_view(), name='index'),

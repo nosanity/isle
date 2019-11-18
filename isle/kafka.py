@@ -2,21 +2,10 @@ import logging
 from datetime import datetime
 from django.conf import settings
 from django.utils import timezone
-from carrier_client.manager import MessageManager, MessageManagerException
-from carrier_client.message import OutgoingMessage
-from django_carrier_client.helpers import MessageManagerHelper
+from kafka_tools.producer import produce
 from isle.api import SSOApi, ApiError, XLEApi
 from isle.models import LabsUserResult, LabsTeamResult, PLEUserResult, EventEntry, User, Event
 from isle.utils import update_casbin_data, update_user_token
-
-
-message_manager = MessageManager(
-    topics=[settings.KAFKA_TOPIC],
-    host=settings.KAFKA_HOST,
-    port=settings.KAFKA_PORT,
-    protocol=settings.KAFKA_PROTOCOL,
-    auth=settings.KAFKA_TOKEN,
-)
 
 
 class KafkaActions:
@@ -53,21 +42,13 @@ def send_object_info(obj, obj_id, action, additional_data=None):
     """
     отправка в кафку сообщения, составленного исходя из типа объекта obj и действия
     """
-    if not getattr(settings, 'KAFKA_HOST'):
-        logging.warning('KAFKA_HOST is not defined')
+    if settings.UNITTESTS_IN_PROGRESS:
         return
     payload = get_payload(obj, obj_id, action, additional_data=additional_data)
     if not payload:
         logging.error("Can't get payload for %s action %s" % (obj, action))
         return
-    outgoing_message = OutgoingMessage(
-        topic=settings.KAFKA_TOPIC,
-        payload=payload
-    )
-    try:
-        message_manager.send_one(outgoing_message)
-    except Exception:
-        logging.exception('Kafka communication failed with payload %s' % payload)
+    produce(settings.KAFKA_TOPIC, payload)
 
 
 def check_kafka():
@@ -79,14 +60,14 @@ class KafkaBaseListener:
     actions = []
     msg_type = ''
 
-    def handle_message(self, msg):
-        if msg.get_topic() == self.topic:
+    def handle_message(self, topic, msg):
+        if topic == self.topic:
             try:
-                payload = msg.get_payload()
-                if payload.get('type') == self.msg_type and payload.get('action') in self.actions and payload.get('id'):
-                    self._handle_for_id(payload['id'], payload['action'])
-            except MessageManagerException:
-                logging.error('Got incorrect json from kafka: %s' % msg._value)
+                assert isinstance(msg, dict)
+                if msg.get('type') == self.msg_type and msg.get('action') in self.actions and msg.get('id'):
+                    self._handle_for_id(msg['id'], msg['action'])
+            except AssertionError:
+                logging.error('Got incorrect json from kafka: %s' % msg)
 
     def _handle_for_id(self, obj_id, action):
         raise NotImplementedError
@@ -156,15 +137,15 @@ class CasbinPolicyListener(KafkaBaseListener):
     actions = (KafkaActions.CREATE, KafkaActions.DELETE, KafkaActions.UPDATE)
     msg_type = 'casbin_policy'
 
-    def handle_message(self, msg):
-        if msg.get_topic() == self.topic:
+    def handle_message(self, topic, msg):
+        if topic == self.topic:
             try:
-                payload = msg.get_payload()
-                if payload.get('type') == self.msg_type and payload.get('action') in self.actions and payload.get('id'):
-                    policy = payload['title']
+                assert isinstance(msg, dict)
+                if msg.get('type') == self.msg_type and msg.get('action') in self.actions and msg.get('id'):
+                    policy = msg['title']
                     update_casbin_data(update_rule=policy)
-            except MessageManagerException:
-                logging.error('Got incorrect json from kafka: %s' % msg._value)
+            except AssertionError:
+                logging.error('Got incorrect json from kafka: %s' % msg)
 
 
 class CasbinModelListener(KafkaBaseListener):
@@ -190,8 +171,10 @@ class OpenapiTokenListener(KafkaBaseListener):
             logging.error('Got wrong object id from kafka: %s' % obj_id)
 
 
-MessageManagerHelper.set_manager_to_listen(SSOUserChangeListener())
-MessageManagerHelper.set_manager_to_listen(XLECheckinListener())
-MessageManagerHelper.set_manager_to_listen(CasbinPolicyListener())
-MessageManagerHelper.set_manager_to_listen(CasbinModelListener())
-MessageManagerHelper.set_manager_to_listen(OpenapiTokenListener())
+KAFKA_MESSAGE_HANDLERS = (
+    SSOUserChangeListener(),
+    XLECheckinListener(),
+    CasbinPolicyListener(),
+    CasbinModelListener(),
+    OpenapiTokenListener(),
+)

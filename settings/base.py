@@ -1,4 +1,5 @@
 import os
+import sys
 from raven.contrib.django.models import client
 from raven.contrib.celery import register_signal, register_logger_signal
 
@@ -34,10 +35,10 @@ INSTALLED_APPS = [
     'social_django',
     'rest_framework',
     'rest_framework.authtoken',
-    'django_carrier_client',
     'django_celery_results',
     'django_user_agents',
     'dynamic_formsets',
+    'kafka_tools',
 ]
 
 MIDDLEWARE = [
@@ -364,3 +365,6 @@ if locals().get('LOGSTASH_HOST') and locals().get('LOGSTASH_PORT'):
         'tags': tags,
         'fqdn': locals().get('LOGSTASH_FQDN', False),
     }
+
+UNITTESTS_IN_PROGRESS = len(sys.argv) > 1 and sys.argv[1] == 'test'
+KAFKA_TOOLS_MESSAGES_HANDLER = 'isle.kafka_consumer.handle_message'

@@ -6,7 +6,7 @@ from django.core.files.base import ContentFile
 from django.utils import timezone
 import requests
 from isle.celery import app
-from isle.kafka import send_object_info, KafkaActions
+from isle.kafka import send_object_info, KafkaActions, KAFKA_MESSAGE_HANDLERS
 from isle.models import Event, CSVDump, Activity, Context, LabsTeamResult, UserFile, PLEUserResult
 from isle.utils import EventGroupMaterialsCSV, BytesCsvObjWriter, XLSWriter
 from isle.serializers import UserResultSerializer
@@ -133,3 +133,12 @@ def handle_ple_user_result(data):
         except (AssertionError, requests.RequestException):
             logging.exception('Failed to send user result report to PLE. Result: {}. Initial data: {}'.
                               format(result, data))
+
+
+@app.task
+def handle_kafka_message(topic, msg):
+    for obj in KAFKA_MESSAGE_HANDLERS:
+        try:
+            obj.handle_message(topic, msg)
+        except Exception:
+            logging.exception('Kafka handler %s failed', str(obj))
