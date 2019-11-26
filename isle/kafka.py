@@ -143,10 +143,13 @@ class XLECheckinListener(KafkaBaseListener):
                     return
                 try:
                     event = Event.objects.get(uid=checkin_data.get('event_uuid'))
-                except (Event.DoesNotExist, TypeError):
-                    logging.error('Event with uuid "%s" not found' % checkin_data.get('event_uuid'))
+                    EventEntry.objects.update_or_create(user=user, event=event, defaults={'deleted': False})
+                except Event.DoesNotExist:
+                    from isle.tasks import create_event_entry_for_non_exiting_event
+                    create_event_entry_for_non_exiting_event(checkin_data.get('event_uuid'), user.id)
+                except TypeError:
+                    logging.error('Wrong value type for event uuid: "%s"' % checkin_data.get('event_uuid'))
                     return
-                EventEntry.objects.update_or_create(user=user, event=event, defaults={'deleted': False})
         except (AssertionError, AttributeError):
             logging.error('Got wrong object id from kafka: %s' % obj_id)
 
