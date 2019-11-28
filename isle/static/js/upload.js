@@ -1118,7 +1118,7 @@ function successProcessFile(data, $form, result_item_id) {
                 users_html = '';
                 for (let i = 0; i < users.length; i++) {
                     users_html += `
-                        <div class="inline-user-item">
+                        <div class="result-user-item mb-2">
                             <img class="user-img ${users[i]['enrolled'] ? '': 'opacity-50'}" src="${users[i]['image'] && users[i]['image']['Small'] || DEFAULT_USER_IMAGE}" />
                             <strong class="${users[i]['enrolled']? '' : 'color-grey'}">${users[i]['name']}</strong>
                         </div>
@@ -1126,8 +1126,10 @@ function successProcessFile(data, $form, result_item_id) {
                 }
                 item_info_html = `
                     <div>
-                        <div class="inline-user-item"><strong>Группа "${data['target_item_info']['name']}"</strong></div>
-                        ${users_html}
+                        <div class="result-user-item result-group-name mb-2"><strong>Группа "${data['target_item_info']['name']}"</strong></div>
+                        <div class="item-result-group">
+                            ${users_html}
+                        </div>
                     </div>
                 `;
             }
@@ -1142,7 +1144,7 @@ function successProcessFile(data, $form, result_item_id) {
         if (!$form.parents('div.material-result-div').find('.result-materials-wrapper[data-result-id="' + result_item_id + '"]').length) {
 
             if (isAssistant) {
-                additional_btns = `<span class="glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result" title="Переместить результат"></span>`;
+                additional_btns = `<span class="btn glyphicon glyphicon-move result-action-buttons pull-right move-deleted-result" title="Переместить результат"></span>`;
                 approve_block = `
                     <div class="clearfix"></div>
                     <div class="approve-result-block">
@@ -1201,19 +1203,19 @@ function successProcessFile(data, $form, result_item_id) {
                 `;
             }
             let html_wrapper = `
-                <li class="list-group-item no-left-padding result-item-li">
+                <li class="list-group-item result-item-li">
                     <div class="row">
-                        <div class="col-md-9">
+                        <div class="col-md-8">
                             <ul class="no-bullets result-materials-wrapper no-left-padding" data-result-id="${result_item_id}" data-result-type="${data['target_item_info']['type']}">
                             </ul>
                             <p class="result-comment"></p>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="result-helper-block">
-                                <span class="glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files" title="Удалить результат"></span>
-                                ${summary ? `` : `<span class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment" title="Добавить/редактировать комментарий"></span>`}
-                                ${isAssistant ? `<span class="glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure" title="Редактировать структуру результата"></span>` : ``}
-                                <span data-url="${page_url}" class="glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page" title="Перейти на страницу результата"></span>
+                                <span class="btn glyphicon glyphicon-remove result-action-buttons pull-right delete-all-files" title="Удалить результат"></span>
+                                ${summary ? `` : `<span class="btn glyphicon glyphicon-pencil result-action-buttons pull-right edit-result-comment" title="Добавить/редактировать комментарий"></span>`}
+                                ${isAssistant ? `<span class="btn glyphicon glyphicon-tags result-action-buttons pull-right edit-result-structure" title="Редактировать структуру результата"></span>` : ``}
+                                <span data-url="${page_url}" class="btn glyphicon glyphicon-eye-open result-action-buttons pull-right view-result-page" title="Перейти на страницу результата"></span>
                                 ${additional_btns}
                             </div>
                             ${approve_block}
@@ -1254,7 +1256,7 @@ function successProcessFile(data, $form, result_item_id) {
                 `<a class="link_preview" href="${url}" ${data_attrs}>${name}</a>&nbsp;`}
                 ${summary ? `` :
                 `<button name="material_id" value="${mId}" class="btn-transparent delete-material-btn pull-right">
-                    <span class="glyphicon glyphicon-remove"></span>
+                    <span class="btn glyphicon glyphicon-remove"></span>
                 </button>`
                 }
             </li>
@@ -1299,7 +1301,7 @@ function successProcessFile(data, $form, result_item_id) {
             let edit_btn = ``;
             if (isAssistant) {
                 edit_btn = `
-                    <span value="${mId}" ${summary ? `data-is-summary="true"` : ``} class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
+                    <span value="${mId}" ${summary ? `data-is-summary="true"` : ``} class="btn glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
                     </span>`
             }
             html = `
@@ -1313,7 +1315,7 @@ function successProcessFile(data, $form, result_item_id) {
                             }
                         </div>
                         <div class="col-sm-2">
-                            <span name="material_id" value="${mId}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
+                            <span name="material_id" value="${mId}" class="btn glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
                             </span>
                             ${edit_btn}
                         </div>

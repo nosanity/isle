@@ -16,7 +16,7 @@
 
 <form method="post" class="form {% if not draft_summary %}hidden{% endif %} user-materials-form">
     {% block additional %}{% endblock %}
-    <div class="row">
+    <div class="row mb-10">
         {% csrf_token %}
         <input name="labs_result_id" type="hidden" value="{{ result.id }}">
         <div class="col-sm-12 col-md-3 mb-10">

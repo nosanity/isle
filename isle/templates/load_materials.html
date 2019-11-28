@@ -123,11 +123,11 @@
                             <div class="col-sm-2">
                             {% if can_upload %}
                                 {% if request.user.unti_id and link.initiator == request.user.unti_id or is_assistant %}
-                                    <span name="material_id" value="{{ link.id }}" class="glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
+                                    <span name="material_id" value="{{ link.id }}" class="btn glyphicon glyphicon-remove result-action-buttons pull-right delete-material-btn">
                                     </span>
                                 {% endif %}
                                 {% if is_assistant %}
-                                    <span value="{{ link.id }}" {% if link.summary %}data-is-summary="true"{% endif %} class="glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
+                                    <span value="{{ link.id }}" {% if link.summary %}data-is-summary="true"{% endif %} class="btn  glyphicon glyphicon-pencil result-action-buttons pull-right edit-event-block-material">
                                     </span>
                             {% endif %}
                             </div>
