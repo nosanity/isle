@@ -12,6 +12,14 @@
                 <strong>{% trans "Мероприятие:" %}</strong> {{ event.title }}
                 <br>
                 {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }}{% endlocaltime %}
+        {% for block in blocks %}
+            {% if block|show_block %}
+	        {% if forloop.first %}
+		    <br>
+                    <b>{% trans "Деятельность:" %}</b> {{ block.description }}
+		{% endif %}
+	    {% endif %}
+	{% endfor %}
             </p>
         </div>
         <div class="col-lg-4">
@@ -41,13 +49,15 @@
         {% for block in blocks %}
             {% if block|show_block %}
             <div class="block-div mt-40">
-		    <h4>{% blocktrans with n=block.order %}{{ n }}. {% endblocktrans %}{{block.title }}
+		    <h4>{%comment%}{% blocktrans with n=block.order %}{{ n }}. {% endblocktrans %}{{block.title }} {%endcomment %}
                     {% if block.deleted %} ({% blocktrans %}Удалено{% endblocktrans %}){% endif %}</h4>
+		    {% comment %}
                 <p>
                     <b>{% trans "Тип:" %}</b> {{ block.block_type }}
                     <br>
                     <b>{% trans "Деятельность:" %}</b> {{ block.description }}
                 </p>
+		    {% endcomment %}
                 {% include 'includes/result_type_constraint.html' %}
                 {% for result in block.results.all %}
                 {% if result|show_result %}
@@ -57,9 +67,13 @@
                         <div class="row">
                             <div class="col-md-6">
                                 <p>
+			            {% comment %}
                                     <b>{% trans "Формат работы:" %}</b> {{ result.result_format }}
+			            {% endcomment %}
                                     <br>
+			            {% comment %}
                                     <b>{% trans "Способ фиксации:" %}</b> {{ result.fix }}
+			            {% endcomment %}
                                 </p>
                             </div>
                             <div class="col-md-6">
