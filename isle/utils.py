@@ -815,6 +815,7 @@ class EventMaterialsCSV:
             ('meta_activity', _('Деятельность из свойств блока')),
             ('meta_type', _('Тип из свойств блока')),
             ('meta_sector_name', _('Название сектора')),
+            ('approved', _('Валидность результата')),
             ('lines_num', _('Количество строк с файлом')),
         ])
 
@@ -927,6 +928,7 @@ class EventMaterialsCSV:
             'result_title': m.result_v2 and m.result_v2.result.title or '',
             'meta_type': m.result_v2 and m.result_v2.result.block.block_type,
             'meta_activity': m.result_v2 and m.result_v2.result.block.description,
+            'approved': str(m.result_v2.approved),
         })
 
     def populate_meta(self, d, meta_item):
