@@ -43,7 +43,7 @@ class User(AbstractUser):
         verbose_name_plural = _(u'Пользователи')
 
     def __str__(self):
-        return '%s %s' % (self.unti_id, self.get_full_name())
+        return '%s %s' % (self.leader_id, self.get_full_name())
 
     @property
     def fio(self):
