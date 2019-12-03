@@ -154,6 +154,22 @@ class XLECheckinListener(KafkaBaseListener):
             logging.error('Got wrong object id from kafka: %s' % obj_id)
 
 
+class XLEEventBlockResultListener(KafkaBaseListener):
+    actions = (KafkaActions.CREATE, KafkaActions.UPDATE, KafkaActions.DELETE)
+    topic = settings.XLE_TOPIC
+    msg_type = 'block_result'
+
+    def _handle_for_id(self, obj_id, action):
+        from .tasks import fetch_event
+        try:
+            assert isinstance(obj_id, dict)
+            event_uuid = obj_id.get('event', {}).get('uuid')
+            assert event_uuid
+            fetch_event.delay(event_uuid)
+        except (AssertionError, AttributeError):
+            logging.error('Got wrong object id from kafka: %s' % obj_id)
+
+
 class CasbinPolicyListener(KafkaBaseListener):
     topic = settings.KAFKA_TOPIC_SSO
     actions = (KafkaActions.CREATE, KafkaActions.DELETE, KafkaActions.UPDATE)
@@ -198,3 +214,4 @@ MessageManagerHelper.set_manager_to_listen(XLECheckinListener())
 MessageManagerHelper.set_manager_to_listen(CasbinPolicyListener())
 MessageManagerHelper.set_manager_to_listen(CasbinModelListener())
 MessageManagerHelper.set_manager_to_listen(OpenapiTokenListener())
+MessageManagerHelper.set_manager_to_listen(XLEEventBlockResultListener())

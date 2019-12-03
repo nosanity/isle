@@ -962,6 +962,29 @@ def create_or_update_event(event_uuid):
         logging.exception('Failed to get event %s', event_uuid)
 
 
+def update_event_blocks(event_uuid):
+    """
+    Обновление структуры мероприятия по сигналу из кафки
+    """
+    try:
+        event = Event.objects.filter(uid=event_uuid).first()
+        if not event:
+            event = create_or_update_event(event_uuid)
+        if not event:
+            logging.error('Got signal for event structure change for non existing event %s', event_uuid)
+            return
+        data = LabsApi().get_event(event_uuid)
+        update_event_structure(
+            data.get('blocks') or [],
+            event,
+            event.blocks.values_list('uuid', flat=True),
+            dict(MetaModel.objects.values_list('uuid', 'id')),
+            dict(DpCompetence.objects.values_list('uuid', 'id')),
+        )
+    except Exception:
+        logging.exception('Failed to update structure for event %s', event_uuid)
+
+
 def get_release_version():
     try:
         with open(os.path.join(settings.BASE_DIR, 'release')) as f:

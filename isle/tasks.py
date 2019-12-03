@@ -8,7 +8,8 @@ import requests
 from isle.celery import app
 from isle.kafka import send_object_info, KafkaActions
 from isle.models import Event, CSVDump, Activity, Context, LabsTeamResult, UserFile, PLEUserResult, User, EventEntry
-from isle.utils import EventGroupMaterialsCSV, BytesCsvObjWriter, XLSWriter, create_or_update_event
+from isle.utils import EventGroupMaterialsCSV, BytesCsvObjWriter, XLSWriter, create_or_update_event, \
+    update_event_blocks
 from isle.serializers import UserResultSerializer
 
 
@@ -145,3 +146,8 @@ def create_event_entry_for_non_exiting_event(event_uuid, user_id):
     if not event:
         return
     EventEntry.objects.update_or_create(user=user, event=event, defaults={'deleted': False})
+
+
+@app.task
+def fetch_event(event_uuid):
+    update_event_blocks(event_uuid)
