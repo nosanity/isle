@@ -961,11 +961,11 @@ class EventMaterialsCSV:
             self.TYPE_EVENT: _('Материал мероприятия'),
         }.get(m_type)
 
-    @cached_property
+    @property
     def dt_start(self):
         return self.get_formatted_dt(self.event.dt_start)
 
-    @cached_property
+    @property
     def dt_end(self):
         return self.get_formatted_dt(self.event.dt_end)
 
