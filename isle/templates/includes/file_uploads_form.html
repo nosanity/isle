@@ -39,7 +39,7 @@
                     <div class="uploads"></div>
                 </div>
                 <div class="tab-pane fade" id="v-pills-profile-{{ result.id }}" role="tabpanel" aria-labelledby="v-pills-profile-tab">
-                    <input type="url" name="url_field" class="form-control full-width" id="url" placeholder="Укажите URL-ссылку на материал">
+                    <input type="url" maxlength="1000" name="url_field" class="form-control full-width" id="url" placeholder="Укажите URL-ссылку на материал">
                 </div>
                 <div class="tab-pane fade {% if draft_summary %}show active{% endif %}" id="v-pills-summary-{{ result.id }}" role="tabpanel" aria-labelledby="v-pills-profile-tab">
                     <textarea name="summary" class="form-control full-width ckedit" id="summary-{{ result.id }}" {% if draft_summary %}data-draft-id="{{ draft_summary.id }}{% endif %}">
