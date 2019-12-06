@@ -814,7 +814,7 @@ class LoadTeamMaterials(BaseLoadMaterialsWithAccessCheck):
     """
     Просмотр/загрузка командных материалов по эвенту
     """
-    extra_context = {'with_comment_input': True, 'team_upload': True, 'show_owners': True}
+    extra_context = {'with_comment_input': True, 'team_upload': True}
     material_model = EventTeamMaterial
 
     def get_context_data(self, **kwargs):
@@ -834,14 +834,8 @@ class LoadTeamMaterials(BaseLoadMaterialsWithAccessCheck):
         return get_object_or_404(Team, id=self.kwargs['team_id'])
 
     def get_materials(self):
-        qs = EventTeamMaterial.objects.filter(event=self.event, team=self.team).prefetch_related('owners')
-        users = {i.unti_id: i for i in User.objects.filter(unti_id__in=filter(None, [j.initiator for j in qs]))}
-        for item in qs:
-            item.initiator_user = users.get(item.initiator)
-            if not self.current_user_is_assistant:
-                item.is_owner = self.request.user in item.owners.all()
-                item.ownership_url = reverse('team-material-owner', kwargs={
-                    'uid': self.event.uid, 'material_id': item.id, 'team_id': self.team.id})
+        qs = EventTeamMaterial.objects.filter(event=self.event, team=self.team)
+        self.set_initiator_users_to_qs(qs)
         return qs
 
     def can_upload(self):
@@ -981,11 +975,6 @@ class LoadEventMaterials(GetEventMixin, BaseLoadMaterials):
 
     def get_materials(self):
         qs = EventOnlyMaterial.objects.filter(event=self.event)
-        for item in qs:
-            if not self.current_user_is_assistant:
-                item.is_owner = self.request.user in item.owners.all()
-                item.ownership_url = reverse('event-material-owner', kwargs={
-                    'uid': self.event.uid, 'material_id': item.id})
         self.set_initiator_users_to_qs(qs)
         return qs
 
@@ -1119,12 +1108,14 @@ class BaseOwnershipChecker(GetEventMixin, View):
 
 
 class TeamMaterialOwnership(BaseOwnershipChecker):
+    """не используется"""
     def get_material(self):
         return get_object_or_404(EventTeamMaterial, id=self.kwargs['material_id'], event=self.event,
                                  team_id=self.kwargs['team_id'])
 
 
 class EventMaterialOwnership(BaseOwnershipChecker):
+    """не используется"""
     def get_material(self):
         return get_object_or_404(EventOnlyMaterial, id=self.kwargs['material_id'], event=self.event)
 
