@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 import responses
 from isle.api import LabsApi, BaseApi, XLEApi
-from isle.models import Activity, Event, EventType, LabsEventBlock, LabsEventResult, User, EventEntry
+from isle.models import Activity, Event, EventType, LabsEventBlock, LabsEventResult, User, EventEntry, Run
 from isle.utils import refresh_events_data, update_event_entries
 
 
@@ -58,10 +58,12 @@ class TestActivityAPI(TestCase):
         with patch.object(LabsApi, 'get_activities', return_value=iter([load_test_data('api_data.json')])):
             self.assertTrue(refresh_events_data())
             self.assertEqual(Event.objects.count(), 3)
-            self.assertEqual(Event.objects.filter(is_active=True).count(), 2)
+            self.assertEqual(Event.objects.filter(is_active=True).count(), 1)
             self.assertEqual(Activity.objects.count(), 2)
             self.assertEqual(Activity.objects.filter(is_deleted=True).count(), 1)
             self.assertEqual(Activity.objects.filter(main_author='').count(), 1)
+            self.assertEqual(Run.objects.count(), 3)
+            self.assertEqual(Run.objects.filter(deleted=True).count(), 2)
             self.assertEqual(EventType.objects.count(), 1)
             self.assertEqual(LabsEventBlock.objects.count(), 5)
             self.assertEqual(Event.objects.filter(blocks__isnull=True).count(), 0)
@@ -105,7 +107,7 @@ class TestActivityAPI(TestCase):
         with patch.object(LabsApi, 'get_activities', return_value=iter([load_test_data('changed_api_data.json')])):
             self.assertTrue(refresh_events_data())
             self.assertEqual(Event.objects.count(), 3)
-            self.assertEqual(Event.objects.filter(is_active=True).count(), 1)
+            self.assertEqual(Event.objects.filter(is_active=True).count(), 0)
             self.assertEqual(Activity.objects.count(), 2)
             self.assertEqual(EventType.objects.count(), 2)
 
@@ -144,13 +146,13 @@ class TestActivityAPI(TestCase):
 
     def test_delete_events(self):
         with patch.object(LabsApi, 'get_activities', return_value=iter([load_test_data('api_data.json')])):
-            self.assertTrue(refresh_events_data())
+            self.assertTrue(refresh_events_data(fast=False))
         self.assertTrue(Event.objects.filter(uid='d18093f5-dd5c-41e3-a772-0103402ddf2c').exists() and
                         Event.objects.get(uid='d18093f5-dd5c-41e3-a772-0103402ddf2c').is_active)
         self.assertTrue(Event.objects.filter(uid='ce8e85de-48f8-42fc-9f61-8b8eea04cc24').exists() and
-                        Event.objects.get(uid='ce8e85de-48f8-42fc-9f61-8b8eea04cc24').is_active)
+                        not Event.objects.get(uid='ce8e85de-48f8-42fc-9f61-8b8eea04cc24').is_active)
         with patch.object(LabsApi, 'get_activities', return_value=iter([load_test_data('api_data_delete_events.json')])):
-            self.assertTrue(refresh_events_data())
+            self.assertTrue(refresh_events_data(fast=False))
         self.assertTrue(Event.objects.filter(uid='ce8e85de-48f8-42fc-9f61-8b8eea04cc24').exists() and
                         not Event.objects.get(uid='ce8e85de-48f8-42fc-9f61-8b8eea04cc24').is_active)
         self.assertFalse(Event.objects.filter(uid='d18093f5-dd5c-41e3-a772-0103402ddf2c').exists())

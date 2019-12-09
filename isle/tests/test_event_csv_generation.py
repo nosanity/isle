@@ -2,15 +2,17 @@ import os
 import random
 import tarfile
 import time
+import uuid
 from django.conf import settings
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 from isle.models import (Event, User, Team, EventMaterial, EventTeamMaterial, EventOnlyMaterial, EventEntry,
                          LabsTeamResult, LabsUserResult, LabsEventResult)
-from isle.views import EventCsvData
+from isle.views.csv import EventCsvData
+from .utils import CasbinDataMixin
 
 
-class TestGenerationTime(TestCase):
+class TestGenerationTime(CasbinDataMixin, TestCase):
     fixtures = [os.path.join(settings.BASE_DIR, 'isle/tests/fixtures/test_events.json')]
 
     @classmethod
@@ -36,9 +38,11 @@ class TestGenerationTime(TestCase):
                 leader_id=i + 1,
             ))
         self._bulk_create(users, User)
-        self.assistant = User.objects.create_user('assistant', 'assistant@example.com', 'password', is_assistant=True)
+        self.assistant = User.objects.create_user('assistant', 'assistant@example.com', 'password', unti_id=1)
+        self.create_casbin_data(self.assistant)
 
-        fill_events = Event.objects.filter(blocks__isnull=False, event_type__isnull=False)[:filled]
+        fill_events = Event.objects.filter(
+            context__isnull=False, blocks__isnull=False, event_type__isnull=False)[:filled]
         personal_materials, team_materials, event_materials = [], [], []
         self.filled_event_uid = None
         for event in fill_events:
@@ -75,6 +79,8 @@ class TestGenerationTime(TestCase):
                     name='team_{}'.format(team_n),
                     event=event,
                     creator=members[0],
+                    system=Team.SYSTEM_UPLOADS,
+                    uuid=str(uuid.uuid4()),
                 )
                 t.users.set(members)
                 teams.append(t)
