@@ -5,7 +5,8 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from isle.admin import EventAdmin, EventTypeAdmin
-from isle.models import Event, EventType, User, Activity, Context, Trace
+from isle.models import Event, EventType, User, Activity, Context, Trace, Run
+from .utils import CasbinDataMixin
 
 
 class MockRequest:
@@ -37,7 +38,7 @@ class OnlyChangePermissionTestMixin:
         self.assertTrue(self.admin.has_change_permission(self.get_request()))
 
 
-class TestEventAdmin(OnlyChangePermissionTestMixin, TestCase):
+class TestEventAdmin(CasbinDataMixin, OnlyChangePermissionTestMixin, TestCase):
     def setUp(self):
         super().setUp()
         self.admin = EventAdmin(Event, AdminSite())
@@ -45,8 +46,11 @@ class TestEventAdmin(OnlyChangePermissionTestMixin, TestCase):
         self.event_type2 = EventType.objects.create(uuid=str(uuid4()), title='title2')
         self.activity1 = Activity.objects.create(uid=str(uuid4()), title='title1')
         self.activity2 = Activity.objects.create(uid=str(uuid4()), title='title2')
+        self.run1 = Run.objects.create(uuid=str(uuid4()), activity=self.activity1)
+        self.run2 = Run.objects.create(uuid=str(uuid4()), activity=self.activity2)
         self.context1 = Context.objects.create(uuid=str(uuid4()), timezone='Europe/Moscow')
         self.context2 = Context.objects.create(uuid=str(uuid4()), timezone='Asia/Vladivostok')
+        self.create_casbin_data()
 
     def test_changeable_fields(self):
         init_data = {
@@ -59,6 +63,7 @@ class TestEventAdmin(OnlyChangePermissionTestMixin, TestCase):
             'event_type': self.event_type1,
             'activity': self.activity1,
             'context': self.context1,
+            'run': self.run1,
         }
         e = Event.objects.create(**init_data)
         dt = timezone.now() + timezone.timedelta(days=1)
@@ -76,9 +81,10 @@ class TestEventAdmin(OnlyChangePermissionTestMixin, TestCase):
             'event_type': self.event_type2.id,
             'activity': self.activity2.id,
             'context': self.context2.id,
+            'run': self.run2.id,
 
         }
-        self.client.post(reverse('admin:isle_event_change', kwargs={'object_id': e.id}), new_data)
+        r= self.client.post(reverse('admin:isle_event_change', kwargs={'object_id': e.id}), new_data)
         self.assertEqual(Event.objects.get(id=e.id).uid, init_data['uid'])
         self.assertEqual(Event.objects.get(id=e.id).dt_start, init_data['dt_start'])
         self.assertEqual(Event.objects.get(id=e.id).dt_end, init_data['dt_end'])
@@ -88,12 +94,14 @@ class TestEventAdmin(OnlyChangePermissionTestMixin, TestCase):
         self.assertEqual(Event.objects.get(id=e.id).event_type, init_data['event_type'])
         self.assertEqual(Event.objects.get(id=e.id).activity, init_data['activity'])
         self.assertEqual(Event.objects.get(id=e.id).context, init_data['context'])
+        self.assertEqual(Event.objects.get(id=e.id).run, init_data['run'])
 
 
-class TestEventTypeAdmin(OnlyChangePermissionTestMixin, TestCase):
+class TestEventTypeAdmin(CasbinDataMixin, OnlyChangePermissionTestMixin, TestCase):
     def setUp(self):
         super().setUp()
         self.admin = EventTypeAdmin(EventType, AdminSite())
+        self.create_casbin_data()
 
     def test_changeable_fields(self):
         init_data = {
