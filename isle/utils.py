@@ -1082,7 +1082,12 @@ def update_casbin_data(update_rule=None):
             ctx_uuid = update_rule.strip().split(',')[3].strip()
             user = User.objects.filter(unti_id=unti_id).first()
             if user:
-                UserContextAssistantCache().discard(user, ctx_uuid)
+                if ctx_uuid == settings.CASBIN_SPECIAL_CONTEXT_UID:
+                    UserContextAssistantCache().discard_many(
+                        (user, c) for c in Context.objects.values_list('uuid', flat=True)
+                    )
+                else:
+                    UserContextAssistantCache().discard(user, ctx_uuid)
 
     except ApiError:
         pass
