@@ -23,11 +23,13 @@ from jsonfield import JSONField
 from .cache import get_user_available_contexts
 
 
-def check_permission(user, context, obj_type='file', action='upload'):
+def check_permission(user, context, obj_type='file', action='upload', check_global_context=True):
     from .casbin import enforce
     if not user.unti_id or not context:
         return False
-    return enforce(str(user.unti_id), context, obj_type, action)
+    global_perm = check_global_context and \
+                  enforce(str(user.unti_id), settings.CASBIN_SPECIAL_CONTEXT_UID, obj_type, action)
+    return global_perm or enforce(str(user.unti_id), context, obj_type, action)
 
 
 class User(AbstractUser):
@@ -52,9 +54,9 @@ class User(AbstractUser):
     def get_full_name(self):
         return ' '.join(filter(None, [self.last_name, self.first_name]))
 
-    def is_assistant_for_context(self, context):
+    def is_assistant_for_context(self, context, check_global_context=True):
         context_uuid = context if isinstance(context, str) else context and context.uuid
-        return check_permission(self, context_uuid)
+        return check_permission(self, context_uuid, check_global_context=check_global_context)
 
     def has_assistant_role(self):
         return bool(self.available_context_uuids)

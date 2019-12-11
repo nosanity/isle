@@ -1,4 +1,5 @@
 from collections import Iterable
+from django.conf import settings
 from django.core.cache import caches
 
 
@@ -73,8 +74,13 @@ def get_user_available_contexts(user):
     results = DEFAULT_CACHE.get_many(uuid_cache_key.keys())
     results = {uuid_cache_key[k]: v for k, v in results.items()}
     not_found_ctxs = uuids - set(results.keys())
-    for ctx in not_found_ctxs:
-        results[ctx] = UserContextAssistantCache().get(user, ctx)
+    global_assistant = user.is_assistant_for_context(settings.CASBIN_SPECIAL_CONTEXT_UID, check_global_context=False)
+    if global_assistant and not_found_ctxs:
+        UserContextAssistantCache().set_many([((user, ctx), True) for ctx in not_found_ctxs])
+        results.update({c: True for c in not_found_ctxs})
+    else:
+        for ctx in not_found_ctxs:
+            results[ctx] = UserContextAssistantCache().get(user, ctx)
     return [i[0] for i in results.items() if i[1]]
 
 
@@ -87,7 +93,7 @@ class UserContextAssistantCache(BaseCache):
         self.KEY_PART = self.KEY_PART % version
 
     def create_value(self, *args):
-        return args[0].is_assistant_for_context(args[1])
+        return args[0].is_assistant_for_context(args[1], check_global_context=False)
 
     def transform_args(self, *args):
         return [args[0].id, args[1]]

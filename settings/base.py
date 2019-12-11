@@ -264,6 +264,8 @@ DEFAULT_TRACE_DATA_JSON = [
    }
 ]
 
+CASBIN_SPECIAL_CONTEXT_UID = '*'
+
 from os import getenv
 from split_settings.tools import include
 settings_path = getenv('UPLOADS_SETTINGS_PATH', 'local_settings.py')
