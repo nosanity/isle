@@ -1092,7 +1092,7 @@ def update_casbin_data(update_rule=None):
 
 class XLSWriter:
     def __init__(self, f):
-        self.workbook = xlsxwriter.Workbook(f)
+        self.workbook = xlsxwriter.Workbook(f, options={'strings_to_urls': False, 'strings_to_formulas': False})
         self.worksheet = self.workbook.add_worksheet()
         self.current_row = 0
 
