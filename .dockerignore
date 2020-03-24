@@ -1,0 +1,6 @@
+.dockerignore
+Dockerfile
+docker-builder.sh
+.git
+README.md
+release
