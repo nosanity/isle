@@ -289,9 +289,6 @@ DWH_DATABASES = {
     'pt': locals().get('DWH_PT_DB_NAME', 'people'),
 }
 
-import djcelery
-djcelery.setup_loader()
-
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
