@@ -33,7 +33,7 @@ casbin==0.3
 python3-memcached==1.51
 XlsxWriter==1.1.8
 django-querysetsequence==0.11
-bleach==3.1.0
+bleach==3.1.2
 django-dynamic-formsets==0.0.8
 
 git+https://github.com/adrtdr/python-logstash-ssl/@master
