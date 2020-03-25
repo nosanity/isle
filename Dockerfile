@@ -41,3 +41,8 @@ RUN if [ "$GITHUB_TOKEN" != "" ] ; then \
 ADD docker-entrypoint.sh manage.py  wsgi.py  ./
 ADD settings  ./settings
 ADD isle      ./isle
+
+FROM base as worker
+MAINTAINER EvgeniyBondarenko "Bondarenko.Hub@gmail.com"
+CMD celery -A isle worker
+#CMD python ./manage.py celeryd -E -B  --settings=tp_sso_edx.settings
