@@ -5,7 +5,7 @@ MAINTAINER EvgeniyBondarenko "Bondarenko.Hub@gmail.com"
 WORKDIR /opt
 EXPOSE 80
 ENTRYPOINT ["./docker-entrypoint.sh" ]
-CMD gunicorn -w 3 -b 0.0.0.0:80 wsgi:application --forwarded-allow-ips *  --access-logfile '-' --log-level ${LOG_LEVEL}
+CMD gunicorn -w 3 -b 0.0.0.0:80 wsgi:application --forwarded-allow-ips=*  --access-logfile '-' --log-level ${LOG_LEVEL}
 
 RUN apt-get update && \
     apt-get install -y  python-dev \
