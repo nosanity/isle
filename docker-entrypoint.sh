@@ -3,6 +3,7 @@
 
 
 export UPLOADS_SETTINGS_PATH='settings_os.docker.py'
+export FORWARDED_ALLOW_IPS=${FORWARDED_ALLOW_IPS:-'*'}
 export LOG_LEVEL=${LOG_LEVEL:-"WARNING"}
 
 
