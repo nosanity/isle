@@ -45,4 +45,7 @@ ADD isle      ./isle
 FROM base as worker
 MAINTAINER EvgeniyBondarenko "Bondarenko.Hub@gmail.com"
 CMD celery -A isle worker
-#CMD python ./manage.py celeryd -E -B  --settings=tp_sso_edx.settings
+
+FROM base as notifications
+MAINTAINER EvgeniyBondarenko "Bondarenko.Hub@gmail.com"
+while true; do ./manage.py update_events_docker; sleep 1200; done;
