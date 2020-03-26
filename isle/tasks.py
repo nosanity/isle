@@ -7,8 +7,9 @@ from django.utils import timezone
 import requests
 from isle.celery import app
 from isle.kafka import send_object_info, KafkaActions
-from isle.models import Event, CSVDump, Activity, Context, LabsTeamResult, UserFile, PLEUserResult
-from isle.utils import EventGroupMaterialsCSV, BytesCsvObjWriter, XLSWriter
+from isle.models import Event, CSVDump, Activity, Context, LabsTeamResult, UserFile, PLEUserResult, User, EventEntry
+from isle.utils import EventGroupMaterialsCSV, BytesCsvObjWriter, XLSWriter, create_or_update_event, \
+    update_event_blocks
 from isle.serializers import UserResultSerializer
 
 
@@ -133,3 +134,20 @@ def handle_ple_user_result(data):
         except (AssertionError, requests.RequestException):
             logging.exception('Failed to send user result report to PLE. Result: {}. Initial data: {}'.
                               format(result, data))
+
+
+@app.task
+def create_event_entry_for_non_exiting_event(event_uuid, user_id):
+    """
+    асинхронное подтягивание мероприятия и создание записи на него для пользователя
+    """
+    user = User.objects.get(id=user_id)
+    event = create_or_update_event(event_uuid)
+    if not event:
+        return
+    EventEntry.objects.update_or_create(user=user, event=event, defaults={'deleted': False})
+
+
+@app.task
+def fetch_event(event_uuid):
+    update_event_blocks(event_uuid)

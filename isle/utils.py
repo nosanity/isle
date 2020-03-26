@@ -187,9 +187,10 @@ def refresh_events_data(fast=True):
         logging.exception('Failed to handle events data')
 
 
-def assign_event_authors(event, activity_authors, event_authors, user_map, failed_users):
+def assign_event_authors(event, activity_authors, event_authors, user_map, failed_users, current_authors=None):
     all_authors = activity_authors | event_authors
-    current_authors = set(EventAuthor.objects.filter(event=event).values_list('user_id', flat=True))
+    if current_authors is None:
+        current_authors = set(EventAuthor.objects.filter(event=event).values_list('user_id', 'source'))
     real_authors = set()
     for unti_id in all_authors:
         user_id = user_map.get(unti_id)
@@ -202,16 +203,18 @@ def assign_event_authors(event, activity_authors, event_authors, user_map, faile
                 continue
             user_id = user.id
             user_map[unti_id] = user_id
-        real_authors.add(user_id)
-        if user_id in current_authors:
+        source = EventAuthor.SOURCE_EVENT if unti_id in event_authors else EventAuthor.SOURCE_ACTIVITY
+        real_authors.add((user_id, source))
+        if (user_id, source) in current_authors:
             continue
         else:
             EventAuthor.objects.update_or_create(event=event, user_id=user_id, defaults={
                 'is_active': True,
-                'source': EventAuthor.SOURCE_EVENT if unti_id in event_authors else EventAuthor.SOURCE_ACTIVITY,
+                'source': source,
             })
     if current_authors - real_authors:
-        EventAuthor.objects.filter(event=event).exclude(user_id__in=real_authors).update(is_active=False)
+        EventAuthor.objects.filter(event=event).exclude(user_id__in=[i[0] for i in real_authors]) \
+            .update(is_active=False)
 
 
 def update_authors(activity, data):
@@ -225,6 +228,7 @@ def update_authors(activity, data):
             'is_main': item.get('is_main'),
         })[0])
     activity.authors.set(authors)
+    return authors
 
 
 def update_event_structure(data, event, event_blocks_uuid, metamodels, competences):
@@ -396,8 +400,11 @@ def update_event_entries():
         for event_uuid, unti_ids in by_event.items():
             event_id = events.get(event_uuid)
             if not event_id:
-                logging.error('Event with uuid %s not found' % event_uuid)
-                continue
+                event = create_or_update_event(event_uuid)
+                if not event:
+                    continue
+                events[event_uuid] = event.id
+                event_id = event.id
             users = []
             for unti_id in unti_ids:
                 user_id = unti_id_to_id.get(unti_id)
@@ -436,8 +443,11 @@ def update_run_enrollments():
             for item in data:
                 run_id = run_uuid_to_id.get(item['run_uuid'])
                 if not run_id:
-                    logging.error('run with uuid %s not found' % item['run_uuid'])
-                    continue
+                    run = create_or_update_run(item['run_uuid'])
+                    if not run:
+                        continue
+                    run_uuid_to_id[item['run_uuid']] = run.id
+                    run_id = run.id
                 if item['unti_id'] in failed_unti_ids:
                     continue
                 user_id = unti_id_to_id.get(int(item['unti_id']))
@@ -754,6 +764,225 @@ def get_results_list(event=None):
                 i['result__block__title'],
                 i['result__title'],
             ]))
+
+
+def _parse_dt(val):
+    try:
+        return parse_datetime(val) or timezone.now()
+    except (AssertionError, TypeError):
+        return timezone.now()
+
+
+def create_or_update_context(context_uuid):
+    try:
+        data = LabsApi().get_context(context_uuid)
+        return Context.objects.update_or_create(uuid=context_uuid, defaults={
+            'title': data['title'],
+            'guid': data['guid'],
+            'timezone': data['timezone'],
+        })[0]
+    except Exception:
+        logging.exception('Failed to update context %s', context_uuid)
+
+
+def create_or_update_activity(activity_uuid):
+    try:
+        data = LabsApi().get_activity(activity_uuid)
+        main_author = ''
+        authors = data.get('authors') or []
+        for author in authors:
+            if author.get('is_main'):
+                main_author = author.get('title')
+                break
+        activity, created = Activity.objects.update_or_create(uid=activity_uuid, defaults={
+            'title': data['title'],
+            'main_author': main_author,
+            'is_deleted': data.get('is_deleted'),
+        })
+
+        types = data.get('types')
+        event_type = None
+        if types:
+            event_type, created = EventType.objects.update_or_create(uuid=types[0]['uuid'], defaults={
+                'title': types[0].get('title'),
+                'description': types[0].get('description') or '',
+            })
+            if created:
+                event_type.trace_data = settings.DEFAULT_TRACE_DATA_JSON
+                event_type.save(update_fields=['trace_data'])
+                create_traces_for_event_type(event_type)
+        Event.objects.filter(activity=activity).update(title=activity.title, event_type=event_type)
+
+        events = {i.uid: i for i in Event.objects.filter(activity=activity).select_related('context')}
+        context_uuid_to_id = dict(Context.objects.values_list('uuid', 'id'))
+        for run_data in data.get('runs', []):
+            for event_data in run_data.get('events', []):
+                event = events.get(event_data['uuid'])
+                if event:
+                    event_context_uuid = event.context and event.context.uuid
+                    if event_context_uuid not in event_data.get('contexts', []):
+                        contexts = sorted(list(
+                            filter(None, map(lambda x: context_getter(context_uuid_to_id, x),
+                                             event_data.get('contexts', [])))
+                        ))
+                        context_id = contexts[0] if contexts else None
+                        Event.objects.filter(id=event.id).update(context_id=context_id)
+
+        current_authors = set(activity.authors.values_list('id')) if not created else set()
+        authors = update_authors(activity, authors)
+        if not created and set([i.id for i in authors]) != current_authors:
+            activity_authors = get_authors_unti_ids(data.get('authors') or [])
+            events_authors = defaultdict(set)
+            activity_events = {i.uid: i for i in Event.objects.filter(activity=activity)}
+            qs = EventAuthor.objects.filter(event__activity=activity, source=EventAuthor.SOURCE_EVENT, is_active=True)\
+                .values_list('event__uid', 'user__unti_id')
+            for event_uuid, unti_id in qs:
+                events_authors[event_uuid].add(unti_id)
+            user_map = dict(User.objects.filter(unti_id__isnull=False).values_list('unti_id', 'id'))
+            failed_users = set()
+            for run_data in data.get('runs', []):
+                for event_data in run_data.get('events', []):
+                    if event_data['uuid'] in activity_events:
+                        assign_event_authors(
+                            activity_events[event_data['uuid']],
+                            activity_authors,
+                            get_authors_unti_ids(event_data.get('authors')),
+                            user_map,
+                            failed_users,
+                            current_authors=events_authors.get(event_data['uuid'], set()),
+                        )
+        return activity
+    except ApiError:
+        pass
+    except Exception:
+        logging.exception('Failed to get activity %s', activity_uuid)
+
+
+def context_getter(context_map, context_uuid):
+    if context_uuid not in context_map:
+        context = create_or_update_context(context_uuid)
+        if context:
+            context_map[context_uuid] = context.id
+    return context_map.get(context_uuid)
+
+
+def create_or_update_run(run_uuid):
+    try:
+        data = LabsApi().get_run(run_uuid)
+        activity = Activity.objects.filter(uid=data['activity_uuid']).first()
+        if not activity:
+            activity = create_or_update_activity(data['activity_uuid'])
+        if not activity:
+            logging.error('Activity with uuid %s not found for run %s', data['activity_uuid'], run_uuid)
+            return
+        run, created = Run.objects.update_or_create(uuid=run_uuid, defaults={
+            'activity': activity,
+            'deleted': data.get('is_deleted') or activity.is_deleted,
+        })
+
+        events = {i.uid: i for i in Event.objects.filter(run=run).select_related('context')}
+        context_uuid_to_id = dict(Context.objects.values_list('uuid', 'id'))
+        for event_data in data.get('events') or []:
+            event = events.get(event_data['uuid'])
+            if event:
+                event_context_uuid = event.context and event.context.uuid
+                if event_context_uuid not in event_data.get('contexts', []):
+                    contexts = sorted(list(
+                        filter(None, map(lambda x: context_getter(context_uuid_to_id, x),
+                                         event_data.get('contexts', [])))
+                    ))
+                    context_id = contexts[0] if contexts else None
+                    Event.objects.filter(id=event.id).update(context_id=context_id)
+        return run
+    except ApiError:
+        pass
+    except Exception:
+        logging.exception('Failed to get run %s', run_uuid)
+
+
+def create_or_update_event(event_uuid):
+    try:
+        data = LabsApi().get_event(event_uuid)
+        activity = Activity.objects.filter(uid=data['activity_uuid']).first()
+        if not activity:
+            activity = create_or_update_activity(data['activity_uuid'])
+        if not activity:
+            logging.error('Activity with uuid %s not found for event %s', data['activity_uuid'], event_uuid)
+            return
+        run = Run.objects.filter(uuid=data['run_uuid']).first()
+        if not run:
+            run = create_or_update_run(data['run_uuid'])
+        if not run:
+            logging.error('Run with uuid %s not found for event %s', data['run_uuid'], event_uuid)
+            return
+
+        timeslot = data.get('timeslot')
+        is_active = not (data.get('is_deleted') or run.deleted or activity.is_deleted)
+        dt_start, dt_end = timezone.now(), timezone.now()
+        if timeslot:
+            dt_start = _parse_dt(timeslot['start'])
+            dt_end = _parse_dt(timeslot['end'])
+        event_contexts = list(
+            filter(None, map(lambda x: Context.objects.filter(uuid=x).first(), data.get('contexts') or []))
+        )
+        event_context_id = event_contexts[0].id if event_contexts else None
+        event_type = None
+        if data.get('type_uuid'):
+            event_type = EventType.objects.filter(uuid=data['type_uuid']).first()
+        event = Event.objects.update_or_create(uid=event_uuid, defaults={
+            'is_active': is_active,
+            'activity': activity,
+            'run': run,
+            'context_id': event_context_id,
+            'dt_start': dt_start,
+            'dt_end': dt_end,
+            'title': activity.title,
+            'event_type': event_type,
+            'data': {'place_title': data.get('place', {}).get('title')},
+        })[0]
+
+        event_authors = get_authors_unti_ids(data.get('authors'))
+        current_event_authors = set(EventAuthor.objects.filter(event=event, source=EventAuthor.SOURCE_EVENT)
+                                    .values_list('user__unti_id'))
+        if event_authors != current_event_authors:
+            activity_data = LabsApi().get_activity(activity.uid)
+            activity_authors = get_authors_unti_ids(activity_data['authors'])
+            assign_event_authors(
+                event,
+                activity_authors,
+                event_authors,
+                dict(User.objects.filter(unti_id__in=(activity_authors | event_authors)).values_list('unti_id', 'id')),
+                set(),
+                current_authors=current_event_authors,
+            )
+        return event
+    except ApiError:
+        pass
+    except Exception:
+        logging.exception('Failed to get event %s', event_uuid)
+
+
+def update_event_blocks(event_uuid):
+    """
+    Обновление структуры мероприятия по сигналу из кафки
+    """
+    try:
+        event = Event.objects.filter(uid=event_uuid).first()
+        if not event:
+            event = create_or_update_event(event_uuid)
+        if not event:
+            logging.error('Got signal for event structure change for non existing event %s', event_uuid)
+            return
+        data = LabsApi().get_event(event_uuid)
+        update_event_structure(
+            data.get('blocks') or [],
+            event,
+            event.blocks.values_list('uuid', flat=True),
+            dict(MetaModel.objects.values_list('uuid', 'id')),
+            dict(DpCompetence.objects.values_list('uuid', 'id')),
+        )
+    except Exception:
+        logging.exception('Failed to update structure for event %s', event_uuid)
 
 
 def get_release_version():
