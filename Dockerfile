@@ -48,4 +48,4 @@ CMD celery -A isle worker
 
 FROM base as notifications
 MAINTAINER EvgeniyBondarenko "Bondarenko.Hub@gmail.com"
-while true; do ./manage.py update_events_docker; sleep 1200; done;
+CMD while true; do ./manage.py update_events_docker; sleep 1200; done;
