@@ -123,6 +123,18 @@ class LabsApi(BaseApi):
     def get_contexts(self):
         return self.make_request('/api/v2/context')
 
+    def get_context(self, uuid):
+        return self.make_request_no_pagination('/api/v2/context/{}'.format(uuid))
+
+    def get_activity(self, uuid):
+        return self.make_request_no_pagination('/api/v2/activity/{}'.format(uuid))
+
+    def get_run(self, uuid):
+        return self.make_request_no_pagination('/api/v2/run/{}'.format(uuid))
+
+    def get_event(self, uuid):
+        return self.make_request_no_pagination('/api/v2/event/{}'.format(uuid))
+
 
 class XLEApi(BaseApi):
     name = 'xle'
