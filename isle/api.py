@@ -21,6 +21,7 @@ class BaseApi:
     app_token = ''
     authorization = {}
     verify = True
+    check_health_url = ''
 
     def update_kwargs(self, kwargs):
         """
@@ -39,7 +40,8 @@ class BaseApi:
         """
         итератор по всем страницам ответа
         """
-        url = '{}{}'.format(self.base_url, url)
+        if not url.startswith(('http://', 'https://')):
+            url = '{}{}'.format(self.base_url, url)
         page = 1
         total_pages = None
         kwargs.setdefault('timeout', settings.CONNECTION_TIMEOUT)
@@ -93,7 +95,9 @@ class BaseApi:
 
     def health_check(self):
         try:
-            resp = requests.head(self.base_url)
+            kwargs = {'timeout': settings.CONNECTION_TIMEOUT}
+            self.update_kwargs(kwargs)
+            resp = requests.head('{}{}'.format(self.base_url, self.check_health_url), **kwargs)
             if resp.status_code < 400:
                 return 'ok'
             else:
@@ -108,6 +112,7 @@ class LabsApi(BaseApi):
     base_url = settings.LABS_URL.rstrip('/')
     authorization = {'params': {'app_token': getattr(settings, 'LABS_TOKEN', '')}}
     verify = False
+    check_health_url = '/api/v2/type'
 
     def get_activities(self, date_min=None, date_max=None):
         params = {}
@@ -123,12 +128,25 @@ class LabsApi(BaseApi):
     def get_contexts(self):
         return self.make_request('/api/v2/context')
 
+    def get_context(self, uuid):
+        return self.make_request_no_pagination('/api/v2/context/{}'.format(uuid))
+
+    def get_activity(self, uuid):
+        return self.make_request_no_pagination('/api/v2/activity/{}'.format(uuid))
+
+    def get_run(self, uuid):
+        return self.make_request_no_pagination('/api/v2/run/{}'.format(uuid))
+
+    def get_event(self, uuid):
+        return self.make_request_no_pagination('/api/v2/event/{}'.format(uuid))
+
 
 class XLEApi(BaseApi):
     name = 'xle'
     base_url = settings.XLE_URL.rstrip('/')
     authorization = {'params': {'app_token': getattr(settings, 'XLE_TOKEN', '')}}
     verify = False
+    check_health_url = '/api/v1/checkin'
 
     def update_kwargs(self, kwargs):
         super().update_kwargs(kwargs)
@@ -158,6 +176,7 @@ class DpApi(BaseApi):
     base_url = settings.DP_URL.rstrip('/')
     authorization = {'params': {'app_token': getattr(settings, 'DP_TOKEN', '')}}
     verify = False
+    check_health_url = '/api/v1/framework'
 
     def get_metamodel(self, uuid):
         return self.make_request_no_pagination('/api/v1/model/{}'.format(uuid))
@@ -199,3 +218,10 @@ class Openapi(BaseApi):
 
     def get_token_list(self):
         return self.django_paginated_request('/api/user-token/')
+
+
+class SSOApiGetPerm(BaseApi):
+    name = 'sso'
+    base_url = settings.SSO_UNTI_URL.rstrip('/')
+    authorization = {'params': {'x-api-key': getattr(settings, 'SSO_API_KEY', '')}}
+    check_health_url = '/api/check/release/'

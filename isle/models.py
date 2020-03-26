@@ -21,6 +21,7 @@ from django.utils.translation import ugettext_lazy as _
 import bleach
 from jsonfield import JSONField
 from .cache import get_user_available_contexts
+from .fields import SafeUTF8Text
 
 
 def check_permission(user, context, obj_type='file', action='upload'):
@@ -500,7 +501,7 @@ class TeamResult(ResultAbstract):
 
 
 class BaseMaterial(models.Model):
-    url = models.URLField(blank=True)
+    url = models.URLField(blank=True, max_length=1000)
     file = models.FileField(blank=True, max_length=300)
     file_type = models.CharField(max_length=1000, default='')
     file_size = models.PositiveIntegerField(default=None, null=True)
@@ -894,7 +895,7 @@ class AbstractResult(models.Model):
     общие поля для персональных/командных результатов
     """
     result = models.ForeignKey(LabsEventResult, on_delete=models.CASCADE)
-    comment = models.TextField(default='')
+    comment = SafeUTF8Text(default='')
     approved = models.NullBooleanField(default=None)
     approve_text = models.CharField(max_length=255, default='')
     circle_items = models.ManyToManyField('CircleItem')
@@ -1223,6 +1224,7 @@ class UpdateTimes(models.Model):
     EVENT_STRUCTURE = 'event_structure'
     EVENT_RUN_ACTIVITY = 'event_run_activity'
     PT_TEAMS = 'pt_teams'
+    ALL_EVENTS = 'all_events'
 
     event_type = models.CharField(max_length=255, unique=True, primary_key=True)
     dt = models.DateTimeField()
@@ -1262,7 +1264,7 @@ class Summary(models.Model):
     result_limit_models = models.Q(app_label='isle', model='Trace') | \
                           models.Q(app_label='isle', model='LabsEventResult')
 
-    content = models.TextField(blank=True)
+    content = SafeUTF8Text(blank=True)
     author = models.ForeignKey(User, on_delete=models.CASCADE)
     is_draft = models.BooleanField(default=True)
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
