@@ -40,7 +40,7 @@ def get_authors_unti_ids(authors):
     return set()
 
 
-def refresh_events_data(fast=True):
+def refresh_events_data(fast=True, date=None):
     """
     Обновление списка эвентов и активностей. Предполагается, что этот список меняется редко (или не меняется вообще).
     В процессе обновления эвент может быть удален, но только если он запланирован как минимум на следующий день.
@@ -70,6 +70,9 @@ def refresh_events_data(fast=True):
             today = timezone.datetime.now().date()
             date_min = (today - timezone.timedelta(days=1)).strftime('%Y-%m-%d')
             date_max = (today + timezone.timedelta(days=1)).strftime('%Y-%m-%d')
+        if date:
+            fast = True
+            date_min, date_max = date, date
         for data in LabsApi().get_activities(date_min=date_min, date_max=date_max):
             for activity in data:
                 for ctx in activity['contexts']:

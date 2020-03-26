@@ -1224,6 +1224,7 @@ class UpdateTimes(models.Model):
     EVENT_STRUCTURE = 'event_structure'
     EVENT_RUN_ACTIVITY = 'event_run_activity'
     PT_TEAMS = 'pt_teams'
+    ALL_EVENTS = 'all_events'
 
     event_type = models.CharField(max_length=255, unique=True, primary_key=True)
     dt = models.DateTimeField()
