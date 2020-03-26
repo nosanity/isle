@@ -132,3 +132,6 @@ if str(os.getenv('USE_DOGSLOW_MIDDLEWARE', False)) == 'True':
     if DOGSLOW_LOG_TO_FILE:
         DOGSLOW_OUTPUT = os.getenv('DOGSLOW_OUTPUT', '/tmp')
     MIDDLEWARE = ['dogslow.WatchdogMiddleware', ] + MIDDLEWARE
+
+# в котором часу по UTC производить обновление всех мероприятий
+UPDATE_ALL_EVENTS_UTC_HOUR = int(os.getenv('UPDATE_ALL_EVENTS_UTC_HOUR', 0))
