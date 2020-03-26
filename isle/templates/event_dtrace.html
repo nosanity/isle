@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+{% load i18n tz helpers static %}
+
+{% block title %}{% trans "Цифровой след участников мероприятия" %}{% endblock %}
+
+{% block content %}
+    {% include 'includes/to_event_page.html' with with_xle_url=True %}
+    <div class="row">
+        <div class="col-lg-8">
+            <h2>{% trans "Цифровой след участников мероприятия" %}</h2>
+            <p>
+                <strong>{% trans "Мероприятие:" %}</strong> {{ event.title }}
+                <br>
+                {% localtime off %}{{ event.get_dt_start|date:'d E, H:i' }}{% endlocaltime %}
+        {% for block in blocks %}
+            {% if block|show_block %}
+	        {% if forloop.first %}
+		    <br>
+                    <b>{% trans "Деятельность:" %}</b> {{ block.description }}
+		{% endif %}
+	    {% endif %}
+	{% endfor %}
+            </p>
+        </div>
+        <div class="col-lg-4">
+            <form id="event_dtrace_filter_form" class="mt-3 mb-2">
+                {{ form.non_field_errors }}
+                {% for field in filter_form %}
+                    {% if field.errors %}
+                        {{ field.errors }}
+                    {% endif %}
+                    {% if field.name == 'only_my' %}
+                        <div class="checkbox">{{ field }} <label for="id_{{ field.name }}">{{ field.label }}</label></div>
+                    {% else %}
+                        {{ field|add_class:'form-control mb-10' }}
+                    {% endif %}
+                {% endfor %}
+                <div class="form-group mb-0">
+                    <button type="submit" class="btn btn-success mr-1">{% trans 'Фильтровать' %}</button>
+                    <a type="submit" class="btn btn-danger" href="{% url 'event-dtrace' uid=event.uid %}">{% trans 'Сброс' %}</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% if not is_enrolled %}
+        <button class="btn btn-success self-enroll-btn">{% trans "Загрузить цифровой след" %}</button>
+    {% endif %}
+    <div>
+        {% for block in blocks %}
+            {% if block|show_block %}
+            <div class="block-div mt-40">
+		    <h4>{%comment%}{% blocktrans with n=block.order %}{{ n }}. {% endblocktrans %}{{block.title }} {%endcomment %}
+                    {% if block.deleted %} ({% blocktrans %}Удалено{% endblocktrans %}){% endif %}</h4>
+		    {% comment %}
+                <p>
+                    <b>{% trans "Тип:" %}</b> {{ block.block_type }}
+                    <br>
+                    <b>{% trans "Деятельность:" %}</b> {{ block.description }}
+                </p>
+		    {% endcomment %}
+                {% include 'includes/result_type_constraint.html' %}
+                {% for result in block.results.all %}
+                {% if result|show_result %}
+                    <div class="material-result-div material-result-div--full" data-result="{{ result.id }}">
+			    <h4>{% blocktrans with n1=block.order n2=result.order %}{{ n1 }}.{{ n2 }}. {% endblocktrans %} {{ result.title }}
+                            {% if block.deleted or result.deleted %} ({% blocktrans %}Удалено{% endblocktrans %}){% endif %}</h4>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p>
+			            {% comment %}
+                                    <b>{% trans "Формат работы:" %}</b> {{ result.result_format }}
+			            {% endcomment %}
+                                    <br>
+			            {% comment %}
+                                    <b>{% trans "Способ фиксации:" %}</b> {{ result.fix }}
+			            {% endcomment %}
+                                </p>
+                            </div>
+                            <div class="col-md-6">
+                                {% if can_upload and not block.deleted and not result.deleted %}
+                                <button class="btn btn-warning load-results-btn load-results-btn--full">
+                                    {% trans "Загрузить" %}
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        {% include 'includes/file_uploads_form_event.html' %}
+                        {% include 'includes/event_result_items.html' %}
+
+                    </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+{{ filter_form.media }}
+{% endblock %}
+
+{% block js %}
+{{ block.super }}
+<script type="text/javascript">
+    const pageType = "event_dtrace";
+    const isAssistant = eval("{{ is_assistant|lower }}");
+    const eventUpload = false;
+    const teamUpload = false;
+    const csrfmiddlewaretoken = "{{ csrf_token }}";
+    const maxSize = parseInt("{{ max_size }}");
+    const maxParallelUploads = parseInt("{{ max_uploads }}");
+    const userContentId = "{{ user_content_type_id }}";
+    const teamContentId = "{{ team_content_type_id }}";
+    const userUploadPattern = "{{ user_upload_url_pattern }}";
+    const teamUploadPattern = "{{ team_upload_url_pattern }}";
+    const DEFAULT_USER_IMAGE = "{% static 'img/default.jpeg' %}";
+    const UNTI_ID = "{{ request.user.unti_id }}";
+    const blocks_structure = {{ blocks_structure_json|safe }};
+    const summarySyncUrl = "{% url 'summary-autosave' uid=event.uid %}";
+    const deleteSummaryUrl = "{% url 'summary-delete' uid=event.uid %}";
+    const SUMMARY_SAVE_INTERVAL = parseInt("{{ SUMMARY_SAVE_INTERVAL }}");
+    const resultType = "labseventresult";
+    const enrollUrl = "{% url 'event-self-enroll' uid=event.uid %}";
+
+    let user_or_team_input = yl.jQuery('#id_item');
+    let only_my_input =  $('#id_only_my');
+    user_or_team_input.on('change', (e) => {
+        if (user_or_team_input.val() && only_my_input.prop('checked'))
+            only_my_input.prop('checked', false);
+    });
+    only_my_input.on('change', (e) => {
+        if (only_my_input.prop('checked') && user_or_team_input.val())
+            user_or_team_input.val(null).trigger('change');
+    });
+
+    $('.self-enroll-btn').on('click', (e) => {
+        e.preventDefault();
+        $.ajax({
+            method: 'POST',
+            url: enrollUrl,
+            data: {csrfmiddlewaretoken: csrfmiddlewaretoken},
+            success: (data) => { window.location.reload(); },
+            error: () => { alert('Произошла ошибка'); }
+        })
+    });
+</script>
+{% include 'includes/_link_preview.html' %}
+<script type="text/javascript" src="{% static 'js/libs/jquery.are-you-sure.min.js' %}"></script>
+<script type="text/javascript" src="{% static 'ckeditor/ckeditor.js' %}"></script>
+<script src="{% static 'dynamic_formsets/jquery.formset.js' %}" type="text/javascript"> </script>
+<script type="text/javascript" src="{% static 'js/upload.js' %}"></script>
+<script type="text/javascript" src="{% static 'js/pages/materials.js' %}"></script>
+{% endblock %}

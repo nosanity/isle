@@ -44,6 +44,7 @@ if (isAssistant) {
             let li = $obj.parents('li');
             let wrapper = li.find('div.info-string-edit');
             let select_options = '';
+            let is_summary = !!$obj.data('is-summary');
             for (tid in tracesDict) {
                 let name = tracesDict[tid];
                 select_options += `<option value="${tid}"` + (tid == trace_id ? " selected": "") + `>${name}</option>`
@@ -53,7 +54,7 @@ if (isAssistant) {
                     <input type="hidden" name="csrfmiddlewaretoken" value="${csrf}">
                     <input type="hidden" name="material_id" value="${id}">
                     <select name="trace_name" class="material-type-select form-control mb-20">${select_options}</select>
-                    <textarea maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Описание файлов (не обязательно)">${comment}</textarea>
+                    ${is_summary ? `` : `<textarea maxlength="255" name="comment" class="form-control full-width mb-6" placeholder="Описание файлов">${comment}</textarea>`}
                     <button class="btn btn-success save-edited-block">Сохранить</button>
                     <button class="btn btn-danger cancel-block-edit">Отменить</button>
                 </form>
@@ -116,12 +117,14 @@ $('.load-results-btn').on('click', (e) => {
     let div = $(e.target).parents('.material-result-div');
     div.find('form').removeClass('hidden');
     $(e.target).hide();
+    $(e.target).parents('.material-result-div').find('.upload-circle-items-wrapper').show();
 });
 
 $('.hide-results-form-btn').on('click', (e) => {
     e.preventDefault();
     $(e.target).parents('.material-result-div').find('form').addClass('hidden');
     $(e.target).parents('.material-result-div').find('.load-results-btn').show();
+    $(e.target).parents('.material-result-div').find('.upload-circle-items-wrapper').hide();
 });
 
 function setOwnership(obj) {

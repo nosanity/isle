@@ -8,8 +8,9 @@ from django.urls import reverse
 from django.utils import timezone
 from isle.models import (
     Event, User, EventMaterial, EventEntry, LabsEventBlock, LabsEventResult, LabsUserResult, Team,
-    LabsTeamResult, EventTeamMaterial
+    LabsTeamResult, EventTeamMaterial, Context
 )
+from .utils import CasbinDataMixin
 
 
 class BaseUpload:
@@ -33,8 +34,9 @@ class BaseUpload:
         shutil.rmtree(cls.media_temp_dir, ignore_errors=True)
 
     def setUp(self):
+        context = Context.objects.create(uuid=str(uuid4()), title='test', guid='test', timezone='Europe/Moscow')
         self.event = Event.objects.create(uid='11111111-1111-1111-11111111', title='title', is_active=True,
-                                          dt_start=timezone.now(), dt_end=timezone.now())
+                                          dt_start=timezone.now(), dt_end=timezone.now(), context=context)
         self.event_block = LabsEventBlock.objects.create(
             event=self.event, uuid=str(uuid4()), title='title', order=1
         )
@@ -233,15 +235,15 @@ class BaseUpload:
         self.assertEqual(resp.status_code, 400)
 
 
-class TestPersonalUpload(BaseUpload, TestCase):
+class TestPersonalUpload(CasbinDataMixin, BaseUpload, TestCase):
     def setUp(self):
         super().setUp()
-        self.assistant_user = User.objects.create_user('assistant', 'assistant@exmaple.com', 'password', unti_id=3,
-                                                       is_assistant=True)
+        self.assistant_user = User.objects.create_user('assistant', 'assistant@exmaple.com', 'password', unti_id=3)
         self.user = User.objects.create_user('user', 'user@exmaple.com', 'password', unti_id=1)
         self.random_user = User.objects.create_user('random', 'random@exmaple.com', 'password', unti_id=2)
         self.page_url = reverse('load-materials', kwargs={'uid': self.event.uid, 'unti_id': self.user.unti_id})
         EventEntry.objects.create(event=self.event, user=self.user)
+        self.create_casbin_data(self.assistant_user)
 
     def test_assistant_can_upload_file(self):
         super().test_assistant_can_upload_file()
@@ -253,7 +255,7 @@ class TestPersonalUpload(BaseUpload, TestCase):
         self.assertEqual(self.result_model.objects.first().user, self.user)
 
 
-class TestTeamUpload(BaseUpload, TestCase):
+class TestTeamUpload(CasbinDataMixin, BaseUpload, TestCase):
     goal_template = 'team_results.html'
     result_model = LabsTeamResult
     material_model = EventTeamMaterial
@@ -261,8 +263,7 @@ class TestTeamUpload(BaseUpload, TestCase):
 
     def setUp(self):
         super().setUp()
-        self.assistant_user = User.objects.create_user('assistant', 'assistant@exmaple.com', 'password', unti_id=3,
-                                                       is_assistant=True)
+        self.assistant_user = User.objects.create_user('assistant', 'assistant@exmaple.com', 'password', unti_id=3)
         self.user = User.objects.create_user('user', 'user@exmaple.com', 'password', unti_id=1)
         self.random_user = User.objects.create_user('random', 'random@exmaple.com', 'password', unti_id=2)
         self.page_url = reverse('load-materials', kwargs={'uid': self.event.uid, 'unti_id': self.user.unti_id})
@@ -272,6 +273,7 @@ class TestTeamUpload(BaseUpload, TestCase):
         self.team = Team.objects.create(event=self.event, name='name')
         self.team.users.add(self.user)
         self.page_url = reverse('load-team-materials', kwargs={'uid': self.event.uid, 'team_id': self.team.id})
+        self.create_casbin_data(self.assistant_user)
 
     def test_assistant_can_upload_file(self):
         super().test_assistant_can_upload_file()

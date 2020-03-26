@@ -77,9 +77,10 @@ function linkPreview(obj) {
     }
     document.querySelector('div.preview').innerHTML = '';
     document.querySelector('div.preview').appendChild(element);
-    if (show_download_btn) {
-        let el = $('<a class="btn btn-do-download" style="width: 100%">Скачать файл</a>');
+    $('#modal-link-download-btn').text('')
+    if (obj.dataset.file_type != 'other') {
+        let el = $('<a class="btn btn-do-download" style="width: 100%">Скачать файл</a><hr>');
         el.attr('href', $(obj).attr('href'));
-        $('#modal-link-preview-footer').append(el);
+        $('#modal-link-download-btn').append(el);
     }
 }

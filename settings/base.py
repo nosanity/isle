@@ -33,9 +33,11 @@ INSTALLED_APPS = [
     'social_core',
     'social_django',
     'rest_framework',
+    'rest_framework.authtoken',
     'django_carrier_client',
-    'djcelery',
-    'django_user_agents'
+    'django_celery_results',
+    'django_user_agents',
+    'dynamic_formsets',
 ]
 
 MIDDLEWARE = [
@@ -129,7 +131,8 @@ AUTHENTICATION_BACKENDS = (
     'isle.auth.UNTIBackend',
     'django.contrib.auth.backends.ModelBackend'
 )
-LOGIN_URL = '/login/'
+LOGIN_URL = '/login/unti/'
+LOGOUT_REDIRECT_URL = 'https://my.2035.university'
 
 AWS_S3_FILE_OVERWRITE = False
 
@@ -153,20 +156,10 @@ SSO_API_KEY = ''
 # key и secret для oauth авторизации
 SOCIAL_AUTH_UNTI_KEY = ''
 SOCIAL_AUTH_UNTI_SECRET = ''
-# таймаут для запросов в ILE
+# таймаут для запросов
 CONNECTION_TIMEOUT = 20
 # таймаут для head запроса к файлу
 HEAD_REQUEST_CONNECTION_TIMEOUT = 5
-# логин и пароль пользователя в ILE
-ILE_TOKEN_USER = ('user', 'token')
-# базовый урл ILE
-ILE_BASE_URL = 'https://ile2.u2035dev.ru'
-# урл для получения токена в ILE
-ILE_TOKEN_PATH = '/api/token/'
-# путь к апи для получения снэпшота
-ILE_SNAPSHOT_PATH = '/api/snapshot/'
-# нужно ли валидировать сертификат ILE
-ILE_VERIFY_CERTIFICATE = False
 LABS_URL = ''
 LABS_TOKEN = ''
 
@@ -175,6 +168,12 @@ XLE_TOKEN = ''
 
 DP_URL = ''
 DP_TOKEN = ''
+
+PT_URL = ''
+PT_TOKEN = ''
+
+OPENAPI_URL = ''
+OPENAPI_KEY = ''
 
 # базовый урл uploads
 BASE_URL = ''
@@ -189,6 +188,8 @@ KAFKA_PORT = 80
 KAFKA_TOKEN = ''
 KAFKA_PROTOCOL = 'http'
 KAFKA_TOPIC_SSO = 'sso'
+XLE_TOPIC = 'xle'
+KAFKA_TOPIC_OPENAPI = 'openapi'
 
 # количество всех материалов в выбранных материалов, более которого генерация выгрузки должна идти асинхронно
 MAX_MATERIALS_FOR_SYNC_GENERATION = 500
@@ -204,9 +205,64 @@ PAGINATE_EVENTS_BY = 100
 DRF_LIMIT_OFFSET_PAGINATION_DEFAULT = 20
 # максимальное количество записей на странице при использовании LimitOffsetPagination
 DRF_LIMIT_OFFSET_PAGINATION_MAX = 50
+# включить отображение команд, сформированных в pt, на мероприятиях
+ENABLE_PT_TEAMS = False
+# ссылка на now
+NOW_URL = '/'
+HEADER_CABINET_URL = 'https://now.2035.university'
+HEADER_FULL_SCHEDULE_URL = 'https://xle.u2035test.ru/island1022/timetable/all'
+HEADER_MY_SCHEDULE_URL = 'https://xle.u2035test.ru/island1022/timetable'
+# время, которое статистика пользователя валидна, в секундах
+STATISTICS_VALID_FOR = 60 * 30
+# периодичность "очистки" удаленных из xle записей на прогоны в часах
+XLE_RUN_ENROLLMENT_DELETE_CHECK_TIME = 24
+CELERY_RESULT_BACKEND = 'django-db'
+DJANGO_CELERY_RESULTS_TASK_ID_MAX_LENGTH = 191
+
+# интервал автосохранения конспектов в миллисекундах
+SUMMARY_SAVE_INTERVAL = 60000
+
+BLEACH_ALLOWED_TAGS = ['a', 'abbr', 'acronym', 'b', 'blockquote', 'code', 'em', 'i', 'li', 'ol', 'strong',
+                       'ul', 'p', 'img', 'table', 'td', 'tr', 'tbody', 'th', 'thead', 'h1', 'h2', 'h3',
+                       'h4', 'h5', 'h6', 'h7', 's', 'hr', 'div', 'br']
+
+BLEACH_ALLOWED_ATTRIBUTES = {
+    'a': ['href', 'title'],
+    'acronym': ['title'],
+    'abbr': ['title'],
+    'img': ['src', 'style', 'alt'],
+    'div': ['style']
+}
 
 DEFAULT_CSV_ENCODING = 'utf-8'
 CSV_ENCODING_FOR_OS = {}
+
+DEFAULT_TRACE_DATA_JSON = [
+   {
+      "name": "Презентация спикера",
+      "trace_type": "Презентация"
+   },
+   {
+      "name": "Видео",
+      "trace_type": "Видео"
+   },
+   {
+      "name": "Потоковое аудио",
+      "trace_type": "Аудио"
+   },
+   {
+      "name": "Фото мероприятия/участников/продуктов",
+      "trace_type": "Фото"
+   },
+   {
+      "name": "Фото флипчартов",
+      "trace_type": "Фото"
+   },
+   {
+      "name": "Другое",
+      "trace_type": "Файл"
+   }
+]
 
 from os import getenv
 from split_settings.tools import include
@@ -219,63 +275,89 @@ except IOError as e:
 
 define = [
     'SSO_UNTI_URL', 'SSO_API_KEY', 'SSO_API_KEY', 'SOCIAL_AUTH_UNTI_SECRET', 'LABS_URL', 'LABS_TOKEN',
-    'XLE_URL', 'XLE_TOKEN', 'DP_URL', 'DP_TOKEN', 'BASE_URL'
+    'XLE_URL', 'XLE_TOKEN', 'DP_URL', 'DP_TOKEN', 'BASE_URL', 'PT_URL', 'PT_TOKEN', 'OPENAPI_URL', 'OPENAPI_KEY',
 ]
 
 for name in define:
     if not locals().get(name):
         raise Exception('"{}" must be defined'.format(name))
 
-import djcelery
-djcelery.setup_loader()
+DWH_DATABASES = {
+    'labs': locals().get('DWH_LABS_DB_NAME', 'labs'),
+    'xle': locals().get('DWH_XLE_DB_NAME', 'xle'),
+    'dp': locals().get('DWH_DP_DB_NAME', 'dp'),
+    'pt': locals().get('DWH_PT_DB_NAME', 'people'),
+}
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'root': {
+        'level': 'INFO',
+        'handlers': ['console'],
+    },
+    'formatters': {
+        'verbose': {
+            'format': '%(levelname)s  %(asctime)s  %(module)s '
+                      '%(process)d  %(thread)d  %(message)s',
+            'datefmt': "%Y-%m-%d %H:%M:%S",
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose'
+        }
+    },
+    'loggers': {
+        'django.db.backends': {
+            'level': 'ERROR',
+            'handlers': ['console'],
+            'propagate': False,
+        },
+        'raven': {
+            'level': 'DEBUG',
+            'handlers': ['console'],
+            'propagate': False,
+        },
+        'sentry.errors': {
+            'level': 'DEBUG',
+            'handlers': ['console'],
+            'propagate': False,
+        },
+    },
+}
 
 if locals().get('RAVEN_CONFIG', None):
     INSTALLED_APPS += ('raven.contrib.django.raven_compat',)
     register_signal(client)
     register_logger_signal(client)
-
-    LOGGING = {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'root': {
-            'level': 'INFO',
-            'handlers': ['sentry', 'console'],
-        },
-        'formatters': {
-            'verbose': {
-                'format': '%(levelname)s  %(asctime)s  %(module)s '
-                          '%(process)d  %(thread)d  %(message)s',
-                'datefmt': "%Y-%m-%d %H:%M:%S",
-            },
-        },
-        'handlers': {
-            'sentry': {
-                'level': 'ERROR',
-                'class': 'raven.contrib.django.raven_compat.handlers.SentryHandler',
-                'tags': {'custom-tag': 'x'},
-            },
-            'console': {
-                'level': 'INFO',
-                'class': 'logging.StreamHandler',
-                'formatter': 'verbose'
-            }
-        },
-        'loggers': {
-            'django.db.backends': {
-                'level': 'ERROR',
-                'handlers': ['console'],
-                'propagate': False,
-            },
-            'raven': {
-                'level': 'DEBUG',
-                'handlers': ['console'],
-                'propagate': False,
-            },
-            'sentry.errors': {
-                'level': 'DEBUG',
-                'handlers': ['console'],
-                'propagate': False,
-            },
-        },
+    LOGGING['root']['handlers'].append('sentry')
+    LOGGING['handlers']['sentry'] = {
+        'level': 'ERROR',
+        'class': 'raven.contrib.django.raven_compat.handlers.SentryHandler',
+        'tags': {'custom-tag': 'x'},
     }
 
+if locals().get('LOGSTASH_HOST') and locals().get('LOGSTASH_PORT'):
+    LOGGING['root']['handlers'].append('logstash')
+    tags = locals().get('LOGSTASH_TAGS', None)
+    if isinstance(tags, list) and 'uploads' not in tags:
+        tags.append('uploads')
+    else:
+        tags = ['uploads']
+    LOGGING['handlers']['logstash'] = {
+        'level': locals().get('LOGSTASH_LEVEL', 'INFO'),
+        'class': 'logstash.TCPLogstashHandler',
+        'host': LOGSTASH_HOST,
+        'port': LOGSTASH_PORT,
+        'version': 1,
+        'ssl': locals().get('LOGSTASH_SSL', False),
+        'keyfile': locals().get('LOGSTASH_KEYFILE', None),
+        'certfile': locals().get('LOGSTASH_CERTFILE', None),
+        'ca_certs': locals().get('LOGSTASH_CA_CERTS', None),
+        'message_type': locals().get('LOGSTASH_MESSAGE_TYPE', 'logstash'),
+        'tags': tags,
+        'fqdn': locals().get('LOGSTASH_FQDN', False),
+    }

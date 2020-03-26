@@ -1,9 +1,9 @@
-import logging
 from django import forms
 from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.utils.translation import ugettext_lazy as _
-from isle.models import Event, Team, EventType, Trace
+from isle.models import Event, EventType, ZendeskData
+from isle.utils import create_traces_for_event_type
 
 
 class RemoveDeleteActionMixin:
@@ -22,7 +22,7 @@ class EventAdmin(RemoveDeleteActionMixin, admin.ModelAdmin):
     actions = ['make_active', 'make_inactive']
     list_display = ('uid', 'title', 'dt_start', 'dt_end', 'event_type', 'is_active')
     list_filter = ('is_active', 'event_type',)
-    readonly_fields = ('uid', 'dt_start', 'dt_end', 'data', 'title', 'event_type', 'ext_id', 'activity', 'context')
+    readonly_fields = [f.name for f in Event._meta.fields if not f.auto_created and f.name != 'is_active']
     search_fields = ('uid', )
 
     def has_add_permission(self, request):
@@ -71,19 +71,10 @@ class EventTypeAdmin(RemoveDeleteActionMixin, admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         obj.save()
-        data = obj.trace_data
-        if data:
-            traces = {}
-            for t in Trace.objects.filter(event_type=obj, ext_id__isnull=True):
-                traces[t.id] = (t.trace_type, t.name)
-            added_traces = set()
-            for i in data:
-                item = (i['trace_type'], i['name'])
-                added_traces.add(item)
-                if item in traces.values():
-                    continue
-                Trace.objects.create(event_type=obj, **i)
-            for trace_id, item in traces.items():
-                if item not in added_traces:
-                    Trace.objects.filter(id=trace_id).update(deleted=True)
-                    logging.warning('Trace #%s %s was deleted' % (trace_id, item))
+        create_traces_for_event_type(obj)
+
+
+@admin.register(ZendeskData)
+class ZerndeskDataAdmin(admin.ModelAdmin):
+    def has_add_permission(self, request):
+        return not ZendeskData.objects.exists()

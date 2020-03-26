@@ -1,0 +1,30 @@
+{% load i18n %}
+
+<div>
+    <h3>{% trans "Редактирование структуры результата" %}</h3>
+    <form method="post" class="form-horizontal" id="formset-structure-edit" action="{{ form_action }}">
+        {% csrf_token %}
+        {{ formset.media }}
+        {% for field_name, value in additional_fields.items %}
+            <input type="hidden" name="{{ field_name }}" value="{{ value }}">
+        {% endfor %}
+        {{ formset.management_form }}
+        {% for form in formset %}
+            <div class="result-individual-structure-item">
+                {{ form.non_field_errors }}
+                {% for field in form %}
+                    {% if field.name == 'DELETE' %}
+                        {{ field }}
+                    {% else %}
+                        <div class="form-group">
+                            <label class="control-label col-sm-2">{{ field.label }}</label>
+                            <div class="col-sm-10">
+                                {{ field|add_class:'form-control'|add_class:'full-width' }}
+                            </div>
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        {% endfor %}
+    </form>
+</div>

@@ -1,8 +1,10 @@
+import hashlib
 import json
 import os
 import pytz
 import re
 import urllib
+from collections import defaultdict
 from functools import reduce
 from uuid import uuid4
 from django.conf import settings
@@ -14,8 +16,19 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.deconstruct import deconstructible
 from django.utils.functional import cached_property
+from django.utils.html import strip_tags
 from django.utils.translation import ugettext_lazy as _
+import bleach
 from jsonfield import JSONField
+from .cache import get_user_available_contexts
+from .fields import SafeUTF8Text
+
+
+def check_permission(user, context, obj_type='file', action='upload'):
+    from .casbin import enforce
+    if not user.unti_id or not context:
+        return False
+    return enforce(str(user.unti_id), context, obj_type, action)
 
 
 class User(AbstractUser):
@@ -31,7 +44,7 @@ class User(AbstractUser):
         verbose_name_plural = _(u'Пользователи')
 
     def __str__(self):
-        return '%s %s' % (self.unti_id, self.get_full_name())
+        return '%s %s' % (self.leader_id, self.get_full_name())
 
     @property
     def fio(self):
@@ -39,6 +52,17 @@ class User(AbstractUser):
 
     def get_full_name(self):
         return ' '.join(filter(None, [self.last_name, self.first_name]))
+
+    def is_assistant_for_context(self, context):
+        context_uuid = context if isinstance(context, str) else context and context.uuid
+        return check_permission(self, context_uuid)
+
+    def has_assistant_role(self):
+        return bool(self.available_context_uuids)
+
+    @cached_property
+    def available_context_uuids(self):
+        return get_user_available_contexts(self)
 
 
 class EventType(models.Model):
@@ -76,6 +100,33 @@ class Activity(models.Model):
     def get_labs_link(self):
         return '{}/admin/activity/view/{}'.format(settings.LABS_URL.rstrip('/'), self.uid)
 
+    def get_authors(self):
+        return list(self.authors.values_list('title', flat=True))
+
+
+class NotDeletedEntries(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted=False)
+
+
+class Run(models.Model):
+    uuid = models.CharField(max_length=50, unique=True)
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE)
+    deleted = models.BooleanField(default=False)
+
+
+class RunEnrollment(models.Model):
+    run = models.ForeignKey(Run, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    deleted = models.BooleanField(default=False)
+    created = models.DateTimeField(null=True, auto_now_add=True)
+
+    objects = NotDeletedEntries()
+    all_objects = models.Manager()
+
+    class Meta:
+        unique_together = ('run', 'user')
+
 
 class ActivityEnrollment(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -105,6 +156,7 @@ class Event(models.Model):
 
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, default=None, null=True)
     context = models.ForeignKey(Context, on_delete=models.SET_NULL, null=True, default=None)
+    run = models.ForeignKey(Run, on_delete=models.CASCADE, null=True, default=None)
 
     class Meta:
         verbose_name = _(u'Событие')
@@ -137,9 +189,6 @@ class Event(models.Model):
             tz = default
         return val.astimezone(tz)
 
-    def is_author(self, user):
-        return user.is_assistant
-
     def get_traces(self):
         traces = self.trace_set.order_by('name')
         if not traces and self.event_type is not None:
@@ -169,9 +218,8 @@ class Event(models.Model):
         return EventOnlyMaterial.objects.filter(event=self).count()
 
     def get_authors(self):
-        if self.data and isinstance(self.data, dict):
-            authors = (self.data.get('activity') or {}).get('authors') or []
-            return [(i.get('title') or '').strip() for i in authors]
+        if self.activity:
+            return self.activity.get_authors()
         return []
 
     @cached_property
@@ -180,6 +228,38 @@ class Event(models.Model):
 
     def get_xle_link(self):
         return '{}/event/{}'.format(settings.XLE_URL.rstrip('/'), self.uid)
+
+    def get_pt_teams(self, user_ids=None):
+        """
+        Команды, полученные из pt, которые должны отображаться на странице мероприятия.
+        Если соответствующая настройка отключена показываются только те, для которых есть загруженный след
+        """
+        if self.context:
+            user_ids = user_ids or self.get_participant_ids()
+            filter_dict = {
+                'system': Team.SYSTEM_PT,
+                'contexts': self.context,
+                'users__id__in': user_ids,
+            }
+            qs = Team.objects.filter(**filter_dict)
+            if not settings.ENABLE_PT_TEAMS:
+                qs = qs.annotate(
+                    material_cnt=models.Count('eventteammaterial',
+                                              filter=models.Q(id__in=list(qs.values_list('id', flat=True))))).filter(
+                    material_cnt__gt=0
+                )
+            return qs.distinct().prefetch_related('users')
+        return Team.objects.none()
+
+    def get_participant_ids(self):
+        ids = set(EventEntry.objects.filter(event=self).values_list('user_id', flat=True))
+        if self.run_id:
+            ids |= set(RunEnrollment.objects.filter(run_id=self.run_id).values_list('user_id', flat=True))
+        return ids
+
+    def get_participants(self):
+        return User.objects.filter(id__in=self.get_participant_ids())\
+            .order_by('last_name', 'first_name', 'second_name')
 
 
 class BlockType:
@@ -281,11 +361,6 @@ class Trace(models.Model):
         return self.name
 
 
-class NotDeletedEntries(models.Manager):
-    def get_queryset(self):
-        return super().get_queryset().filter(deleted=False)
-
-
 class EventEntry(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -295,6 +370,7 @@ class EventEntry(models.Model):
     check_in_pushed = models.BooleanField(default=False, verbose_name='Чекин проставлен в ILE')
     deleted = models.BooleanField(default=False)
     approve_text = models.TextField(verbose_name='Подтверждающий текст', blank=True, default='')
+    self_enrolled = models.BooleanField(default=False)
 
     objects = NotDeletedEntries()
     all_objects = models.Manager()
@@ -424,22 +500,12 @@ class TeamResult(ResultAbstract):
             res[field_name] = UserRole.get_initial_data_for_team_result(self.team, self.id)
 
 
-class AbstractMaterial(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE)
-    url = models.URLField(blank=True)
+class BaseMaterial(models.Model):
+    url = models.URLField(blank=True, max_length=1000)
     file = models.FileField(blank=True, max_length=300)
-    trace = models.ForeignKey(Trace, on_delete=models.CASCADE, null=True, default=None)
-    initiator = models.PositiveIntegerField(blank=True, null=True)
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, default=None)
-    object_id = models.PositiveIntegerField(null=True, default=None)
-    parent = GenericForeignKey()
-    deleted = models.BooleanField(default=False)
     file_type = models.CharField(max_length=1000, default='')
     file_size = models.PositiveIntegerField(default=None, null=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True)
-
-    objects = NotDeletedEntries()
-    all_objects = models.Manager()
 
     class Meta:
         abstract = True
@@ -451,6 +517,23 @@ class AbstractMaterial(models.Model):
             if self.file.url.startswith('/'):
                 return '{}{}'.format(settings.BASE_URL, self.file.url)
             return self.file.url
+
+
+class AbstractMaterial(BaseMaterial):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    trace = models.ForeignKey(Trace, on_delete=models.CASCADE, null=True, default=None)
+    initiator = models.PositiveIntegerField(blank=True, null=True)
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, default=None)
+    object_id = models.PositiveIntegerField(null=True, default=None)
+    parent = GenericForeignKey()
+    deleted = models.BooleanField(default=False)
+    summary = models.ForeignKey('Summary', on_delete=models.CASCADE, null=True, blank=True, default=None)
+
+    objects = NotDeletedEntries()
+    all_objects = models.Manager()
+
+    class Meta:
+        abstract = True
 
     def get_file_name(self):
         if self.url:
@@ -516,6 +599,14 @@ class AbstractMaterial(models.Model):
                 return 'pdf', 'fa-file-pdf-o'
         return 'other', 'fa-file'
 
+    def get_summary(self):
+        if self.summary_id:
+            return self.summary.content
+
+    def get_short_summary(self):
+        if self.summary_id:
+            return self.summary.get_short_content()
+
 
 class EventMaterial(AbstractMaterial):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -523,6 +614,7 @@ class EventMaterial(AbstractMaterial):
     comment = models.CharField(default='', max_length=255)
     result = models.ForeignKey(UserResult, on_delete=models.CASCADE, null=True, default=None)
     result_v2 = models.ForeignKey('LabsUserResult', on_delete=models.SET_NULL, null=True, default=None)
+    loaded_by_assistant = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = _(u'Материал')
@@ -558,29 +650,60 @@ class EventMaterial(AbstractMaterial):
 
 
 class Team(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, verbose_name='Событие')
+    SYSTEM_UPLOADS = 0
+    SYSTEM_PT = 1
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, verbose_name='Событие', null=True)
+    contexts = models.ManyToManyField(Context)
     users = models.ManyToManyField(User, verbose_name='Студенты')
     name = models.CharField(max_length=500, verbose_name='Название команды')
     creator = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None, related_name='team_creator')
     confirmed = models.BooleanField(default=True)
+    created_by_assistant = models.BooleanField(default=False)
+    system = models.SmallIntegerField(choices=(
+        (SYSTEM_UPLOADS, SYSTEM_UPLOADS),
+        (SYSTEM_PT, SYSTEM_PT),
+    ), default=SYSTEM_UPLOADS)
+    uuid = models.CharField(max_length=50, default='')
 
     @property
     def team_name(self):
         return 'team_{}'.format(self.id)
 
-    @property
-    def traces_number(self):
-        return EventTeamMaterial.objects.filter(team=self).count()
+    def get_traces_number_for_event(self, event):
+        return EventTeamMaterial.objects.filter(team=self, event=event).count()
 
     class Meta:
         verbose_name = 'Команда'
         verbose_name_plural = 'Команды'
+        unique_together = ('system', 'uuid')
 
     def __str__(self):
         return self.name
 
     def user_can_edit_team(self, user):
-        return user.is_assistant or user.id == self.creator_id or user in self.users.all()
+        if self.system != self.SYSTEM_UPLOADS:
+            return False
+        return user.is_assistant_for_context(self.event.context) or user.id == self.creator_id or \
+               user in self.users.all()
+
+    def user_can_delete_team(self, user):
+        """
+        удалить команду может ассистент, либо тот, кто ее создал, при условии, что у команды нет загруженных файлов
+        """
+        if self.system != self.SYSTEM_UPLOADS:
+            return False
+        team_is_deletable = not EventTeamMaterial.objects.filter(team=self).exists()
+        user_has_right = user.id == self.creator_id or user.is_assistant_for_context(self.event.context)
+        return team_is_deletable and user_has_right
+
+    def get_members_for_event(self, event, user_ids=None):
+        if self.system == self.SYSTEM_UPLOADS:
+            return self.users.all() if event.id == self.event_id else Team.objects.none()
+        user_ids = user_ids or list(event.get_participant_ids())
+        if hasattr(self, '_prefetched_objects_cache') and self._prefetched_objects_cache.get('users'):
+            return [i for i in self._prefetched_objects_cache['users'] if i.id in user_ids]
+        return self.users.filter(id__in=user_ids)
 
 
 class EventTeamMaterial(AbstractMaterial):
@@ -590,6 +713,7 @@ class EventTeamMaterial(AbstractMaterial):
     owners = models.ManyToManyField(User)
     result = models.ForeignKey(TeamResult, on_delete=models.CASCADE, null=True, default=None)
     result_v2 = models.ForeignKey('LabsTeamResult', on_delete=models.CASCADE, null=True, default=None)
+    loaded_by_assistant = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = _(u'Материал команды')
@@ -752,14 +876,29 @@ class LabsEventResult(models.Model):
         """
         return not self.result_format or self.result_format == 'group'
 
+    @cached_property
+    def available_circle_items(self):
+        """
+        доступные для разметки элементы колеса
+        """
+        return [i for i in self.circle_items.all() if i.tool and i.source == CircleItem.SYSTEM_LABS]
+
+    def get_result_format_display(self):
+        if self.result_format == 'personal':
+            return _('персональный')
+        elif self.result_format == 'group':
+            return _('групповой')
+
 
 class AbstractResult(models.Model):
     """
     общие поля для персональных/командных результатов
     """
     result = models.ForeignKey(LabsEventResult, on_delete=models.CASCADE)
-    comment = models.TextField(default='')
-    approved = models.BooleanField(default=False)
+    comment = SafeUTF8Text(default='')
+    approved = models.NullBooleanField(default=None)
+    approve_text = models.CharField(max_length=255, default='')
+    circle_items = models.ManyToManyField('CircleItem')
 
     class Meta:
         abstract = True
@@ -768,15 +907,36 @@ class AbstractResult(models.Model):
         """
         мета информация результата с дополнительными полем title - названием соответствующей метамодели
         """
-        meta = self.result.meta
-        meta_models = []
-        if meta and isinstance(meta, list):
-            meta_models = list(filter(lambda x: isinstance(x, dict), meta))
-        uuids = filter(None, [i.get('model') for i in meta_models])
-        model_names = dict(MetaModel.objects.filter(uuid__in=uuids).values_list('uuid', 'title'))
-        result = meta_models[:]
-        for item in result:
-            item['title'] = model_names.get(item.get('model')) or ''
+        meta = self.get_meta()
+        model_names = dict(MetaModel.objects.filter(uuid__in=filter(None, (i.get('model') for i in meta)))
+                           .values_list('uuid', 'title'))
+        for item in meta:
+            item['title'] = model_names.get(item.get('model'))
+        return meta
+
+    @cached_property
+    def selected_circle_items(self):
+        return [i.id for i in self.circle_items.all() if i.tool]
+
+    def get_meta(self):
+        """
+        приведение метаинформации к стандартному виду со схлопыванием инструментов в список для выдачи апи
+        """
+        data = defaultdict(list)
+        for item in self.circle_items.all():
+            i = item.get_json()
+            key = tuple([i[key] for key in ('level', 'sublevel', 'competence', 'model')])
+            data[key].append(i['tool'])
+        result = [
+            {
+                'level': key[0],
+                'sublevel': key[1],
+                'competence': key[2],
+                'model': key[3],
+                'tools': list(filter(None, tools)) or None,
+            }
+            for key, tools in data.items()
+        ]
         return result
 
 
@@ -828,6 +988,20 @@ class LabsTeamResult(AbstractResult):
         return EventTeamMaterial.objects.filter(result_v2=self)
 
 
+class DPType(models.Model):
+    uuid = models.CharField(unique=True, max_length=50)
+    title = models.CharField(max_length=500)
+
+
+class ModelCompetence(models.Model):
+    model = models.ForeignKey('MetaModel', on_delete=models.CASCADE, related_name='competences')
+    competence = models.ForeignKey('DpCompetence', on_delete=models.CASCADE, related_name='models')
+    order = models.IntegerField()
+
+    class Meta:
+        unique_together = ('model', 'competence')
+
+
 class MetaModel(models.Model):
     """
     Информация о метамоделях. Нужно для хранения информации о названиях моделей
@@ -836,6 +1010,18 @@ class MetaModel(models.Model):
     uuid = models.CharField(max_length=255, unique=True)
     guid = models.CharField(max_length=255)
     title = models.CharField(max_length=500)
+
+    def __str__(self):
+        return self.title
+
+
+class DpCompetence(models.Model):
+    uuid = models.CharField(max_length=50, unique=True)
+    title = models.CharField(max_length=500)
+    type = models.IntegerField(null=True, default=None)
+
+    def __str__(self):
+        return self.title
 
 
 @deconstructible
@@ -847,7 +1033,8 @@ class PathAndRename(object):
         self.path = path
 
     def __call__(self, instance, filename):
-        filename = '{}.csv'.format(uuid4().hex)
+        ext = filename.split('.')[-1]
+        filename = '{}.{}'.format(uuid4().hex, ext)
         return os.path.join(self.path, uuid4().hex[0], uuid4().hex[1:3], filename)
 
 
@@ -886,3 +1073,239 @@ class CSVDump(models.Model):
 
     def get_download_link(self):
         return reverse('load_csv_dump', kwargs={'dump_id': self.id})
+
+    def get_file_name(self):
+        return '{}.{}'.format(self.header, self.csv_file.name.split('.')[-1] or self.meta_data.get('format', 'csv'))
+
+
+class UserFile(BaseMaterial, models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    source = models.CharField(max_length=50)
+    activity_uuid = models.CharField(default='', max_length=255)
+    data = JSONField(null=True)
+    ple_result = models.ForeignKey('PLEUserResult', on_delete=models.CASCADE, null=True, default=None)
+
+    
+class CasbinData(models.Model):
+    model = models.TextField()
+    policy = models.TextField()
+    model_version = models.IntegerField(default=1)
+
+
+class PLEUserResult(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    comment = models.TextField(default='')
+    meta = JSONField()
+
+    def get_json(self, with_materials=True):
+        data = {
+            'id': self.id,
+            'user': self.user.unti_id,
+            'meta': self.meta,
+            'comment': self.comment,
+        }
+        if with_materials:
+            materials = UserFile.objects.filter(ple_result=self)
+            data['materials'] = [{'uploads_url': i.get_url(), 'id': i.id} for i in materials]
+        return data
+
+    def get_url(self):
+        return reverse('api-ple-result', kwargs={'result_id': self.id})
+
+
+class ZendeskData(models.Model):
+    after_head = models.TextField(verbose_name=_('Код до закрывающегося тега head'), blank=True, default='')
+    before_body = models.TextField(verbose_name=_('Код после открывающегося тега body'), blank=True, default='')
+
+    class Meta:
+        verbose_name = _('Виджет zendesk')
+        verbose_name_plural = _('Виджет zendesk')
+
+
+class DTraceStatisticsBase(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    context = models.ForeignKey(Context, on_delete=models.CASCADE)
+    n_entry = models.IntegerField(default=0, verbose_name=_('Количество записей на мероприятия контекста'))
+    n_run_entry = models.IntegerField(default=0, verbose_name=_('Количество записей на прогоны контекста'))
+    n_personal = models.IntegerField(default=0, verbose_name=_('Количество персонального цс'))
+    n_team = models.IntegerField(default=0, verbose_name=_('Количество командного цс'))
+    n_event = models.IntegerField(default=0, verbose_name=_('Загруженные пользователем материалы мероприятия'))
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        abstract = True
+
+
+class DTraceStatistics(DTraceStatisticsBase):
+    class Meta:
+        unique_together = ('user', 'context')
+
+    @classmethod
+    def update_entry(cls, entry):
+        # запись в статистике создается, если у пользователя есть цс или уже есть статистика по этому контексту
+        if cls.objects.filter(user_id=entry.id, context_id=entry.context_id).exists() or \
+                any(getattr(entry, key) for key in ('n_personal', 'n_team', 'n_event')):
+            cls.objects.update_or_create(user_id=entry.user_id, context_id=entry.context_id, defaults={
+                f.name: getattr(entry, f.name) for f in cls._meta.fields
+                if not f.auto_created and f.name not in ('user', 'context')
+            })
+            return True
+        return False
+
+
+class DTraceStatisticsHistory(DTraceStatisticsBase):
+    @classmethod
+    def copy_from_statistics(cls, entry):
+        return cls(**{
+            f.attname: getattr(entry, f.attname) for f in cls._meta.fields if not f.auto_created
+        })
+
+
+class CircleItem(models.Model):
+    """
+    элемент колеса
+    """
+    SYSTEM_UPLOADS = 'uploads'
+    SYSTEM_LABS = 'labs'
+
+    level = models.IntegerField(null=True, default=None)
+    sublevel = models.IntegerField(null=True, default=None)
+    competence = models.ForeignKey(DpCompetence, null=True, default=None, on_delete=models.CASCADE)
+    competence_uuid = models.CharField(max_length=36, default=None, null=True)
+    tool = models.TextField(default=None, null=True)
+    model = models.ForeignKey(MetaModel, null=True, default=None, on_delete=models.CASCADE)
+    model_uuid = models.CharField(max_length=36, default=None, null=True)
+    result = models.ForeignKey(LabsEventResult, on_delete=models.CASCADE, related_name='circle_items')
+    code = models.CharField(max_length=32, unique=True)
+    created_in = models.CharField(max_length=15, default=SYSTEM_LABS)
+    # параметр для отслеживания того, к какой системе сейчас принадлежит элемент. те, что есть в разметке
+    # мероприятия в labs доступны обычным пользователям для добавления к результату
+    source = models.CharField(max_length=15, default=SYSTEM_LABS)
+
+    def get_code(self):
+        """
+        высчитывает уникальный код для объекта (т.к. длина поля tool неограничена, его нельзя использовать
+        в связке unique_together)
+        """
+        key = ':'.join([
+            str(self.level),
+            str(self.sublevel),
+            str(self.competence_uuid),
+            str(self.model_uuid),
+            str(self.result_id),
+            str(self.tool),
+        ])
+        return hashlib.md5(key.encode('utf8')).hexdigest()
+
+    def get_json(self):
+        return {
+            'level': self.level,
+            'sublevel': self.sublevel,
+            'competence': self.competence_uuid,
+            'model': self.model_uuid,
+            'tool': self.tool,
+        }
+
+
+class UpdateTimes(models.Model):
+    CHECKINS = 'checkins'
+    RUN_ENROLLMENTS = 'run_enrollments'
+    DWH_CHECKINS = 'dwh_checkins'
+    DWH_RUN_ENROLLMENTS = 'dwh_run_enrollments'
+    DELETE_RUN_ENROLLMENTS = 'delete_run_enrollments'
+    CONTEXTS = 'contexts'
+    EVENT_CONTEXTS = 'event_contexts'
+    EVENT_TYPES = 'event_types'
+    EVENT_TYPE_CONNECTIONS = 'event_type_connections'
+    ACTIVITY_AUTHORS = 'activity_authors'
+    EVENT_AUTHORS = 'event_authors'
+    METAMODELS = 'metamodels'
+    COMPETENCES = 'competences'
+    EVENT_STRUCTURE = 'event_structure'
+    EVENT_RUN_ACTIVITY = 'event_run_activity'
+    PT_TEAMS = 'pt_teams'
+    ALL_EVENTS = 'all_events'
+
+    event_type = models.CharField(max_length=255, unique=True, primary_key=True)
+    dt = models.DateTimeField()
+
+    @classmethod
+    def get_last_update_for_event(cls, event_type, iso=True):
+        item = cls.objects.filter(event_type=event_type).first()
+        if iso:
+            return item and item.dt and item.dt.isoformat()
+        return item and item.dt
+
+    @classmethod
+    def set_last_update_for_event(cls, event_type, dt):
+        cls.objects.update_or_create(event_type=event_type, defaults={'dt': dt})
+
+
+class EventAuthor(models.Model):
+    SOURCE_EVENT = 'event'
+    SOURCE_ACTIVITY = 'activity'
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    source = models.CharField(max_length=15, choices=(
+        (SOURCE_EVENT, SOURCE_EVENT),
+        (SOURCE_ACTIVITY, SOURCE_ACTIVITY),
+    ))
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('user', 'event')
+
+
+class Summary(models.Model):
+    """
+    Модель для хранения конспектов и их черновиков
+    """
+    result_limit_models = models.Q(app_label='isle', model='Trace') | \
+                          models.Q(app_label='isle', model='LabsEventResult')
+
+    content = SafeUTF8Text(blank=True)
+    author = models.ForeignKey(User, on_delete=models.CASCADE)
+    is_draft = models.BooleanField(default=True)
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, related_name='+',
+                                     limit_choices_to=result_limit_models, null=True)
+    object_id = models.PositiveIntegerField(null=True)
+    result = GenericForeignKey()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def get_short_content(self):
+        return '\n'.join(strip_tags(self.content).splitlines()[:2])
+
+    @classmethod
+    def publish_summary(cls, user, event, result, content):
+        """
+        сохранение конспекта с обработкой от потенциально опасных элементов и удаление старых черновиков, относящихся
+        к указанному блоку
+        """
+        content = bleach.clean(
+            content,
+            tags=settings.BLEACH_ALLOWED_TAGS,
+            attributes=settings.BLEACH_ALLOWED_ATTRIBUTES,
+        )
+        summary = cls.objects.create(author=user, event=event, result=result, content=content, is_draft=False)
+        if isinstance(result, Trace):
+            result = None
+        cls.objects.filter(
+            author=user,
+            event=event,
+            content_type=ContentType.objects.get_for_model(result) if result else None,
+            object_id=result.id if result else None,
+            is_draft=True
+        ).delete()
+        return summary
+
+
+class DpTool(models.Model):
+    uuid = models.CharField(max_length=50, unique=True)
+    title = models.TextField()
+    models = models.ManyToManyField(MetaModel, related_name='tools')
+
+    def __str__(self):
+        return self.title
