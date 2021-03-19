@@ -18,7 +18,7 @@ social-auth-app-django==2.1.0
 social-auth-core==1.7.0
 urllib3==1.23
 django-autocomplete-light==3.4.1
-djangorestframework==3.7.7
+djangorestframework==3.11.2
 django-split-settings==0.2.5
 celery==4.3.0
 django-celery-results==1.0.4
